@@ -1,6 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Cliente, Lead, Tarefa, Atividade, Meta } from '../types';
 
+import app from '../../firebase';
+import { getFirestore } from 'firebase/firestore';
+
+const db = getFirestore(app);
 interface CRMContextType {
   clientes: Cliente[];
   leads: Lead[];
