@@ -1,13 +1,17 @@
-import { NavLink } from 'react-router';
-import { 
-  LayoutDashboard, 
-  Users, 
-  TrendingUp, 
-  CheckSquare, 
+import { NavLink } from 'react-router-dom';
+
+import {
+  LayoutDashboard,
+  Users,
+  TrendingUp,
+  CheckSquare,
   BarChart3,
   Settings,
   Building2
 } from 'lucide-react';
+
+import { signOut } from 'firebase/auth';
+import { auth } from '../../../firebase';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -18,14 +22,24 @@ const navItems = [
 ];
 
 export function Sidebar() {
+  async function handleLogout() {
+    await signOut(auth);
+
+    window.location.reload();
+  }
+
   return (
     <div className="w-64 bg-gray-900 text-white h-screen fixed left-0 top-0 flex flex-col">
       <div className="p-6 border-b border-gray-700">
         <div className="flex items-center gap-3">
           <Building2 className="w-8 h-8 text-blue-400" />
+
           <div>
             <h1 className="text-xl font-bold">CRM Pro</h1>
-            <p className="text-xs text-gray-400">Sistema de Gestão</p>
+
+            <p className="text-xs text-gray-400">
+              Sistema de Gestão
+            </p>
           </div>
         </div>
       </div>
@@ -46,6 +60,7 @@ export function Sidebar() {
                 }
               >
                 <item.icon className="w-5 h-5" />
+
                 <span>{item.label}</span>
               </NavLink>
             </li>
@@ -54,9 +69,13 @@ export function Sidebar() {
       </nav>
 
       <div className="p-4 border-t border-gray-700">
-        <button className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full">
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full"
+        >
           <Settings className="w-5 h-5" />
-          <span>Configurações</span>
+
+          <span>Sair</span>
         </button>
       </div>
     </div>
