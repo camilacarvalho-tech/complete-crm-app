@@ -8,46 +8,62 @@ import { TrendingUp, DollarSign, Users, Target, CheckCircle, Clock } from 'lucid
 const CORES = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#3b82f6', '#ec4899', '#06b6d4'];
 
 const ORIGEM_NOMES: Record<string, string> = {
-  'crm':          'CRM',
-  'site':         'Site',
-  'Site':         'Site',
-  'Landing Page': 'Landing Page',
-  'WhatsApp':     'WhatsApp',
-  'whatsapp':     'WhatsApp',
-  'Tráfego Pago': 'Tráfego Pago',
-  'trafego':      'Tráfego Pago',
-  'Google ADS':   'Google ADS',
-  'google':       'Google ADS',
-  'Instagram':    'Instagram',
-  'Facebook':     'Facebook',
-  'Indicação':    'Indicação',
-  'Outro':        'Outro',
+  'crm':            'CRM',
+  'CRM':            'CRM',
+  'site':           'Site',
+  'Site':           'Site',
+  'Landing Page':   'Landing Page',
+  'landing':        'Landing Page',
+  'Landing':        'Landing Page',
+  'lp':             'Landing Page',
+  'Página inicial': 'Landing Page',
+  'Pagina inicial': 'Landing Page',
+  'página inicial': 'Landing Page',
+  'land':           'Landing Page',
+  'WhatsApp':       'WhatsApp',
+  'whatsapp':       'WhatsApp',
+  'wpp':            'WhatsApp',
+  'Tráfego Pago':   'Tráfego Pago',
+  'trafego':        'Tráfego Pago',
+  'Trafego Pago':   'Tráfego Pago',
+  'Google ADS':     'Google ADS',
+  'google':         'Google ADS',
+  'Google':         'Google ADS',
+  'Instagram':      'Instagram',
+  'instagram':      'Instagram',
+  'Facebook':       'Facebook',
+  'facebook':       'Facebook',
+  'Indicação':      'Indicação',
+  'indicacao':      'Indicação',
+  'Outro':          'Outro',
+  'outro':          'Outro',
+  'Direto':         'Direto',
 };
 
 export function Relatorios() {
   const { clientes, tarefas } = useCRM();
 
-  const total        = clientes.length;
-  const pagos        = clientes.filter((c: any) => c.status === 'Pago').length;
-  const aprovados    = clientes.filter((c: any) => c.status === 'Aprovado').length;
-  const emAtendimento= clientes.filter((c: any) => c.status === 'Em Atendimento').length;
-  const recusados    = clientes.filter((c: any) => c.status === 'Recusado').length;
-  const taxa         = total > 0 ? ((pagos / total) * 100).toFixed(1) : '0';
-  const taxaTarefas  = tarefas.length > 0
+  const total         = clientes.length;
+  const pagos         = clientes.filter((c: any) => c.status === 'Pago').length;
+  const aprovados     = clientes.filter((c: any) => c.status === 'Aprovado').length;
+  const emAtendimento = clientes.filter((c: any) => c.status === 'Em Atendimento').length;
+  const recusados     = clientes.filter((c: any) => c.status === 'Recusado').length;
+  const taxa          = total > 0 ? ((pagos / total) * 100).toFixed(1) : '0';
+  const taxaTarefas   = tarefas.length > 0
     ? ((tarefas.filter((t) => t.status === 'concluida').length / tarefas.length) * 100).toFixed(0)
     : '0';
 
-  // Por status — pizza
+  // Por status pizza
   const porStatus = [
-    { name: 'Lead',           value: clientes.filter((c: any) => !c.status || c.status === 'Lead').length },
-    { name: 'Em Atendimento', value: emAtendimento },
+    { name: 'Lead',            value: clientes.filter((c: any) => !c.status || c.status === 'Lead').length },
+    { name: 'Em Atendimento',  value: emAtendimento },
     { name: 'Análise Bancária',value: clientes.filter((c: any) => c.status === 'Analise Bancaria').length },
-    { name: 'Aprovado',       value: aprovados },
-    { name: 'Pago',           value: pagos },
-    { name: 'Recusado',       value: recusados },
+    { name: 'Aprovado',        value: aprovados },
+    { name: 'Pago',            value: pagos },
+    { name: 'Recusado',        value: recusados },
   ].filter((s) => s.value > 0);
 
-  // Por modalidade — barras
+  // Por modalidade
   const modMap: Record<string, number> = {};
   clientes.forEach((c: any) => {
     const m = c.modalidade || 'Não informado';
@@ -68,7 +84,7 @@ export function Relatorios() {
     .sort((a, b) => b.value - a.value)
     .slice(0, 8);
 
-  // Por origem — com mapeamento correto
+  // Por origem
   const origemMap: Record<string, number> = {};
   clientes.forEach((c: any) => {
     const raw = c.origem || 'Não informado';
@@ -79,13 +95,13 @@ export function Relatorios() {
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value);
 
-  // Por status — barras
+  // Por status barras
   const porStatusBarra = [
-    { name: 'Lead',        value: clientes.filter((c: any) => !c.status || c.status === 'Lead').length },
-    { name: 'Em Atend.',   value: emAtendimento },
-    { name: 'Aprovado',    value: aprovados },
-    { name: 'Pago',        value: pagos },
-    { name: 'Recusado',    value: recusados },
+    { name: 'Lead',       value: clientes.filter((c: any) => !c.status || c.status === 'Lead').length },
+    { name: 'Em Atend.',  value: emAtendimento },
+    { name: 'Aprovado',   value: aprovados },
+    { name: 'Pago',       value: pagos },
+    { name: 'Recusado',   value: recusados },
   ];
 
   // Tarefas
@@ -110,12 +126,12 @@ export function Relatorios() {
       {/* Cards */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: 'Total de Clientes',   value: total,          sub: 'No sistema',              from: '#6366f1', to: '#4f46e5', Icon: Users },
-          { label: 'Taxa de Conversão',   value: `${taxa}%`,     sub: 'Pagos / Total',            from: '#10b981', to: '#059669', Icon: TrendingUp },
-          { label: 'Aprovados',           value: aprovados,      sub: 'Aguardando pagamento',     from: '#8b5cf6', to: '#7c3aed', Icon: Target },
-          { label: 'Pagos',               value: pagos,          sub: 'Contratos fechados',       from: '#f59e0b', to: '#d97706', Icon: DollarSign },
-          { label: 'Em Atendimento',      value: emAtendimento,  sub: 'Em andamento',             from: '#3b82f6', to: '#2563eb', Icon: Clock },
-          { label: 'Tarefas Concluídas',  value: `${taxaTarefas}%`, sub: 'Do total de tarefas',  from: '#ef4444', to: '#dc2626', Icon: CheckCircle },
+          { label: 'Total de Clientes',  value: total,          sub: 'No sistema',           from: '#6366f1', to: '#4f46e5', Icon: Users },
+          { label: 'Taxa de Conversão',  value: `${taxa}%`,     sub: 'Pagos / Total',         from: '#10b981', to: '#059669', Icon: TrendingUp },
+          { label: 'Aprovados',          value: aprovados,      sub: 'Aguardando pagamento',  from: '#8b5cf6', to: '#7c3aed', Icon: Target },
+          { label: 'Pagos',              value: pagos,          sub: 'Contratos fechados',    from: '#f59e0b', to: '#d97706', Icon: DollarSign },
+          { label: 'Em Atendimento',     value: emAtendimento,  sub: 'Em andamento',          from: '#3b82f6', to: '#2563eb', Icon: Clock },
+          { label: 'Tarefas Concluídas', value: `${taxaTarefas}%`, sub: 'Do total de tarefas',from: '#ef4444', to: '#dc2626', Icon: CheckCircle },
         ].map((card) => (
           <div
             key={card.label}
@@ -132,7 +148,7 @@ export function Relatorios() {
         ))}
       </div>
 
-      {/* Funil de conversão + Modalidade */}
+      {/* Funil + Modalidade */}
       <div className="grid grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-4">
@@ -191,7 +207,7 @@ export function Relatorios() {
         </div>
       </div>
 
-      {/* Status barra + Origem tráfego */}
+      {/* Status barras + Origem */}
       <div className="grid grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-4">
@@ -215,6 +231,7 @@ export function Relatorios() {
           )}
         </div>
 
+        {/* Origem do Tráfego — pizza + listagem */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-1 h-5 rounded-full bg-amber-500" />
@@ -223,25 +240,32 @@ export function Relatorios() {
           {porOrigem.length === 0 ? (
             <p className="text-gray-400 text-sm text-center py-16">Sem dados ainda</p>
           ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={porOrigem}
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={90}
-                  dataKey="value"
-                  label={({ name, value }) => `${name}: ${value}`}
-                  labelLine={false}
-                >
-                  {porOrigem.map((_, i) => (
-                    <Cell key={i} fill={CORES[i % CORES.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            <>
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie data={porOrigem} cx="50%" cy="50%" outerRadius={75} dataKey="value">
+                    {porOrigem.map((_, i) => <Cell key={i} fill={CORES[i % CORES.length]} />)}
+                  </Pie>
+                  <Tooltip formatter={(value, name) => [`${value} cliente${Number(value) !== 1 ? 's' : ''}`, name]} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="mt-3 space-y-2">
+                {porOrigem.map((item, i) => (
+                  <div key={item.name} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: CORES[i % CORES.length] }} />
+                      <span className="text-sm text-gray-700 font-medium">{item.name}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-black text-gray-900">{item.value}</span>
+                      <span className="text-xs text-gray-400 w-8 text-right">
+                        {total > 0 ? `${Math.round((item.value / total) * 100)}%` : '0%'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -269,7 +293,7 @@ export function Relatorios() {
         )}
       </div>
 
-      {/* Tarefas por status + tipo */}
+      {/* Tarefas */}
       <div className="grid grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-4">
@@ -318,9 +342,9 @@ export function Relatorios() {
       {/* Indicadores */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: 'Total de Atendimentos', value: tarefas.length,                                         sub: 'Registrados',      cor: 'blue' },
-          { label: 'Atendimentos Concluídos', value: tarefas.filter((t) => t.status === 'concluida').length, sub: `${taxaTarefas}% do total`, cor: 'green' },
-          { label: 'Recusados',             value: recusados,                                              sub: 'Não aprovados',    cor: 'red' },
+          { label: 'Total de Atendimentos',   value: tarefas.length,                                          sub: 'Registrados',      cor: 'blue' },
+          { label: 'Atendimentos Concluídos', value: tarefas.filter((t) => t.status === 'concluida').length,  sub: `${taxaTarefas}% do total`, cor: 'green' },
+          { label: 'Recusados',               value: recusados,                                               sub: 'Não aprovados',    cor: 'red' },
         ].map((item) => (
           <div key={item.label} className={`p-5 bg-${item.cor}-50 rounded-xl border border-${item.cor}-100`}>
             <p className={`text-sm text-${item.cor}-600 font-semibold`}>{item.label}</p>
