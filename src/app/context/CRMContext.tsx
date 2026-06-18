@@ -5,323 +5,148 @@ import React, {
   useEffect,
   ReactNode
 } from 'react';
-
 import {
   getFirestore,
   collection,
-  onSnapshot
+  onSnapshot,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  serverTimestamp
 } from 'firebase/firestore';
-
-import {
-  Cliente,
-  Lead,
-  Tarefa,
-  Atividade,
-  Meta
-} from '../types';
-
+import { Cliente, Lead, Tarefa, Atividade, Meta } from '../types';
 import app from '../../firebase';
 
 const db = getFirestore(app);
+const API_URL = "http://127.0.0.1:8000/leads";
 
 interface CRMContextType {
-
   clientes: Cliente[];
   leads: Lead[];
   tarefas: Tarefa[];
   atividades: Atividade[];
   metas: Meta[];
-
-  adicionarCliente: (
-    cliente: Omit<Cliente, 'id'>
-  ) => void;
-
-  atualizarCliente: (
-    id: string,
-    cliente: Partial<Cliente>
-  ) => void;
-
-  removerCliente: (
-    id: string
-  ) => void;
-
-  adicionarLead: (
-    lead: Omit<Lead, 'id'>
-  ) => void;
-
-  atualizarLead: (
-    id: string,
-    lead: Partial<Lead>
-  ) => void;
-
-  removerLead: (
-    id: string
-  ) => void;
-
-  adicionarTarefa: (
-    tarefa: Omit<Tarefa, 'id'>
-  ) => void;
-
-  atualizarTarefa: (
-    id: string,
-    tarefa: Partial<Tarefa>
-  ) => void;
-
-  removerTarefa: (
-    id: string
-  ) => void;
-
-  adicionarAtividade: (
-    atividade: Omit<Atividade, 'id'>
-  ) => void;
+  adicionarCliente: (cliente: Omit<Cliente, 'id'>) => Promise<string>;
+  atualizarCliente: (id: string, cliente: Partial<Cliente>) => Promise<void>;
+  removerCliente: (id: string) => Promise<void>;
+  adicionarLead: (lead: Omit<Lead, 'id'>) => void;
+  atualizarLead: (id: string, lead: Partial<Lead>) => void;
+  removerLead: (id: string) => void;
+  adicionarTarefa: (tarefa: Omit<Tarefa, 'id'>) => void;
+  atualizarTarefa: (id: string, tarefa: Partial<Tarefa>) => void;
+  removerTarefa: (id: string) => void;
+  adicionarAtividade: (atividade: Omit<Atividade, 'id'>) => void;
 }
 
-const CRMContext = createContext<
-  CRMContextType | undefined
->(undefined);
+const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
-export function CRMProvider({
-  children
-}: {
-  children: ReactNode
-}) {
-
+export function CRMProvider({ children }: { children: ReactNode }) {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
   const [atividades, setAtividades] = useState<Atividade[]>([]);
   const [metas, setMetas] = useState<Meta[]>([]);
 
-  // FIREBASE REALTIME
+  // Clientes — escuta em tempo real do Firestore
   useEffect(() => {
-
-    const unsubscribe = onSnapshot(
-      collection(db, 'leads'),
-      (snapshot) => {
-
-        const lista: any[] = [];
-
-        snapshot.forEach((doc) => {
-
-          lista.push({
-            id: doc.id,
-            ...doc.data(),
-            status: doc.data().status || 'novo'
-          });
-
-        });
-
-        console.log(
-          'CRM CONECTADO:',
-          lista
-        );
-
-        setLeads(lista);
-
-      }
-    );
-
-    return () => unsubscribe();
-
+    const unsub = onSnapshot(collection(db, 'clientes'), (snapshot) => {
+      const lista: Cliente[] = snapshot.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<Cliente, 'id'>)
+      }));
+      setClientes(lista);
+    });
+    return () => unsub();
   }, []);
 
-  // CLIENTES
-  const adicionarCliente = (
-    cliente: Omit<Cliente, 'id'>
-  ) => {
+  // Leads — carrega da API legada
+  useEffect(() => {
+    async function carregarLeads() {
+      try {
+        const response = await fetch(API_URL);
+        const data = await response.json();
+        setLeads(data);
+      } catch (error) {
+        console.error("Erro ao carregar leads:", error);
+      }
+    }
+    carregarLeads();
+  }, []);
 
-    const novoCliente = {
+  // Clientes — Firestore
+  const adicionarCliente = async (cliente: Omit<Cliente, 'id'>): Promise<string> => {
+    const docRef = await addDoc(collection(db, 'clientes'), {
       ...cliente,
-      id: Date.now().toString()
-    };
-
-    setClientes([
-      ...clientes,
-      novoCliente
-    ]);
+      criadoEm: serverTimestamp()
+    });
+    return docRef.id;
   };
 
-  const atualizarCliente = (
-    id: string,
-    clienteAtualizado: Partial<Cliente>
-  ) => {
-
-    setClientes(
-      clientes.map((cliente) =>
-        cliente.id === id
-          ? {
-              ...cliente,
-              ...clienteAtualizado
-            }
-          : cliente
-      )
-    );
+  const atualizarCliente = async (id: string, clienteAtualizado: Partial<Cliente>) => {
+    await updateDoc(doc(db, 'clientes', id), clienteAtualizado);
   };
 
-  const removerCliente = (
-    id: string
-  ) => {
-
-    setClientes(
-      clientes.filter(
-        (cliente) =>
-          cliente.id !== id
-      )
-    );
+  const removerCliente = async (id: string) => {
+    await deleteDoc(doc(db, 'clientes', id));
   };
 
-  // LEADS
-  const adicionarLead = (
-    lead: Omit<Lead, 'id'>
-  ) => {
-
-    const novoLead = {
-      ...lead,
-      id: Date.now().toString()
-    };
-
-    setLeads([
-      ...leads,
-      novoLead
-    ]);
+  // Leads — estado local
+  const adicionarLead = (lead: Omit<Lead, 'id'>) => {
+    setLeads((prev) => [...prev, { ...lead, id: Date.now().toString() }]);
+  };
+  const atualizarLead = (id: string, leadAtualizado: Partial<Lead>) => {
+    setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, ...leadAtualizado } : l)));
+  };
+  const removerLead = (id: string) => {
+    setLeads((prev) => prev.filter((l) => l.id !== id));
   };
 
-  const atualizarLead = (
-    id: string,
-    leadAtualizado: Partial<Lead>
-  ) => {
-
-    setLeads(
-      leads.map((lead) =>
-        lead.id === id
-          ? {
-              ...lead,
-              ...leadAtualizado
-            }
-          : lead
-      )
-    );
+  // Tarefas
+  const adicionarTarefa = (tarefa: Omit<Tarefa, 'id'>) => {
+    setTarefas((prev) => [...prev, { ...tarefa, id: Date.now().toString() }]);
+  };
+  const atualizarTarefa = (id: string, tarefaAtualizada: Partial<Tarefa>) => {
+    setTarefas((prev) => prev.map((t) => (t.id === id ? { ...t, ...tarefaAtualizada } : t)));
+  };
+  const removerTarefa = (id: string) => {
+    setTarefas((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const removerLead = (
-    id: string
-  ) => {
-
-    setLeads(
-      leads.filter(
-        (lead) =>
-          lead.id !== id
-      )
-    );
-  };
-
-  // TAREFAS
-  const adicionarTarefa = (
-    tarefa: Omit<Tarefa, 'id'>
-  ) => {
-
-    const novaTarefa = {
-      ...tarefa,
-      id: Date.now().toString()
-    };
-
-    setTarefas([
-      ...tarefas,
-      novaTarefa
-    ]);
-  };
-
-  const atualizarTarefa = (
-    id: string,
-    tarefaAtualizada: Partial<Tarefa>
-  ) => {
-
-    setTarefas(
-      tarefas.map((tarefa) =>
-        tarefa.id === id
-          ? {
-              ...tarefa,
-              ...tarefaAtualizada
-            }
-          : tarefa
-      )
-    );
-  };
-
-  const removerTarefa = (
-    id: string
-  ) => {
-
-    setTarefas(
-      tarefas.filter(
-        (tarefa) =>
-          tarefa.id !== id
-      )
-    );
-  };
-
-  // ATIVIDADES
-  const adicionarAtividade = (
-    atividade: Omit<Atividade, 'id'>
-  ) => {
-
-    const novaAtividade = {
-      ...atividade,
-      id: Date.now().toString()
-    };
-
-    setAtividades([
-      novaAtividade,
-      ...atividades
-    ]);
+  // Atividades
+  const adicionarAtividade = (atividade: Omit<Atividade, 'id'>) => {
+    setAtividades((prev) => [{ ...atividade, id: Date.now().toString() }, ...prev]);
   };
 
   return (
-
     <CRMContext.Provider
       value={{
-
         clientes,
         leads,
         tarefas,
         atividades,
         metas,
-
         adicionarCliente,
         atualizarCliente,
         removerCliente,
-
         adicionarLead,
         atualizarLead,
         removerLead,
-
         adicionarTarefa,
         atualizarTarefa,
         removerTarefa,
-
         adicionarAtividade
-
       }}
     >
-
       {children}
-
     </CRMContext.Provider>
-
   );
 }
 
 export function useCRM() {
-
   const context = useContext(CRMContext);
-
   if (!context) {
-
-    throw new Error(
-      'useCRM deve ser usado dentro de CRMProvider'
-    );
-
+    throw new Error('useCRM deve ser usado dentro de CRMProvider');
   }
-
   return context;
 }

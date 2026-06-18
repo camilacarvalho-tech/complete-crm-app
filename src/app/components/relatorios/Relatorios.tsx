@@ -1,230 +1,335 @@
 import { useCRM } from '../../context/CRMContext';
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { TrendingUp, TrendingDown, DollarSign, Users, Target, Calendar } from 'lucide-react';
+import {
+  BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from 'recharts';
+import { TrendingUp, DollarSign, Users, Target, CheckCircle, Clock } from 'lucide-react';
 
-const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
+const CORES = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#3b82f6', '#ec4899', '#06b6d4'];
+
+const ORIGEM_NOMES: Record<string, string> = {
+  'crm':          'CRM',
+  'site':         'Site',
+  'Site':         'Site',
+  'Landing Page': 'Landing Page',
+  'WhatsApp':     'WhatsApp',
+  'whatsapp':     'WhatsApp',
+  'Tráfego Pago': 'Tráfego Pago',
+  'trafego':      'Tráfego Pago',
+  'Google ADS':   'Google ADS',
+  'google':       'Google ADS',
+  'Instagram':    'Instagram',
+  'Facebook':     'Facebook',
+  'Indicação':    'Indicação',
+  'Outro':        'Outro',
+};
 
 export function Relatorios() {
-  const { clientes, leads, tarefas, atividades } = useCRM();
+  const { clientes, tarefas } = useCRM();
 
-  // Dados para gráficos
-  const clientesPorStatus = [
-    { name: 'Ativos', value: clientes.filter(c => c.status === 'ativo').length, color: '#10B981' },
-    { name: 'Leads', value: clientes.filter(c => c.status === 'lead').length, color: '#3B82F6' },
-    { name: 'Inativos', value: clientes.filter(c => c.status === 'inativo').length, color: '#6B7280' },
+  const total        = clientes.length;
+  const pagos        = clientes.filter((c: any) => c.status === 'Pago').length;
+  const aprovados    = clientes.filter((c: any) => c.status === 'Aprovado').length;
+  const emAtendimento= clientes.filter((c: any) => c.status === 'Em Atendimento').length;
+  const recusados    = clientes.filter((c: any) => c.status === 'Recusado').length;
+  const taxa         = total > 0 ? ((pagos / total) * 100).toFixed(1) : '0';
+  const taxaTarefas  = tarefas.length > 0
+    ? ((tarefas.filter((t) => t.status === 'concluida').length / tarefas.length) * 100).toFixed(0)
+    : '0';
+
+  // Por status — pizza
+  const porStatus = [
+    { name: 'Lead',           value: clientes.filter((c: any) => !c.status || c.status === 'Lead').length },
+    { name: 'Em Atendimento', value: emAtendimento },
+    { name: 'Análise Bancária',value: clientes.filter((c: any) => c.status === 'Analise Bancaria').length },
+    { name: 'Aprovado',       value: aprovados },
+    { name: 'Pago',           value: pagos },
+    { name: 'Recusado',       value: recusados },
+  ].filter((s) => s.value > 0);
+
+  // Por modalidade — barras
+  const modMap: Record<string, number> = {};
+  clientes.forEach((c: any) => {
+    const m = c.modalidade || 'Não informado';
+    modMap[m] = (modMap[m] || 0) + 1;
+  });
+  const porModalidade = Object.entries(modMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+
+  // Por estado
+  const estadoMap: Record<string, number> = {};
+  clientes.forEach((c: any) => {
+    const e = c.estado || 'Não informado';
+    estadoMap[e] = (estadoMap[e] || 0) + 1;
+  });
+  const porEstado = Object.entries(estadoMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8);
+
+  // Por origem — com mapeamento correto
+  const origemMap: Record<string, number> = {};
+  clientes.forEach((c: any) => {
+    const raw = c.origem || 'Não informado';
+    const o = ORIGEM_NOMES[raw] ?? raw;
+    origemMap[o] = (origemMap[o] || 0) + 1;
+  });
+  const porOrigem = Object.entries(origemMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+
+  // Por status — barras
+  const porStatusBarra = [
+    { name: 'Lead',        value: clientes.filter((c: any) => !c.status || c.status === 'Lead').length },
+    { name: 'Em Atend.',   value: emAtendimento },
+    { name: 'Aprovado',    value: aprovados },
+    { name: 'Pago',        value: pagos },
+    { name: 'Recusado',    value: recusados },
   ];
 
-  const leadsPorOrigem = leads.reduce((acc, lead) => {
-    const origem = lead.origem;
-    const existente = acc.find(item => item.name === origem);
-    if (existente) {
-      existente.value += 1;
-    } else {
-      acc.push({ name: origem, value: 1 });
-    }
-    return acc;
-  }, [] as { name: string; value: number }[]);
+  // Tarefas
+  const tarefasPorStatus = [
+    { name: 'Pendente',    value: tarefas.filter((t) => t.status === 'pendente').length },
+    { name: 'Em Andamento',value: tarefas.filter((t) => t.status === 'em_andamento').length },
+    { name: 'Concluída',   value: tarefas.filter((t) => t.status === 'concluida').length },
+    { name: 'Cancelada',   value: tarefas.filter((t) => t.status === 'cancelada').length },
+  ].filter((t) => t.value > 0);
 
-  const atividadesPorTipo = [
-    { tipo: 'E-mails', quantidade: atividades.filter(a => a.tipo === 'email').length },
-    { tipo: 'Ligações', quantidade: atividades.filter(a => a.tipo === 'ligacao').length },
-    { tipo: 'Reuniões', quantidade: atividades.filter(a => a.tipo === 'reuniao').length },
-    { tipo: 'Notas', quantidade: atividades.filter(a => a.tipo === 'nota').length },
-  ];
-
-  const leadsPorMes = [
-    { mes: 'Jan', novos: 8, convertidos: 3 },
-    { mes: 'Fev', novos: 12, convertidos: 5 },
-    { mes: 'Mar', novos: 15, convertidos: 7 },
-  ];
-
-  const valorPorStatus = leads.reduce((acc, lead) => {
-    const status = lead.status;
-    const existente = acc.find(item => item.status === status);
-    if (existente) {
-      existente.valor += lead.valor;
-    } else {
-      acc.push({ status: status.charAt(0).toUpperCase() + status.slice(1), valor: lead.valor });
-    }
-    return acc;
-  }, [] as { status: string; valor: number }[]);
-
-  // Métricas
-  const taxaConversao = leads.length > 0 
-    ? ((leads.filter(l => l.status === 'ganho').length / leads.length) * 100).toFixed(1)
-    : 0;
-
-  const ticketMedio = clientes.length > 0
-    ? clientes.reduce((acc, c) => acc + c.valor, 0) / clientes.length
-    : 0;
-
-  const leadsAtivos = leads.filter(l => 
-    l.status !== 'ganho' && l.status !== 'perdido'
-  ).length;
+  const tarefasPorTipo = [
+    { name: 'Ligação',   value: tarefas.filter((t) => t.tipo === 'ligacao').length },
+    { name: 'E-mail',    value: tarefas.filter((t) => t.tipo === 'email').length },
+    { name: 'Reunião',   value: tarefas.filter((t) => t.tipo === 'reuniao').length },
+    { name: 'Follow-up', value: tarefas.filter((t) => t.tipo === 'follow-up').length },
+    { name: 'Outro',     value: tarefas.filter((t) => t.tipo === 'outro').length },
+  ].filter((t) => t.value > 0);
 
   return (
     <div className="space-y-6">
-      {/* Cards de Métricas Principais */}
-      <div className="grid grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-6 rounded-lg shadow-lg">
-          <div className="flex items-center justify-between">
+
+      {/* Cards */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: 'Total de Clientes',   value: total,          sub: 'No sistema',              from: '#6366f1', to: '#4f46e5', Icon: Users },
+          { label: 'Taxa de Conversão',   value: `${taxa}%`,     sub: 'Pagos / Total',            from: '#10b981', to: '#059669', Icon: TrendingUp },
+          { label: 'Aprovados',           value: aprovados,      sub: 'Aguardando pagamento',     from: '#8b5cf6', to: '#7c3aed', Icon: Target },
+          { label: 'Pagos',               value: pagos,          sub: 'Contratos fechados',       from: '#f59e0b', to: '#d97706', Icon: DollarSign },
+          { label: 'Em Atendimento',      value: emAtendimento,  sub: 'Em andamento',             from: '#3b82f6', to: '#2563eb', Icon: Clock },
+          { label: 'Tarefas Concluídas',  value: `${taxaTarefas}%`, sub: 'Do total de tarefas',  from: '#ef4444', to: '#dc2626', Icon: CheckCircle },
+        ].map((card) => (
+          <div
+            key={card.label}
+            className="text-white p-5 rounded-xl shadow-lg flex items-center justify-between"
+            style={{ background: `linear-gradient(135deg, ${card.from}, ${card.to})` }}
+          >
             <div>
-              <p className="text-blue-100 text-sm">Taxa de Conversão</p>
-              <p className="text-3xl font-bold mt-2">{taxaConversao}%</p>
+              <p className="text-white/70 text-xs font-medium">{card.label}</p>
+              <p className="text-3xl font-black mt-1">{card.value}</p>
+              <p className="text-white/60 text-[11px] mt-1">{card.sub}</p>
             </div>
-            <TrendingUp className="w-12 h-12 opacity-30" />
+            <card.Icon className="w-10 h-10 opacity-20" />
           </div>
+        ))}
+      </div>
+
+      {/* Funil de conversão + Modalidade */}
+      <div className="grid grid-cols-2 gap-6">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-1 h-5 rounded-full bg-amber-500" />
+            <h3 className="text-sm font-bold text-gray-800">Funil de Conversão</h3>
+          </div>
+          {porStatus.length === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-16">Sem dados ainda</p>
+          ) : (
+            <div className="space-y-2.5">
+              {porStatus.map((item, i) => {
+                const max = porStatus[0]?.value || 1;
+                return (
+                  <div key={item.name}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-gray-600 font-medium">{item.name}</span>
+                      <span className="font-bold" style={{ color: CORES[i % CORES.length] }}>{item.value}</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-4">
+                      <div
+                        className="h-4 rounded-full transition-all duration-500"
+                        style={{
+                          width: `${(item.value / max) * 100}%`,
+                          backgroundColor: CORES[i % CORES.length],
+                          boxShadow: `0 0 8px ${CORES[i % CORES.length]}66`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        <div className="bg-gradient-to-br from-green-500 to-green-600 text-white p-6 rounded-lg shadow-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-green-100 text-sm">Ticket Médio</p>
-              <p className="text-3xl font-bold mt-2">R$ {(ticketMedio / 1000).toFixed(0)}k</p>
-            </div>
-            <DollarSign className="w-12 h-12 opacity-30" />
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-1 h-5 rounded-full bg-amber-500" />
+            <h3 className="text-sm font-bold text-gray-800">Clientes por Modalidade</h3>
           </div>
-        </div>
-
-        <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-6 rounded-lg shadow-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-purple-100 text-sm">Leads Ativos</p>
-              <p className="text-3xl font-bold mt-2">{leadsAtivos}</p>
-            </div>
-            <Target className="w-12 h-12 opacity-30" />
-          </div>
-        </div>
-
-        <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white p-6 rounded-lg shadow-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-orange-100 text-sm">Total Clientes</p>
-              <p className="text-3xl font-bold mt-2">{clientes.length}</p>
-            </div>
-            <Users className="w-12 h-12 opacity-30" />
-          </div>
+          {porModalidade.length === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-16">Sem dados ainda</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={porModalidade} layout="vertical" margin={{ left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 10 }} />
+                <Tooltip />
+                <Bar dataKey="value" name="Clientes" radius={[0, 6, 6, 0]}>
+                  {porModalidade.map((_, i) => <Cell key={i} fill={CORES[i % CORES.length]} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 
-      {/* Gráficos Linha 1 */}
+      {/* Status barra + Origem tráfego */}
       <div className="grid grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Clientes por Status</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={clientesPorStatus}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, value }) => `${name}: ${value}`}
-                outerRadius={100}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {clientesPorStatus.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-1 h-5 rounded-full bg-amber-500" />
+            <h3 className="text-sm font-bold text-gray-800">Clientes por Status</h3>
+          </div>
+          {total === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-16">Sem dados ainda</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={porStatusBarra}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Bar dataKey="value" name="Clientes" radius={[6, 6, 0, 0]}>
+                  {porStatusBarra.map((_, i) => <Cell key={i} fill={CORES[i % CORES.length]} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Leads por Origem</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={leadsPorOrigem}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-1 h-5 rounded-full bg-amber-500" />
+            <h3 className="text-sm font-bold text-gray-800">Origem do Tráfego</h3>
+          </div>
+          {porOrigem.length === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-16">Sem dados ainda</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={porOrigem}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={90}
+                  dataKey="value"
+                  label={({ name, value }) => `${name}: ${value}`}
+                  labelLine={false}
+                >
+                  {porOrigem.map((_, i) => (
+                    <Cell key={i} fill={CORES[i % CORES.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* Por estado */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-1 h-5 rounded-full bg-amber-500" />
+          <h3 className="text-sm font-bold text-gray-800">Clientes por Estado (UF)</h3>
+        </div>
+        {porEstado.length === 0 ? (
+          <p className="text-gray-400 text-sm text-center py-10">Sem dados ainda</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={porEstado}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
               <Tooltip />
-              <Legend />
-              <Bar dataKey="value" fill="#3B82F6" name="Quantidade" />
+              <Bar dataKey="value" name="Clientes" radius={[6, 6, 0, 0]}>
+                {porEstado.map((_, i) => <Cell key={i} fill={CORES[i % CORES.length]} />)}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        )}
       </div>
 
-      {/* Gráficos Linha 2 */}
+      {/* Tarefas por status + tipo */}
       <div className="grid grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Performance de Leads (Mensal)</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={leadsPorMes}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="mes" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="novos" stroke="#3B82F6" strokeWidth={2} name="Novos Leads" />
-              <Line type="monotone" dataKey="convertidos" stroke="#10B981" strokeWidth={2} name="Convertidos" />
-            </LineChart>
-          </ResponsiveContainer>
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-1 h-5 rounded-full bg-amber-500" />
+            <h3 className="text-sm font-bold text-gray-800">Atendimentos por Status</h3>
+          </div>
+          {tarefasPorStatus.length === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-16">Sem dados ainda</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie data={tarefasPorStatus} cx="50%" cy="50%" outerRadius={90} dataKey="value"
+                  label={({ name, value }) => `${name}: ${value}`} labelLine={false}>
+                  {tarefasPorStatus.map((_, i) => <Cell key={i} fill={CORES[i % CORES.length]} />)}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Atividades por Tipo</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={atividadesPorTipo}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="tipo" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="quantidade" fill="#8B5CF6" name="Quantidade" />
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-1 h-5 rounded-full bg-amber-500" />
+            <h3 className="text-sm font-bold text-gray-800">Atendimentos por Tipo</h3>
+          </div>
+          {tarefasPorTipo.length === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-16">Sem dados ainda</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={tarefasPorTipo}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Bar dataKey="value" name="Quantidade" radius={[6, 6, 0, 0]}>
+                  {tarefasPorTipo.map((_, i) => <Cell key={i} fill={CORES[i % CORES.length]} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 
-      {/* Valor por Status do Pipeline */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">Valor por Estágio do Pipeline</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={valorPorStatus}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="status" />
-            <YAxis />
-            <Tooltip 
-              formatter={(value: number) => `R$ ${value.toLocaleString('pt-BR')}`}
-            />
-            <Legend />
-            <Bar dataKey="valor" fill="#10B981" name="Valor Total (R$)" />
-          </BarChart>
-        </ResponsiveContainer>
+      {/* Indicadores */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: 'Total de Atendimentos', value: tarefas.length,                                         sub: 'Registrados',      cor: 'blue' },
+          { label: 'Atendimentos Concluídos', value: tarefas.filter((t) => t.status === 'concluida').length, sub: `${taxaTarefas}% do total`, cor: 'green' },
+          { label: 'Recusados',             value: recusados,                                              sub: 'Não aprovados',    cor: 'red' },
+        ].map((item) => (
+          <div key={item.label} className={`p-5 bg-${item.cor}-50 rounded-xl border border-${item.cor}-100`}>
+            <p className={`text-sm text-${item.cor}-600 font-semibold`}>{item.label}</p>
+            <p className={`text-3xl font-black text-${item.cor}-900 mt-2`}>{item.value}</p>
+            <p className={`text-xs text-${item.cor}-500 mt-1`}>{item.sub}</p>
+          </div>
+        ))}
       </div>
 
-      {/* Tabela de Resumo */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">Resumo Executivo</h3>
-        <div className="grid grid-cols-3 gap-6">
-          <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <p className="text-sm text-blue-600 font-medium">Total de Atividades</p>
-            <p className="text-2xl font-bold text-blue-900 mt-2">{atividades.length}</p>
-            <p className="text-xs text-blue-600 mt-1">Este mês</p>
-          </div>
-
-          <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-            <p className="text-sm text-green-600 font-medium">Tarefas Concluídas</p>
-            <p className="text-2xl font-bold text-green-900 mt-2">
-              {tarefas.filter(t => t.status === 'concluida').length}
-            </p>
-            <p className="text-xs text-green-600 mt-1">
-              {((tarefas.filter(t => t.status === 'concluida').length / tarefas.length) * 100).toFixed(0)}% do total
-            </p>
-          </div>
-
-          <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-            <p className="text-sm text-purple-600 font-medium">Valor Médio por Lead</p>
-            <p className="text-2xl font-bold text-purple-900 mt-2">
-              R$ {leads.length > 0 ? (leads.reduce((acc, l) => acc + l.valor, 0) / leads.length / 1000).toFixed(0) : 0}k
-            </p>
-            <p className="text-xs text-purple-600 mt-1">Pipeline atual</p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
