@@ -17,9 +17,14 @@ async function resolveAuthToken(
 ): Promise<string | null> {
   if (!secret?.ciphertext || !secret?.iv) return null
   const kekPass =
-    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_LEADS_MONITOR_KEK) ||
-    'nexus-leads-monitor-homolog-kek'
-  const kek = await deriveKekFromPassphrase(kekPass)
+    typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_LEADS_MONITOR_KEK
+  if (!kekPass) {
+    console.warn(
+      '[leads-monitor] API auth: defina VITE_LEADS_MONITOR_KEK (mesmo valor do Secret Manager) ou use authType=none.'
+    )
+    return null
+  }
+  const kek = await deriveKekFromPassphrase(String(kekPass))
   try {
     return await decryptSecretAesGcm(secret.ciphertext, secret.iv, kek)
   } catch {

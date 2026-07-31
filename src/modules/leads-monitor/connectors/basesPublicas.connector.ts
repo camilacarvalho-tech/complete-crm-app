@@ -19,9 +19,9 @@ export const basesPublicasConnector: LeadConnector = {
   meta: {
     id: 'bases_publicas_empresas',
     label: 'Bases públicas (empresas)',
-    descricao: 'Dados empresariais públicos / cadastros abertos — sem dados pessoais sensíveis.',
+    descricao: '[DEMO — fora do registry V1.1] Dados sintéticos B2B; não usar em produção.',
     autorizado: true,
-    enabled: true,
+    enabled: false,
     version: '1.0.0',
     versao: '1.0.0',
     apiVersion: 1,

@@ -22,14 +22,14 @@ interface IConnector {
 6. [ ] Breaking change → bump `apiVersion`, keep previous version registered
 7. [ ] Update `ARCHITECTURE.md`
 
-## Built-in
+## Built-in (V1.1)
 
 | id | Status |
 |----|--------|
-| `formularios_autorizados` | Active (v1) |
-| `bases_publicas_empresas` | Active (v1) |
-| `integracao_api` | Stub → V1.1 |
-| `webhook` | Stub → V1.1 |
+| `integracao_api` | Production — config por empresa |
+| `webhook` | Production — inbox via Cloud Function |
+| `formularios_autorizados` | **Demo — não registrado** (`enabled: false`) |
+| `bases_publicas_empresas` | **Demo — não registrado** (`enabled: false`) |
 
 ## Future (same pattern)
 

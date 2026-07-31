@@ -7,6 +7,7 @@ import {
   COL_JOBS,
   COL_OPORTUNIDADES,
   COL_PESQUISAS,
+  COL_DLQ,
   FILTROS_VAZIOS,
 } from '../constants'
 import { bootstrapConnectors } from '../connectors'
@@ -56,6 +57,9 @@ export function useLeadsMonitor() {
   const { items: jobs } = useTenantCollection(COL_JOBS, [], { tela: 'leads-monitor-jobs' })
   const { items: healthItems } = useTenantCollection(COL_HEALTH, [], {
     tela: 'leads-monitor-health',
+  })
+  const { items: dlqItems } = useTenantCollection(COL_DLQ, [], {
+    tela: 'leads-monitor-dlq',
   })
 
   const oportunidades = useMemo(() => {
@@ -257,6 +261,7 @@ export function useLeadsMonitor() {
     pesquisas,
     jobs,
     healthItems,
+    dlqItems,
     loading,
     buscando,
     erro: erro || loadError,

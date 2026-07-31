@@ -1,11 +1,9 @@
 /**
- * Bootstrap dos conectores.
- * Novos conectores: importar + registerConnector(meuConector) — só isso.
- * Várias apiVersion do mesmo id podem coexistir (pin por empresa).
+ * Bootstrap dos conectores de produção.
+ * Fontes demo (formularios / basesPublicas) ficam fora do registry em V1.1 —
+ * arquivos mantidos apenas como referência em connectors/_demo/ ou desabilitados.
  */
 import { registerConnector } from './registry'
-import { formulariosConnector } from './formularios.connector'
-import { basesPublicasConnector } from './basesPublicas.connector'
 import { integracaoApiConnector } from './integracaoApi.connector'
 import { webhookConnector } from './webhook.connector'
 
@@ -13,8 +11,7 @@ let bootstrapped = false
 
 export function bootstrapConnectors(): void {
   if (bootstrapped) return
-  registerConnector(formulariosConnector)
-  registerConnector(basesPublicasConnector)
+  // Produção V1.1: apenas fontes reais configuráveis
   registerConnector(integracaoApiConnector)
   registerConnector(webhookConnector)
   bootstrapped = true

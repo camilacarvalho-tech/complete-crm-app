@@ -21,9 +21,9 @@ export const formulariosConnector: LeadConnector = {
   meta: {
     id: 'formularios_autorizados',
     label: 'Formulários autorizados',
-    descricao: 'Leads com consentimento LGPD (landing, opt-in, APIs autorizadas).',
+    descricao: '[DEMO — fora do registry V1.1] Leads sintéticos; não usar em produção.',
     autorizado: true,
-    enabled: true,
+    enabled: false,
     version: '1.0.0',
     versao: '1.0.0',
     apiVersion: 1,

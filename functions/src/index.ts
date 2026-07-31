@@ -1,14 +1,32 @@
 /**
- * Nexus Leads Monitor — Cloud Functions
+ * Nexus Leads Monitor — Cloud Functions (v2)
  * - leadsMonitorWebhook: ingestão autenticada → inbox + job
  * - leadsMonitorSaveSecret: grava ciphertext (nunca plaintext)
+ *
+ * KEK:
+ * - Hoje: param/env `LEADS_MONITOR_KEK` (functions/.env — não commitado)
+ * - Produção Blaze: migrar para Secret Manager:
+ *     firebase functions:secrets:set LEADS_MONITOR_KEK
+ *     e trocar defineString → defineSecret + secrets: [leadsMonitorKek]
+ *   Ver SECRETS.md / functions/README.md
  */
 import * as admin from 'firebase-admin'
-import * as functions from 'firebase-functions'
+import { onRequest } from 'firebase-functions/v2/https'
+import { defineString } from 'firebase-functions/params'
 import * as crypto from 'crypto'
 
 if (!admin.apps.length) admin.initializeApp()
 const db = admin.firestore()
+
+/**
+ * Param de deploy (arquivo functions/.env).
+ * Quando o projeto estiver no Blaze, preferir defineSecret('LEADS_MONITOR_KEK').
+ */
+const leadsMonitorKek = defineString('LEADS_MONITOR_KEK', {
+  description:
+    'KEK AES-GCM do Leads Monitor. Em Blaze, promover para Secret Manager (defineSecret).',
+  default: '',
+})
 
 function timingSafeEqualStr(a: string, b: string): boolean {
   const ba = Buffer.from(a)
@@ -21,30 +39,38 @@ function hashToken(plain: string): string {
   return crypto.createHash('sha256').update(plain).digest('hex')
 }
 
-async function decryptSecret(
+function resolveKek(): string {
+  const fromParam = leadsMonitorKek.value()
+  if (fromParam && fromParam.trim()) return fromParam.trim()
+  if (process.env.LEADS_MONITOR_KEK?.trim()) return process.env.LEADS_MONITOR_KEK.trim()
+  if (process.env.FUNCTIONS_EMULATOR === 'true') {
+    return 'nexus-leads-monitor-emulator-kek'
+  }
+  throw new Error(
+    'LEADS_MONITOR_KEK não configurado. Defina em functions/.env ou Secret Manager (Blaze).'
+  )
+}
+
+function decryptSecret(
   stored: { ciphertext?: string; iv?: string } | null | undefined
-): Promise<string | null> {
+): string | null {
   if (!stored?.ciphertext || !stored?.iv) return null
-  const kekPass = process.env.LEADS_MONITOR_KEK || 'nexus-leads-monitor-homolog-kek'
-  const key = crypto.createHash('sha256').update(kekPass).digest()
+  const key = crypto.createHash('sha256').update(resolveKek()).digest()
   try {
     const iv = Buffer.from(stored.iv, 'base64')
     const data = Buffer.from(stored.ciphertext, 'base64')
-    // Node AES-GCM: last 16 bytes tag
     const tag = data.subarray(data.length - 16)
     const enc = data.subarray(0, data.length - 16)
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
     decipher.setAuthTag(tag)
     return Buffer.concat([decipher.update(enc), decipher.final()]).toString('utf8')
   } catch {
-    // Fallback: Web Crypto format may differ — compare hash if stored
     return null
   }
 }
 
-function encryptAesGcm(plain: string): { ciphertext: string; iv: string } {
-  const kekPass = process.env.LEADS_MONITOR_KEK || 'nexus-leads-monitor-homolog-kek'
-  const key = crypto.createHash('sha256').update(kekPass).digest()
+function encryptAesGcm(plain: string): { ciphertext: string; iv: string; keyVersion: string } {
+  const key = crypto.createHash('sha256').update(resolveKek()).digest()
   const iv = crypto.randomBytes(12)
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv)
   const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()])
@@ -52,11 +78,21 @@ function encryptAesGcm(plain: string): { ciphertext: string; iv: string } {
   return {
     ciphertext: Buffer.concat([enc, tag]).toString('base64'),
     iv: iv.toString('base64'),
+    keyVersion: 'param-v1',
   }
 }
 
+const fnOpts = {
+  region: 'southamerica-east1' as const,
+  cors: true,
+}
+
 /** POST ?empresaId=xxx  Authorization: Bearer <token> */
-export const leadsMonitorWebhook = functions.https.onRequest(async (req, res) => {
+export const leadsMonitorWebhook = onRequest(fnOpts, async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('')
+    return
+  }
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'method_not_allowed' })
     return
@@ -88,7 +124,7 @@ export const leadsMonitorWebhook = functions.https.onRequest(async (req, res) =>
     if (tokenHashStored) {
       ok = timingSafeEqualStr(hashToken(bearer), tokenHashStored)
     } else {
-      const plain = await decryptSecret(tokenSecret)
+      const plain = decryptSecret(tokenSecret)
       ok = plain ? timingSafeEqualStr(bearer, plain) : false
     }
     if (!ok) {
@@ -102,11 +138,13 @@ export const leadsMonitorWebhook = functions.https.onRequest(async (req, res) =>
       return
     }
 
-    const hmacSecretPlain = await decryptSecret(cfg.hmacSecret)
+    const hmacSecretPlain = decryptSecret(cfg.hmacSecret)
     if (hmacSecretPlain) {
       const provided = String(req.header('x-hub-signature-256') || req.header('x-signature') || '')
       const raw =
-        typeof req.rawBody !== 'undefined' ? req.rawBody : Buffer.from(JSON.stringify(req.body || {}))
+        typeof (req as any).rawBody !== 'undefined'
+          ? (req as any).rawBody
+          : Buffer.from(JSON.stringify(req.body || {}))
       const digest = crypto.createHmac('sha256', hmacSecretPlain).update(raw).digest('hex')
       const providedHex = provided.replace(/^sha256=/i, '')
       if (!providedHex || !timingSafeEqualStr(digest, providedHex)) {
@@ -163,8 +201,12 @@ export const leadsMonitorWebhook = functions.https.onRequest(async (req, res) =>
   }
 })
 
-/** POST { empresaId, configDoc, field, plainSecret } — exige Firebase ID token */
-export const leadsMonitorSaveSecret = functions.https.onRequest(async (req, res) => {
+/** POST { empresaId, configDoc, field, plainSecret } — Firebase ID token */
+export const leadsMonitorSaveSecret = onRequest(fnOpts, async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('')
+    return
+  }
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'method_not_allowed' })
     return
@@ -203,7 +245,6 @@ export const leadsMonitorSaveSecret = functions.https.onRequest(async (req, res)
       return
     }
 
-    // Isolamento multi-tenant: usuário deve pertencer à empresa (ou master)
     const userSnap = await db.collection('usuarios').doc(uid).get()
     const userData = userSnap.data() || {}
     const userEmpresa = userData.empresaId || userData.empresa_id
@@ -227,12 +268,12 @@ export const leadsMonitorSaveSecret = functions.https.onRequest(async (req, res)
     }
 
     if (field === 'webhookToken') {
-      patch.webhookTokenSecret = { ...enc, keyVersion: 'v1', secretRef, hint }
+      patch.webhookTokenSecret = { ...enc, secretRef, hint }
       patch.webhookTokenHash = hashToken(String(plainSecret))
     } else if (field === 'hmacSecret') {
-      patch.hmacSecret = { ...enc, keyVersion: 'v1', secretRef, hint }
+      patch.hmacSecret = { ...enc, secretRef, hint }
     } else if (field === 'authToken') {
-      patch.authTokenSecret = { ...enc, keyVersion: 'v1', secretRef, hint }
+      patch.authTokenSecret = { ...enc, secretRef, hint }
     }
 
     await db.doc(`empresas/${empresaId}/leadsMonitorConfig/${configDoc}`).set(patch, { merge: true })
@@ -243,7 +284,7 @@ export const leadsMonitorSaveSecret = functions.https.onRequest(async (req, res)
       usuarioId: uid,
       entidade: 'config',
       entidadeId: configDoc,
-      after: { field, hint },
+      after: { field, hint, keyVersion: enc.keyVersion },
       at: admin.firestore.FieldValue.serverTimestamp(),
     })
 

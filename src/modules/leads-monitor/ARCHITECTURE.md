@@ -54,7 +54,11 @@ Register with `registerConnector()`. Multiple `apiVersion`s of the same `id` can
 
 ## Secrets
 
-Never store tokens/keys in Firestore plaintext. Use ciphertext + KEK (Secret Manager / env). UI shows masked values only.
+Never store tokens/keys in Firestore plaintext. Use Cloud Function `leadsMonitorSaveSecret` + KEK in **Secret Manager** (`LEADS_MONITOR_KEK`). UI shows masked values only. See `SECRETS.md`.
+
+## Production connectors (V1.1)
+
+Runnable: `integracao_api`, `webhook` only. Demo generators (`formularios_autorizados`, `bases_publicas_empresas`) are **not registered**.
 
 ## Horizontal scale
 

@@ -88,6 +88,7 @@ export default function LeadsMonitor() {
     pesquisas,
     jobs,
     healthItems,
+    dlqItems,
     loading,
     buscando,
     erro,
@@ -597,6 +598,7 @@ export default function LeadsMonitor() {
             <IntegrationsAdminPanel
               empresaId={empresaId}
               healthItems={healthItems || []}
+              dlqItems={dlqItems || []}
               actor={{ usuarioId: usuario?.id, usuarioNome: usuario?.nome }}
             />
           </div>
