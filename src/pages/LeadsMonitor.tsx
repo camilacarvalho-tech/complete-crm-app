@@ -25,6 +25,9 @@ import {
   Activity,
   Ban,
   Inbox,
+  ScrollText,
+  ClipboardList,
+  Briefcase,
 } from 'lucide-react'
 import {
   useLeadsMonitor,
@@ -89,6 +92,9 @@ export default function LeadsMonitor() {
     jobs,
     healthItems,
     dlqItems,
+    inboxItems,
+    logItems,
+    auditItems,
     loading,
     buscando,
     erro,
@@ -244,6 +250,71 @@ export default function LeadsMonitor() {
           <span>Fontes: {ultimoResultado.fontes.join(', ') || '—'}</span>
         </div>
       )}
+
+      {/* Operações: Inbox · Jobs · Logs · Audit */}
+      <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3" data-testid="ops-panels">
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
+            <Inbox className="w-4 h-4 text-nexus-orange" /> Inbox
+            <span className="ml-auto text-xs font-normal text-slate-400">{inboxItems?.length || 0}</span>
+          </div>
+          <ul className="space-y-1.5 max-h-36 overflow-y-auto text-xs text-slate-600 dark:text-slate-300">
+            {(inboxItems || []).slice(0, 8).map((item: any) => (
+              <li key={item.id} className="flex justify-between gap-2 border-b border-slate-100 dark:border-slate-700/60 pb-1">
+                <span className="truncate">{item.payload?.nome || item.payload?.name || item.id}</span>
+                <span className="shrink-0 text-slate-400">{item.status || 'pending'}</span>
+              </li>
+            ))}
+            {!(inboxItems || []).length && <li className="text-slate-400">Vazia</li>}
+          </ul>
+        </div>
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
+            <Briefcase className="w-4 h-4 text-blue-500" /> Jobs
+            <span className="ml-auto text-xs font-normal text-slate-400">{jobs?.length || 0}</span>
+          </div>
+          <ul className="space-y-1.5 max-h-36 overflow-y-auto text-xs text-slate-600 dark:text-slate-300">
+            {(jobs || []).slice(0, 8).map((j: any) => (
+              <li key={j.id} className="flex justify-between gap-2 border-b border-slate-100 dark:border-slate-700/60 pb-1">
+                <span className="truncate">{j.type || 'job'} · {j.id.slice(0, 8)}</span>
+                <span className="shrink-0 text-slate-400">{j.status}</span>
+              </li>
+            ))}
+            {!(jobs || []).length && <li className="text-slate-400">Nenhum</li>}
+          </ul>
+          {ultimoJobId && (
+            <p className="mt-2 text-[11px] text-slate-400">Último job: {ultimoJobId}</p>
+          )}
+        </div>
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
+            <ScrollText className="w-4 h-4 text-violet-500" /> Logs
+            <span className="ml-auto text-xs font-normal text-slate-400">{logItems?.length || 0}</span>
+          </div>
+          <ul className="space-y-1.5 max-h-36 overflow-y-auto text-xs text-slate-600 dark:text-slate-300">
+            {(logItems || []).slice(0, 8).map((l: any) => (
+              <li key={l.id} className="border-b border-slate-100 dark:border-slate-700/60 pb-1 truncate">
+                <span className="text-slate-400">{l.level || 'info'}</span> · {l.message || l.evento || l.id}
+              </li>
+            ))}
+            {!(logItems || []).length && <li className="text-slate-400">Sem logs</li>}
+          </ul>
+        </div>
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
+            <ClipboardList className="w-4 h-4 text-emerald-500" /> Audit Trail
+            <span className="ml-auto text-xs font-normal text-slate-400">{auditItems?.length || 0}</span>
+          </div>
+          <ul className="space-y-1.5 max-h-36 overflow-y-auto text-xs text-slate-600 dark:text-slate-300">
+            {(auditItems || []).slice(0, 8).map((a: any) => (
+              <li key={a.id} className="border-b border-slate-100 dark:border-slate-700/60 pb-1 truncate">
+                {a.acao || a.action || a.evento || a.id}
+              </li>
+            ))}
+            {!(auditItems || []).length && <li className="text-slate-400">Sem eventos</li>}
+          </ul>
+        </div>
+      </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">

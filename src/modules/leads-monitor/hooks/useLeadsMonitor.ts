@@ -3,8 +3,11 @@ import { useTenantCollection } from '../../../hooks/useTenantCollection'
 import { useAuth } from '../../../contexts/AuthContext'
 import {
   AUTO_REFRESH_MS,
+  COL_AUDIT,
   COL_HEALTH,
+  COL_INBOX,
   COL_JOBS,
+  COL_LOGS,
   COL_OPORTUNIDADES,
   COL_PESQUISAS,
   COL_DLQ,
@@ -60,6 +63,15 @@ export function useLeadsMonitor() {
   })
   const { items: dlqItems } = useTenantCollection(COL_DLQ, [], {
     tela: 'leads-monitor-dlq',
+  })
+  const { items: inboxItems } = useTenantCollection(COL_INBOX, [], {
+    tela: 'leads-monitor-inbox',
+  })
+  const { items: logItems } = useTenantCollection(COL_LOGS, [], {
+    tela: 'leads-monitor-logs',
+  })
+  const { items: auditItems } = useTenantCollection(COL_AUDIT, [], {
+    tela: 'leads-monitor-audit',
   })
 
   const oportunidades = useMemo(() => {
@@ -262,6 +274,9 @@ export function useLeadsMonitor() {
     jobs,
     healthItems,
     dlqItems,
+    inboxItems,
+    logItems,
+    auditItems,
     loading,
     buscando,
     erro: erro || loadError,
