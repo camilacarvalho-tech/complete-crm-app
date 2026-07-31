@@ -11,22 +11,27 @@
  *   Ver SECRETS.md / functions/README.md
  */
 import * as admin from 'firebase-admin'
+import { FieldValue } from 'firebase-admin/firestore'
 import { onRequest } from 'firebase-functions/v2/https'
-import { defineString } from 'firebase-functions/params'
 import * as crypto from 'crypto'
 
 if (!admin.apps.length) admin.initializeApp()
 const db = admin.firestore()
 
 /**
- * Param de deploy (arquivo functions/.env).
- * Quando o projeto estiver no Blaze, preferir defineSecret('LEADS_MONITOR_KEK').
+ * KEK via env / functions/.env (não versionado).
+ * Blaze: promover para Secret Manager — ver SECRETS.md
+ *   firebase functions:secrets:set LEADS_MONITOR_KEK
  */
-const leadsMonitorKek = defineString('LEADS_MONITOR_KEK', {
-  description:
-    'KEK AES-GCM do Leads Monitor. Em Blaze, promover para Secret Manager (defineSecret).',
-  default: '',
-})
+function resolveKek(): string {
+  if (process.env.LEADS_MONITOR_KEK?.trim()) return process.env.LEADS_MONITOR_KEK.trim()
+  if (process.env.FUNCTIONS_EMULATOR === 'true') {
+    return 'nexus-leads-monitor-emulator-kek'
+  }
+  throw new Error(
+    'LEADS_MONITOR_KEK não configurado. Defina em functions/.env ou Secret Manager (Blaze).'
+  )
+}
 
 function timingSafeEqualStr(a: string, b: string): boolean {
   const ba = Buffer.from(a)
@@ -37,18 +42,6 @@ function timingSafeEqualStr(a: string, b: string): boolean {
 
 function hashToken(plain: string): string {
   return crypto.createHash('sha256').update(plain).digest('hex')
-}
-
-function resolveKek(): string {
-  const fromParam = leadsMonitorKek.value()
-  if (fromParam && fromParam.trim()) return fromParam.trim()
-  if (process.env.LEADS_MONITOR_KEK?.trim()) return process.env.LEADS_MONITOR_KEK.trim()
-  if (process.env.FUNCTIONS_EMULATOR === 'true') {
-    return 'nexus-leads-monitor-emulator-kek'
-  }
-  throw new Error(
-    'LEADS_MONITOR_KEK não configurado. Defina em functions/.env ou Secret Manager (Blaze).'
-  )
 }
 
 function decryptSecret(
@@ -132,7 +125,7 @@ export const leadsMonitorWebhook = onRequest(fnOpts, async (req, res) => {
         empresaId,
         status: 401,
         reason: 'invalid_token',
-        at: admin.firestore.FieldValue.serverTimestamp(),
+        at: FieldValue.serverTimestamp(),
       })
       res.status(401).json({ error: 'invalid_token' })
       return
@@ -159,7 +152,7 @@ export const leadsMonitorWebhook = onRequest(fnOpts, async (req, res) => {
       status: 'pending',
       source: req.header('x-webhook-source') || 'http',
       payload: body,
-      receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+      receivedAt: FieldValue.serverTimestamp(),
     })
 
     const jobRef = await db.collection(`empresas/${empresaId}/leadsMonitorJobs`).add({
@@ -170,9 +163,9 @@ export const leadsMonitorWebhook = onRequest(fnOpts, async (req, res) => {
       maxAttempts: 5,
       idempotencyKey: `webhook:${inboxRef.id}`,
       payload: {},
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      nextAttemptAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      nextAttemptAt: FieldValue.serverTimestamp(),
     })
 
     await db.collection(`empresas/${empresaId}/leadsMonitorAudit`).add({
@@ -183,7 +176,7 @@ export const leadsMonitorWebhook = onRequest(fnOpts, async (req, res) => {
       entidade: 'inbox',
       entidadeId: inboxRef.id,
       after: { jobId: jobRef.id },
-      at: admin.firestore.FieldValue.serverTimestamp(),
+      at: FieldValue.serverTimestamp(),
     })
 
     await db.collection(`empresas/${empresaId}/leadsMonitorWebhookLogs`).add({
@@ -191,7 +184,7 @@ export const leadsMonitorWebhook = onRequest(fnOpts, async (req, res) => {
       status: 202,
       reason: 'accepted',
       inboxId: inboxRef.id,
-      at: admin.firestore.FieldValue.serverTimestamp(),
+      at: FieldValue.serverTimestamp(),
     })
 
     res.status(202).json({ id: inboxRef.id, jobId: jobRef.id, status: 'accepted' })
@@ -264,7 +257,7 @@ export const leadsMonitorSaveSecret = onRequest(fnOpts, async (req, res) => {
     const secretRef = `${configDoc}.${field}`
     const patch: Record<string, unknown> = {
       empresaId,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     }
 
     if (field === 'webhookToken') {
@@ -285,7 +278,7 @@ export const leadsMonitorSaveSecret = onRequest(fnOpts, async (req, res) => {
       entidade: 'config',
       entidadeId: configDoc,
       after: { field, hint, keyVersion: enc.keyVersion },
-      at: admin.firestore.FieldValue.serverTimestamp(),
+      at: FieldValue.serverTimestamp(),
     })
 
     res.status(200).json({ ok: true, hint: `••••${hint}` })

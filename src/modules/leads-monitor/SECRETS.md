@@ -4,16 +4,16 @@
 
 O projeto **crm-recomece** precisa estar no plano **Blaze** para habilitar `secretmanager.googleapis.com`.
 
-Enquanto estiver no Spark:
+Enquanto estiver no Spark / sem Secret Manager:
 
 1. Use `functions/.env` com `LEADS_MONITOR_KEK=...` (não commitado; ver `.env.example`).
-2. O código usa `defineString('LEADS_MONITOR_KEK')` — pronto para promover.
+2. O código lê `process.env.LEADS_MONITOR_KEK` (e fallback de emulador).
 
 Após upgrade Blaze:
 
 ```bash
 firebase functions:secrets:set LEADS_MONITOR_KEK
-# Trocar defineString → defineSecret + secrets: [leadsMonitorKek] em functions/src/index.ts
+# Opcional: migrar para defineSecret('LEADS_MONITOR_KEK') + secrets: [...] em functions/src/index.ts
 firebase deploy --only functions
 ```
 
