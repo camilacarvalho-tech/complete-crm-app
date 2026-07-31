@@ -68,3 +68,7 @@ Jobs use `leaseOwner` / `leaseUntil` / `idempotencyKey` so multiple workers can 
 
 - `connectors/README.md` — connector checklist
 - `functions/README.md` — webhook deploy (V1.1)
+- `SECRETS.md` — KEK / Secret Manager
+- `DEPLOY.md` — guia de implantação V1.1
+- `ROADMAP_V1.2.md` — pendências
+- `CHANGELOG.md` (raiz) — notas de versão
