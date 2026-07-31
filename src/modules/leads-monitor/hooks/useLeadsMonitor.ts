@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTenantCollection } from '../../../hooks/useTenantCollection'
 import { useAuth } from '../../../contexts/AuthContext'
-import { AUTO_REFRESH_MS, COL_OPORTUNIDADES, COL_PESQUISAS, FILTROS_VAZIOS } from '../constants'
+import {
+  AUTO_REFRESH_MS,
+  COL_HEALTH,
+  COL_JOBS,
+  COL_OPORTUNIDADES,
+  COL_PESQUISAS,
+  FILTROS_VAZIOS,
+} from '../constants'
 import { bootstrapConnectors } from '../connectors'
-import { runLeadPipeline } from '../pipeline'
 import { aprovarOportunidade, rejeitarOportunidade } from '../pipeline/approve'
 import { enviarOportunidadeParaCrm } from '../pipeline/sendToCrm'
+import { enqueueJob } from '../services/jobQueue'
+import { processOneJob, startJobWorkerLoop } from '../services/jobWorker'
 import type {
   FiltrosPesquisa,
   MonitorRunResult,
@@ -20,6 +28,7 @@ export function useLeadsMonitor() {
   const [filtros, setFiltros] = useState<FiltrosPesquisa>({ ...FILTROS_VAZIOS })
   const [buscando, setBuscando] = useState(false)
   const [ultimoResultado, setUltimoResultado] = useState<MonitorRunResult | null>(null)
+  const [ultimoJobId, setUltimoJobId] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [ultimaAutoExecucao, setUltimaAutoExecucao] = useState<number | null>(null)
   const autoBusy = useRef(false)
@@ -42,6 +51,11 @@ export function useLeadsMonitor() {
     remove: removePesquisa,
   } = useTenantCollection<PesquisaSalva>(COL_PESQUISAS, [], {
     tela: 'leads-monitor-pesquisas',
+  })
+
+  const { items: jobs } = useTenantCollection(COL_JOBS, [], { tela: 'leads-monitor-jobs' })
+  const { items: healthItems } = useTenantCollection(COL_HEALTH, [], {
+    tela: 'leads-monitor-health',
   })
 
   const oportunidades = useMemo(() => {
@@ -84,11 +98,11 @@ export function useLeadsMonitor() {
       novos,
       quentes,
       scoreMedio,
-      /** @deprecated use encontrados */
       total: encontrados,
     }
   }, [oportunidades])
 
+  /** Enfileira job (UI não bloqueia o pipeline) e dispara um processamento em background. */
   const executarBusca = useCallback(
     async (overrides?: Partial<FiltrosPesquisa>, pesquisaId?: string) => {
       if (!empresaId) {
@@ -99,22 +113,42 @@ export function useLeadsMonitor() {
       setErro(null)
       try {
         const f = { ...filtros, ...overrides }
-        const result = await runLeadPipeline({
+        const jobId = await enqueueJob({
           empresaId,
-          filtros: f,
-          pesquisaId,
-          llmBudget: 3,
+          type: 'search',
+          payload: { filtros: f, pesquisaId },
+          actor: { usuarioId: usuario?.id, usuarioNome: usuario?.nome },
         })
-        setUltimoResultado(result)
-        return result
+        setUltimoJobId(jobId)
+        // Processa em background — lista atualiza via onSnapshot
+        void processOneJob(empresaId)
+          .then((did) => {
+            if (did) {
+              setUltimoResultado({
+                encontrados: 0,
+                novos: 0,
+                duplicados: 0,
+                fontes: [`job:${jobId}`],
+              })
+            }
+          })
+          .catch((e) => setErro(e?.message || 'Falha no worker'))
+        const pending: MonitorRunResult = {
+          encontrados: 0,
+          novos: 0,
+          duplicados: 0,
+          fontes: [`enfileirado:${jobId}`],
+        }
+        setUltimoResultado(pending)
+        return pending
       } catch (e: any) {
-        setErro(e?.message || 'Falha na busca')
+        setErro(e?.message || 'Falha ao enfileirar busca')
         return null
       } finally {
         setBuscando(false)
       }
     },
-    [empresaId, filtros]
+    [empresaId, filtros, usuario?.id, usuario?.nome]
   )
 
   const salvarPesquisa = useCallback(
@@ -139,28 +173,39 @@ export function useLeadsMonitor() {
     })
   }, [])
 
-  /** Etapas 6+7: Aprovação → Envio ao CRM */
   const aprovarEEnviar = useCallback(
     async (op: OportunidadeMonitor) => {
       if (!empresaId) throw new Error('Empresa não identificada')
-      await aprovarOportunidade(empresaId, op)
+      const actor = { usuarioId: usuario?.id, usuarioNome: usuario?.nome }
+      await aprovarOportunidade(empresaId, op, actor)
       return enviarOportunidadeParaCrm(
         empresaId,
         { ...op, status: 'aprovado' },
-        usuario?.nome
+        usuario?.nome,
+        actor
       )
     },
-    [empresaId, usuario?.nome]
+    [empresaId, usuario?.id, usuario?.nome]
   )
 
   const rejeitar = useCallback(
     async (op: OportunidadeMonitor, motivo?: string) => {
       if (!empresaId) throw new Error('Empresa não identificada')
-      await rejeitarOportunidade(empresaId, op, motivo)
+      await rejeitarOportunidade(empresaId, op, motivo, {
+        usuarioId: usuario?.id,
+        usuarioNome: usuario?.nome,
+      })
     },
-    [empresaId]
+    [empresaId, usuario?.id, usuario?.nome]
   )
 
+  // Worker loop (escala horizontal-ready via lease)
+  useEffect(() => {
+    if (!empresaId) return
+    return startJobWorkerLoop(empresaId, 8000)
+  }, [empresaId])
+
+  // Auto-monitor: enfileira jobs das pesquisas ativas
   useEffect(() => {
     if (!empresaId) return
     const tick = async () => {
@@ -170,18 +215,27 @@ export function useLeadsMonitor() {
       autoBusy.current = true
       try {
         for (const p of ativas) {
-          const result = await runLeadPipeline({
+          // Evita empilhar jobs se já há busca pendente para a mesma pesquisa
+          const pendingSame = jobs.some(
+            (j: any) =>
+              j?.payload?.pesquisaId === p.id &&
+              (j.status === 'queued' || j.status === 'leased' || j.status === 'running')
+          )
+          if (pendingSame) continue
+          await enqueueJob({
             empresaId,
-            filtros: {
-              cidade: p.cidade || '',
-              estado: p.estado || '',
-              segmento: p.segmento || '',
-              palavraChave: p.palavraChave || '',
+            type: 'search',
+            payload: {
+              filtros: {
+                cidade: p.cidade || '',
+                estado: p.estado || '',
+                segmento: p.segmento || '',
+                palavraChave: p.palavraChave || '',
+              },
+              pesquisaId: p.id,
             },
-            pesquisaId: p.id,
-            llmBudget: 0,
+            actor: { usuarioId: usuario?.id, usuarioNome: usuario?.nome },
           })
-          setUltimoResultado(result)
         }
         setUltimaAutoExecucao(Date.now())
       } catch (e) {
@@ -193,7 +247,7 @@ export function useLeadsMonitor() {
 
     const id = window.setInterval(tick, AUTO_REFRESH_MS)
     return () => window.clearInterval(id)
-  }, [empresaId, pesquisas])
+  }, [empresaId, pesquisas, jobs, usuario?.id, usuario?.nome])
 
   return {
     empresaId,
@@ -201,10 +255,13 @@ export function useLeadsMonitor() {
     setFiltros,
     oportunidades,
     pesquisas,
+    jobs,
+    healthItems,
     loading,
     buscando,
     erro: erro || loadError,
     ultimoResultado,
+    ultimoJobId,
     stats,
     monitorAuto: {
       ativo: pesquisas.some((p) => p.ativa),

@@ -1,6 +1,7 @@
 /**
- * Bootstrap dos conectores V1.
+ * Bootstrap dos conectores.
  * Novos conectores: importar + registerConnector(meuConector) — só isso.
+ * Várias apiVersion do mesmo id podem coexistir (pin por empresa).
  */
 import { registerConnector } from './registry'
 import { formulariosConnector } from './formularios.connector'
@@ -14,11 +15,28 @@ export function bootstrapConnectors(): void {
   if (bootstrapped) return
   registerConnector(formulariosConnector)
   registerConnector(basesPublicasConnector)
-  // Preparados — enabled:false (não alteram o núcleo ao serem ativados depois)
   registerConnector(integracaoApiConnector)
   registerConnector(webhookConnector)
   bootstrapped = true
 }
 
-export type { LeadConnector, ConnectorMeta, ConnectorRawRecord, NormalizedLead, ConnectorFetchContext } from './types'
-export { registerConnector, getConnector, listConnectors, getRunnableConnectors, listConnectorMetas } from './registry'
+export type {
+  IConnector,
+  LeadConnector,
+  ConnectorMeta,
+  ConnectorRawRecord,
+  NormalizedLead,
+  ConnectorFetchContext,
+} from './types'
+
+export { connectorRegistryKey } from './types'
+
+export {
+  registerConnector,
+  getConnector,
+  listConnectors,
+  listLatestConnectors,
+  getRunnableConnectors,
+  listConnectorMetas,
+  listConnectorApiVersions,
+} from './registry'

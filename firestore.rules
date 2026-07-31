@@ -1,0 +1,219 @@
+rules_version = "2";
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isMaster() {
+      return isAuthenticated() &&
+             request.auth.token.email in [
+               "carvalhoduraocamila@gmail.com",
+               "laiane26022@gmail.com"
+             ];
+    }
+
+    function hasProfile() {
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/usuarios/$(request.auth.uid));
+    }
+
+    function getUserProfile() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+    }
+
+    function getUserRole() {
+      return hasProfile() ? getUserProfile().perfil : "";
+    }
+
+    function getUserEmpresaId() {
+      return hasProfile() ? getUserProfile().empresaId : "";
+    }
+
+    function isEmpresario() {
+      return hasProfile() && getUserRole() == "empresario";
+    }
+
+    function isFuncionario() {
+      return hasProfile() && getUserRole() == "funcionario";
+    }
+
+    function isSameEmpresa(data) {
+      return data.empresaId == getUserEmpresaId();
+    }
+
+    function canViewFilaGeral() {
+      return hasProfile() && getUserProfile().verFilaGeral == true;
+    }
+
+    function belongsToTenant(empresaId) {
+      return isMaster() || (hasProfile() && getUserEmpresaId() == empresaId);
+    }
+
+    function canView(data) {
+      return isMaster() ||
+             (isEmpresario() && isSameEmpresa(data)) ||
+             (isFuncionario() && isSameEmpresa(data) &&
+               (data.atendenteId == request.auth.uid ||
+                data.criadoPor == request.auth.uid ||
+                (!("atendenteId" in data) && canViewFilaGeral())));
+    }
+
+    function canEdit(data) {
+      return isMaster() ||
+             (isEmpresario() && isSameEmpresa(data)) ||
+             (isFuncionario() && isSameEmpresa(data) &&
+               (data.atendenteId == request.auth.uid || data.criadoPor == request.auth.uid));
+    }
+
+    function canCreate(data) {
+      return isMaster() ||
+             (hasProfile() && data.empresaId == getUserEmpresaId());
+    }
+
+    match /usuarios/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isMaster());
+      // Master cria qualquer perfil; usuário autenticado pode criar o próprio doc (bootstrap de 1º login)
+      allow create: if isMaster() || (isAuthenticated() && request.auth.uid == userId);
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isMaster() || isEmpresario());
+      allow delete: if isMaster() || isEmpresario();
+    }
+
+    // Tenant canônico: empresas/{empresaId}/{qualquer subcoleção}
+    match /empresas/{empresaId} {
+      allow read: if belongsToTenant(empresaId);
+      allow create, update, delete: if isMaster();
+
+      // —— Nexus Leads Monitor (regras explícitas / multi-tenant) ——
+
+      // Inbox: create só Admin SDK (Function); tenant pode ler/atualizar status
+      match /leadsMonitorInbox/{docId} {
+        allow read: if belongsToTenant(empresaId);
+        allow create: if false;
+        allow update: if belongsToTenant(empresaId);
+        allow delete: if isMaster();
+      }
+
+      // Audit Trail: append-only para o tenant; delete só master
+      match /leadsMonitorAudit/{docId} {
+        allow read: if belongsToTenant(empresaId);
+        allow create: if belongsToTenant(empresaId)
+                      && request.resource.data.empresaId == empresaId;
+        allow update: if false;
+        allow delete: if isMaster();
+      }
+
+      // Demais subcoleções do tenant (CRM + Monitor config/jobs/etc.)
+      match /{collection}/{docId} {
+        allow read: if belongsToTenant(empresaId);
+        allow write: if belongsToTenant(empresaId)
+                     && collection != 'leadsMonitorInbox'
+                     && collection != 'leadsMonitorAudit';
+
+        match /{subcollection}/{subDocId} {
+          allow read, write: if belongsToTenant(empresaId);
+        }
+      }
+    }
+
+    match /empresa_modulos/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isMaster() || isEmpresario();
+    }
+
+    match /modulos/{moduloId} {
+      allow read: if isAuthenticated();
+      allow write: if isMaster();
+    }
+
+    // Coleções raiz legadas (compat) — preferir subcoleções do tenant
+    match /clientes/{clienteId} {
+      allow read: if isAuthenticated() && canView(resource.data);
+      allow create: if isAuthenticated() && canCreate(request.resource.data);
+      allow update, delete: if isAuthenticated() && canEdit(resource.data);
+    }
+
+    match /conversas/{conversaId} {
+      allow read: if isAuthenticated() && canView(resource.data);
+      allow create: if isAuthenticated() && canCreate(request.resource.data);
+      allow update, delete: if isAuthenticated() && canEdit(resource.data);
+    }
+
+    match /mensagens/{mensagemId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /campanhas/{campanhaId} {
+      allow read: if isAuthenticated() && canView(resource.data);
+      allow create: if isAuthenticated() && canCreate(request.resource.data);
+      allow update, delete: if isAuthenticated() && canEdit(resource.data);
+    }
+
+    match /produtos/{produtoId} {
+      allow read: if isAuthenticated() && canView(resource.data);
+      allow create, update, delete: if isAuthenticated() && (isMaster() || isEmpresario());
+    }
+
+    match /sms_disparos/{disparoId} {
+      allow read: if isAuthenticated() && canView(resource.data);
+      allow create: if isAuthenticated() && canCreate(request.resource.data);
+      allow update, delete: if isAuthenticated() && canEdit(resource.data);
+    }
+
+    match /sms_respostas/{respostaId} {
+      allow read: if isAuthenticated() && canView(resource.data);
+      allow create: if isAuthenticated() && canCreate(request.resource.data);
+      allow update: if isAuthenticated() && canEdit(resource.data);
+      allow delete: if isMaster() || isEmpresario();
+    }
+
+    match /financeiro_lancamentos/{lancamentoId} {
+      allow read: if isAuthenticated() && (
+        isMaster() ||
+        (isEmpresario() && isSameEmpresa(resource.data)) ||
+        (isFuncionario() && isSameEmpresa(resource.data) &&
+          getUserProfile().verFinanceiroEquipe == true)
+      );
+      allow create: if isAuthenticated() && canCreate(request.resource.data);
+      allow update, delete: if isAuthenticated() && (isMaster() || isEmpresario());
+    }
+
+    match /comissoes/{comissaoId} {
+      allow read: if isAuthenticated() && (
+        isMaster() ||
+        (isEmpresario() && isSameEmpresa(resource.data)) ||
+        (isFuncionario() && resource.data.usuarioId == request.auth.uid)
+      );
+      allow create, update, delete: if isMaster() || isEmpresario();
+    }
+
+    match /contratos/{contratoId} {
+      allow read: if isAuthenticated() && canView(resource.data);
+      allow create, update, delete: if isMaster() || isEmpresario();
+    }
+
+    match /anotacoes/{anotacaoId} {
+      allow read: if isAuthenticated() && (
+        canView(resource.data) ||
+        (resource.data.responsavelId == request.auth.uid) ||
+        (resource.data.compartilharComEquipe == true && isSameEmpresa(resource.data))
+      );
+      allow create: if isAuthenticated() && canCreate(request.resource.data);
+      allow update, delete: if isAuthenticated() &&
+        (canEdit(resource.data) || resource.data.responsavelId == request.auth.uid);
+    }
+
+    match /remarketing/{remarketingId} {
+      allow read: if isAuthenticated() && canView(resource.data);
+      allow create: if isAuthenticated() && canCreate(request.resource.data);
+      allow update, delete: if isAuthenticated() && canEdit(resource.data);
+    }
+
+    match /auditoria_logs/{logId} {
+      allow read: if isMaster() || (isEmpresario() && isSameEmpresa(resource.data));
+      allow create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+  }
+}

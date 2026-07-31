@@ -20,10 +20,10 @@ import { COL_OPORTUNIDADES, COL_PESQUISAS } from '../constants'
 import { bootstrapConnectors, getRunnableConnectors } from '../connectors'
 import type { ConnectorFetchContext, NormalizedLead } from '../connectors/types'
 import type { FiltrosPesquisa, MonitorRunResult, OportunidadeMonitor } from '../types'
+import { getNexusAiQualifier } from '../ai/INexusAiQualifier'
+import { recordConnectorFailure, recordConnectorSuccess } from '../services/healthStore'
 import { normalizeFromConnector } from './normalize'
 import { buildDedupeKey, deduplicateLeads } from './dedupe'
-import { classifyLead } from './classify'
-import { scoreLead } from './score'
 
 export interface PipelineRunOptions {
   empresaId: string
@@ -57,16 +57,30 @@ async function collectNormalized(
   const connectors = getRunnableConnectors()
   const batches = await Promise.all(
     connectors.map(async (connector) => {
+      const t0 = Date.now()
       try {
         const raw = await connector.fetch(ctx)
         const normalized = normalizeFromConnector(connector, raw, ctx)
+        await recordConnectorSuccess({
+          empresaId: ctx.empresaId,
+          connectorId: connector.meta.id,
+          latencyMs: Date.now() - t0,
+          connectorVersion: connector.meta.version,
+        })
         return {
           label: connector.meta.label,
           leads: normalized.leads,
           rawCount: raw.length,
         }
-      } catch (e) {
+      } catch (e: any) {
         console.warn(`[leads-monitor] conector ${connector.meta.id} falhou`, e)
+        await recordConnectorFailure({
+          empresaId: ctx.empresaId,
+          connectorId: connector.meta.id,
+          error: e?.message || String(e),
+          latencyMs: Date.now() - t0,
+          connectorVersion: connector.meta.version,
+        })
         return { label: connector.meta.label, leads: [] as NormalizedLead[], rawCount: 0 }
       }
     })
@@ -107,17 +121,18 @@ export async function runLeadPipeline(opts: PipelineRunOptions): Promise<Monitor
   const existingKeys = await loadExistingDedupeKeys(empresaId)
   const { unicos, duplicados } = deduplicateLeads(leads, existingKeys)
 
-  // 4–5. Classificação Nexus AI → Score → persistência
+  // 4–5. Classificação Nexus AI → Score → persistência (via INexusAiQualifier)
   let novos = 0
   let budget = llmBudget
+  const qualifier = getNexusAiQualifier()
 
   for (const lead of unicos) {
-    const classification = await classifyLead(lead, filtros, empresaId, {
+    const scored = await qualifier.classifyAndScore(lead, {
+      empresaId,
+      filtros,
       useLlm: budget > 0,
     })
     if (budget > 0) budget -= 1
-
-    const scored = scoreLead(lead, classification, filtros)
 
     await addDoc(collection(db, 'empresas', empresaId, COL_OPORTUNIDADES), {
       ...lead,
@@ -128,7 +143,7 @@ export async function runLeadPipeline(opts: PipelineRunOptions): Promise<Monitor
       score: scored.score,
       temperatura: scored.temperatura,
       classificacao: scored.classificacao,
-      categoriaClassificacao: classification.categoria,
+      categoriaClassificacao: scored.categoria || scored.classificacao,
       motivosScore: scored.motivos,
       origemScore: scored.origemScore,
       pesquisaId: pesquisaId || null,

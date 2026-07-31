@@ -61,6 +61,7 @@ export function scoreLead(
     score,
     temperatura: temperaturaFromScore(score),
     classificacao: classification.label,
+    categoria: classification.categoria,
     motivos: motivos.filter(Boolean).slice(0, 5),
     origemScore: classification.origem,
   }

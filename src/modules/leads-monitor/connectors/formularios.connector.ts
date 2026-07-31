@@ -24,7 +24,9 @@ export const formulariosConnector: LeadConnector = {
     descricao: 'Leads com consentimento LGPD (landing, opt-in, APIs autorizadas).',
     autorizado: true,
     enabled: true,
+    version: '1.0.0',
     versao: '1.0.0',
+    apiVersion: 1,
     tiposSuportados: ['pessoa'],
   },
 

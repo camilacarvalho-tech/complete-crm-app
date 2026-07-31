@@ -1,5 +1,5 @@
 /**
- * Nexus Leads Monitor V1.0 — painel completo.
+ * Nexus Leads Monitor V1.1 — painel completo.
  * Capta, organiza e qualifica oportunidades; o CRM só recebe as aprovadas.
  */
 import { useEffect, useMemo, useState } from 'react'
@@ -30,16 +30,16 @@ import {
   useLeadsMonitor,
   ESTADOS_BR,
   SEGMENTOS,
-  listConnectorMetas,
   bootstrapConnectors,
   LEADS_MONITOR_VERSION,
   AUTO_REFRESH_MS,
   type OportunidadeMonitor,
 } from '../modules/leads-monitor'
+import { IntegrationsAdminPanel } from '../modules/leads-monitor/components/IntegrationsAdminPanel'
 import { useToast } from '../components/ui/Toast'
+import { useAuth } from '../contexts/AuthContext'
 
 bootstrapConnectors()
-const CONNECTOR_METAS = listConnectorMetas()
 
 function TempIcon({ t }: { t?: string }) {
   if (t === 'Quente') return <Flame className="w-4 h-4 text-orange-500" />
@@ -86,10 +86,13 @@ export default function LeadsMonitor() {
     setFiltros,
     oportunidades,
     pesquisas,
+    jobs,
+    healthItems,
     loading,
     buscando,
     erro,
     ultimoResultado,
+    ultimoJobId,
     stats,
     monitorAuto,
     executarBusca,
@@ -100,7 +103,10 @@ export default function LeadsMonitor() {
     aprovarEEnviar,
     rejeitar,
     removeOportunidade,
+    empresaId,
   } = useLeadsMonitor()
+
+  const { usuario } = useAuth()
 
   const [nomePesquisa, setNomePesquisa] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<FiltroLista>('todos')
@@ -131,8 +137,8 @@ export default function LeadsMonitor() {
     const r = await executarBusca()
     if (r) {
       toast.success(
-        'Busca concluída',
-        `${r.encontrados} encontrados · ${r.novos} novos · ${r.duplicados} duplicados removidos`
+        'Busca enfileirada',
+        `Job assíncrono iniciado · ${r.fontes.join(', ')} · oportunidades atualizam em tempo real`
       )
     }
   }
@@ -322,6 +328,15 @@ export default function LeadsMonitor() {
             </div>
 
             {erro && <p className="text-sm text-red-500">{erro}</p>}
+            {ultimoJobId && (
+              <p className="text-xs text-slate-500">Último job: {ultimoJobId}</p>
+            )}
+            {jobs?.length > 0 && (
+              <p className="text-xs text-slate-500">
+                Fila: {jobs.filter((j: any) => j.status === 'queued' || j.status === 'running' || j.status === 'leased').length}{' '}
+                ativos · {jobs.filter((j: any) => j.status === 'dead').length} dead
+              </p>
+            )}
           </div>
 
           {/* Lista de oportunidades */}
@@ -555,8 +570,8 @@ export default function LeadsMonitor() {
                             if (r) {
                               carregarPesquisa(p)
                               toast.success(
-                                'Pesquisa atualizada',
-                                `${r.novos} novas · ${r.duplicados} duplicados`
+                                'Pesquisa enfileirada',
+                                `Job assíncrono · ${r.fontes.join(', ')}`
                               )
                             }
                           })
@@ -574,31 +589,16 @@ export default function LeadsMonitor() {
 
           <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
             <div className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">
-              Conectores
+              Integrações (admin)
             </div>
             <p className="text-[11px] text-slate-500 mb-3">
-              Conector → Normalização → Dedupe → Nexus AI → Score → Aprovação → CRM
+              Configuração sem código · secrets criptografados · health · fila assíncrona
             </p>
-            <ul className="space-y-3">
-              {CONNECTOR_METAS.map((s) => (
-                <li key={s.id} className="flex gap-3">
-                  <div
-                    className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${
-                      s.runnable ? 'bg-emerald-500' : 'bg-slate-300'
-                    }`}
-                  />
-                  <div>
-                    <div className="text-sm font-medium text-slate-800 dark:text-white">
-                      {s.label}
-                      {!s.runnable && (
-                        <span className="ml-2 text-[10px] uppercase text-slate-400">em breve</span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-slate-500 leading-snug">{s.descricao}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <IntegrationsAdminPanel
+              empresaId={empresaId}
+              healthItems={healthItems || []}
+              actor={{ usuarioId: usuario?.id, usuarioNome: usuario?.nome }}
+            />
           </div>
         </div>
       </div>

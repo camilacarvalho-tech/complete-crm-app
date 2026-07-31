@@ -1,6 +1,13 @@
 /**
- * Contrato do conector — única peça que uma nova fonte precisa implementar.
+ * Contrato oficial do conector (IConnector).
  * O núcleo do Leads Monitor NÃO conhece fontes concretas.
+ *
+ * Versionamento:
+ * - `meta.id` — identidade estável (ex.: integracao_api)
+ * - `meta.apiVersion` — geração do contrato (1, 2, …)
+ * - `meta.version` — semver da implementação (1.0.0, 1.1.0, …)
+ *
+ * Empresas podem pinhar `connectorId` + `apiVersion` na config sem quebrar quem ficou em v1.
  */
 
 import type { FiltrosPesquisa, TipoOportunidade } from '../types'
@@ -14,6 +21,7 @@ export interface ConnectorRawRecord {
 }
 
 export interface ConnectorMeta {
+  /** Identidade estável do conector (não muda entre versões). */
   id: string
   label: string
   descricao: string
@@ -21,25 +29,40 @@ export interface ConnectorMeta {
   autorizado: boolean
   /**
    * Se false, o conector fica registrado (visível) mas não executa.
-   * Use para stubs / fontes futuras sem alterar o núcleo.
+   * Preferir override por config da empresa nas versões futuras;
+   * o flag de código serve de default / stub.
    */
   enabled: boolean
-  versao: string
+  /** Semver da implementação (ex.: 1.0.0). */
+  version: string
+  /**
+   * @deprecated Use `version`. Mantido para compatibilidade V1.
+   */
+  versao?: string
+  /** Geração do contrato IConnector (v1, v2…). */
+  apiVersion: number
   tiposSuportados: TipoOportunidade[]
+  /** Link opcional para docs do conector. */
+  docsUrl?: string
 }
 
 export interface ConnectorFetchContext {
+  /** Tenant obrigatório — nunca omitir (multi-tenant). */
   empresaId: string
   filtros: FiltrosPesquisa
   limite?: number
+  /** Se definido, o registry resolve esta apiVersion; senão usa a mais recente registrada. */
+  preferredApiVersion?: number
 }
 
 /**
  * Lead canônico após normalização — entrada das etapas seguintes do pipeline.
- * Produzido exclusivamente por `LeadConnector.normalize`.
+ * Produzido exclusivamente por `IConnector.normalize`.
  */
 export interface NormalizedLead {
   connectorId: string
+  connectorVersion?: string
+  connectorApiVersion?: number
   origemLabel: string
   dedupeKey: string
   tipo: TipoOportunidade
@@ -60,13 +83,13 @@ export interface NormalizedLead {
 }
 
 /**
- * Interface obrigatória de toda fonte de leads.
+ * Interface única obrigatória de toda fonte de leads (IConnector).
  *
- * Fluxo do núcleo: Conector.fetch → Conector.normalize → Dedupe → Classificação → Score → Aprovação → CRM
+ * Fluxo: fetch → normalize → Dedupe → Classify/Score → Aprovação → CRM
  *
- * Para adicionar uma fonte: implementar `LeadConnector` e chamar `registerConnector(...)`.
+ * Para adicionar uma fonte: implementar `IConnector` e `registerConnector(...)`.
  */
-export interface LeadConnector {
+export interface IConnector {
   readonly meta: ConnectorMeta
   fetch(ctx: ConnectorFetchContext): Promise<ConnectorRawRecord[]>
   /**
@@ -74,4 +97,14 @@ export interface LeadConnector {
    * Retorne `null` para descartar (inválido / sem base legal).
    */
   normalize(raw: ConnectorRawRecord, ctx: ConnectorFetchContext): NormalizedLead | null
+}
+
+/**
+ * @deprecated Use `IConnector`. Alias mantido para não quebrar imports V1.
+ */
+export type LeadConnector = IConnector
+
+/** Chave de registro versionada: id@apiVersion */
+export function connectorRegistryKey(id: string, apiVersion: number): string {
+  return `${id}@${apiVersion}`
 }

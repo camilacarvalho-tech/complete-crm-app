@@ -22,7 +22,9 @@ export const basesPublicasConnector: LeadConnector = {
     descricao: 'Dados empresariais públicos / cadastros abertos — sem dados pessoais sensíveis.',
     autorizado: true,
     enabled: true,
+    version: '1.0.0',
     versao: '1.0.0',
+    apiVersion: 1,
     tiposSuportados: ['empresa'],
   },
 

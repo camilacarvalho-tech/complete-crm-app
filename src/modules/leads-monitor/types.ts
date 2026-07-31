@@ -37,6 +37,7 @@ export interface LeadScoreResult {
   score: number
   temperatura: LeadTemperatura
   classificacao: string
+  categoria?: string
   motivos: string[]
   origemScore: 'nexus_ai_heuristica' | 'nexus_ai_llm'
 }

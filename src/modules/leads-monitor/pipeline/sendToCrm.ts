@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../../firebase'
 import { COL_OPORTUNIDADES } from '../constants'
+import { writeLeadsMonitorAudit } from '../services/auditTrail'
 import type { OportunidadeMonitor } from '../types'
 
 export interface EnviarCrmResult {
@@ -28,7 +29,8 @@ function phoneDigits(t?: string) {
 export async function enviarOportunidadeParaCrm(
   empresaId: string,
   oportunidade: OportunidadeMonitor,
-  usuarioNome?: string
+  usuarioNome?: string,
+  actor?: { usuarioId?: string; usuarioNome?: string }
 ): Promise<EnviarCrmResult> {
   if (!oportunidade.consentimentoLgpd) {
     throw new Error('Oportunidade sem base legal LGPD — não pode ser enviada ao CRM.')
@@ -39,6 +41,10 @@ export async function enviarOportunidadeParaCrm(
 
   const tel = phoneDigits(oportunidade.telefone)
   const origemLabel = oportunidade.origemLabel || oportunidade.connectorId || 'Leads Monitor'
+  const auditActor = {
+    usuarioId: actor?.usuarioId,
+    usuarioNome: actor?.usuarioNome || usuarioNome,
+  }
 
   if (tel.length >= 10) {
     const qTel = query(
@@ -52,6 +58,16 @@ export async function enviarOportunidadeParaCrm(
         status: 'enviado_crm',
         crmClienteId: existingId,
         atualizadoEm: serverTimestamp(),
+      })
+      await writeLeadsMonitorAudit({
+        empresaId,
+        action: 'oportunidade.send_crm',
+        origem: 'ui',
+        connectorId: oportunidade.connectorId,
+        ...auditActor,
+        entidade: 'oportunidade',
+        entidadeId: oportunidade.id,
+        after: { status: 'enviado_crm', crmClienteId: existingId, jaExistia: true },
       })
       return { clienteId: existingId, jaExistia: true }
     }
@@ -95,6 +111,17 @@ export async function enviarOportunidadeParaCrm(
     status: 'enviado_crm',
     crmClienteId: ref.id,
     atualizadoEm: serverTimestamp(),
+  })
+
+  await writeLeadsMonitorAudit({
+    empresaId,
+    action: 'oportunidade.send_crm',
+    origem: 'ui',
+    connectorId: oportunidade.connectorId,
+    ...auditActor,
+    entidade: 'oportunidade',
+    entidadeId: oportunidade.id,
+    after: { status: 'enviado_crm', crmClienteId: ref.id, jaExistia: false },
   })
 
   return { clienteId: ref.id, jaExistia: false }
