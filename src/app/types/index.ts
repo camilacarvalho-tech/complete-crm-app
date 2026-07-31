@@ -1,14 +1,48 @@
 export interface Cliente {
   id: string;
+  // Dados pessoais
   nome: string;
-  email: string;
+  cpf: string;
+  rg: string;
+  whatsapp: string;
   telefone: string;
-  empresa: string;
-  cargo: string;
-  status: 'ativo' | 'inativo' | 'lead';
-  valor: number;
+  email: string;
+  // Endereço
+  cep: string;
+  endereco: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  // Produto
+  modalidade: string;
+  status: string;
+  bancoCrm: string;
+  origem: string;
   dataContato: string;
   observacoes?: string;
+  // Dados bancários
+  banco: string;
+  agencia: string;
+  tipoConta: string;
+  numeroConta: string;
+  valorSolicitado: string;
+  // Senhas
+  senhaGov: string;
+  loginGov: string;
+  senhaSiape: string;
+  matriculaSiape: string;
+  senhaPrefeitura: string;
+  matriculaPrefeitura: string;
+  senhaAppBanco: string;
+  senhaInss: string;
+  // Documentos (URLs do Firebase Storage)
+  docRg?: string;
+  docCnh?: string;
+  docHolerite?: string;
+  docExtratoConsignado?: string;
+  docComprovResidencia?: string;
 }
 
 export interface Lead {

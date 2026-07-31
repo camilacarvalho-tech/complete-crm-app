@@ -1,80 +1,74 @@
-import { NavLink } from 'react-router-dom';
-
-import {
-  LayoutDashboard,
-  Users,
-  TrendingUp,
-  CheckSquare,
-  BarChart3,
-  Settings,
-  Building2
-} from 'lucide-react';
-
-import { signOut } from 'firebase/auth';
-import { auth } from '../../../firebase';
+import { NavLink } from "react-router-dom";
+import { LayoutDashboard, Users, TrendingUp, CheckSquare, BarChart3, LogOut } from "lucide-react";
+import { signOut } from "firebase/auth";
+import { auth } from "../../../firebase";
 
 const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/clientes', icon: Users, label: 'Clientes' },
-  { to: '/pipeline', icon: TrendingUp, label: 'Pipeline' },
-  { to: '/tarefas', icon: CheckSquare, label: 'Tarefas' },
-  { to: '/relatorios', icon: BarChart3, label: 'Relatórios' },
+  { to: "/",           icon: LayoutDashboard, label: "Painel" },
+  { to: "/clientes",   icon: Users,           label: "Clientes" },
+  { to: "/pipeline",   icon: TrendingUp,      label: "Funil de Vendas" },
+  { to: "/tarefas",    icon: CheckSquare,     label: "Atendimentos" },
+  { to: "/relatorios", icon: BarChart3,       label: "Relatórios" },
 ];
 
 export function Sidebar() {
   async function handleLogout() {
     await signOut(auth);
-
     window.location.reload();
   }
 
   return (
-    <div className="w-64 bg-gray-900 text-white h-screen fixed left-0 top-0 flex flex-col">
-      <div className="p-6 border-b border-gray-700">
+    <div
+      className="w-60 h-screen fixed left-0 top-0 flex flex-col"
+      style={{ background: 'linear-gradient(180deg, #0f0c29 0%, #302b63 60%, #24243e 100%)' }}
+    >
+      {/* Logo */}
+      <div className="px-5 py-5 border-b border-white/10">
         <div className="flex items-center gap-3">
-          <Building2 className="w-8 h-8 text-blue-400" />
-
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg"
+            style={{ background: 'linear-gradient(135deg, #f59e0b, #ef4444)' }}
+          >
+            <span className="text-white font-black text-sm">CF</span>
+          </div>
           <div>
-            <h1 className="text-xl font-bold">CRM Pro</h1>
-
-            <p className="text-xs text-gray-400">
-              Sistema de Gestão
-            </p>
+            <h1 className="text-sm font-black text-white leading-tight">CredFlow CRM</h1>
+            <p className="text-[11px] font-semibold" style={{ color: '#f59e0b' }}>Sistema CRM · RC</p>
           </div>
         </div>
       </div>
 
-      <nav className="flex-1 p-4">
-        <ul className="space-y-2">
-          {navItems.map((item) => (
-            <li key={item.to}>
-              <NavLink
-                to={item.to}
-                end={item.to === '/'}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                    isActive
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                  }`
-                }
-              >
-                <item.icon className="w-5 h-5" />
-
-                <span>{item.label}</span>
-              </NavLink>
-            </li>
-          ))}
-        </ul>
+      {/* Nav */}
+      <nav className="flex-1 px-3 py-4 space-y-0.5">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === "/"}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-[13px] font-medium ${
+                isActive ? 'text-white' : 'text-white/50 hover:text-white/90 hover:bg-white/5'
+              }`
+            }
+            style={({ isActive }) =>
+              isActive
+                ? { background: 'linear-gradient(90deg, #f59e0b33, #ef444422)', borderLeft: '3px solid #f59e0b', paddingLeft: '9px' }
+                : { borderLeft: '3px solid transparent' }
+            }
+          >
+            <item.icon className="w-4 h-4 flex-shrink-0" />
+            <span>{item.label}</span>
+          </NavLink>
+        ))}
       </nav>
 
-      <div className="p-4 border-t border-gray-700">
+      {/* Sair */}
+      <div className="px-3 py-4 border-t border-white/10">
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors w-full"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/40 hover:text-white/80 hover:bg-white/5 transition-all w-full text-[13px] font-medium"
         >
-          <Settings className="w-5 h-5" />
-
+          <LogOut className="w-4 h-4" />
           <span>Sair</span>
         </button>
       </div>
