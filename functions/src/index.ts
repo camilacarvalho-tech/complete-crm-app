@@ -3,33 +3,34 @@
  * - leadsMonitorWebhook: ingestão autenticada → inbox + job
  * - leadsMonitorSaveSecret: grava ciphertext (nunca plaintext)
  *
- * KEK:
- * - Hoje: param/env `LEADS_MONITOR_KEK` (functions/.env — não commitado)
- * - Produção Blaze: migrar para Secret Manager:
- *     firebase functions:secrets:set LEADS_MONITOR_KEK
- *     e trocar defineString → defineSecret + secrets: [leadsMonitorKek]
- *   Ver SECRETS.md / functions/README.md
+ * KEK: Secret Manager `LEADS_MONITOR_KEK`
+ *   firebase functions:secrets:set LEADS_MONITOR_KEK
  */
 import * as admin from 'firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
 import { onRequest } from 'firebase-functions/v2/https'
+import { defineSecret } from 'firebase-functions/params'
 import * as crypto from 'crypto'
 
 if (!admin.apps.length) admin.initializeApp()
 const db = admin.firestore()
 
-/**
- * KEK via env / functions/.env (não versionado).
- * Blaze: promover para Secret Manager — ver SECRETS.md
- *   firebase functions:secrets:set LEADS_MONITOR_KEK
- */
+/** Secret Manager — nunca plaintext no código nem no Firestore. */
+const leadsMonitorKek = defineSecret('LEADS_MONITOR_KEK')
+
 function resolveKek(): string {
+  try {
+    const fromSecret = leadsMonitorKek.value()
+    if (fromSecret?.trim()) return fromSecret.trim()
+  } catch {
+    // value() fora do runtime com secret bound
+  }
   if (process.env.LEADS_MONITOR_KEK?.trim()) return process.env.LEADS_MONITOR_KEK.trim()
   if (process.env.FUNCTIONS_EMULATOR === 'true') {
     return 'nexus-leads-monitor-emulator-kek'
   }
   throw new Error(
-    'LEADS_MONITOR_KEK não configurado. Defina em functions/.env ou Secret Manager (Blaze).'
+    'LEADS_MONITOR_KEK não configurado. Use Secret Manager: firebase functions:secrets:set LEADS_MONITOR_KEK'
   )
 }
 
@@ -71,13 +72,14 @@ function encryptAesGcm(plain: string): { ciphertext: string; iv: string; keyVers
   return {
     ciphertext: Buffer.concat([enc, tag]).toString('base64'),
     iv: iv.toString('base64'),
-    keyVersion: 'param-v1',
+    keyVersion: 'sm-v1',
   }
 }
 
 const fnOpts = {
   region: 'southamerica-east1' as const,
   cors: true,
+  secrets: [leadsMonitorKek],
 }
 
 /** POST ?empresaId=xxx  Authorization: Bearer <token> */
