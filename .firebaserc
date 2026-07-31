@@ -1,1 +1,7 @@
-{"projects":{"default":"crm-recomece"}}
+{
+  "projects": {
+    "default": "recomece-cred-oficial",
+    "staging": "recomece-cred-oficial",
+    "legacy-crm-recomece": "crm-recomece"
+  }
+}
