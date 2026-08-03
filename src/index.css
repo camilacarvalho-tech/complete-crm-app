@@ -1,0 +1,108 @@
+@import './styles/tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', Manrope, Poppins, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--bg-main);
+  color: var(--text-main);
+  transition: background-color 0.25s, color 0.25s;
+}
+
+html.dark .bg-white {
+  background-color: var(--bg-card) !important;
+  color: var(--text-main) !important;
+}
+html.dark .bg-slate-50,
+html.dark .bg-slate-100 {
+  background-color: var(--bg-main) !important;
+  color: var(--text-secondary) !important;
+}
+html.dark .bg-slate-100\/50 {
+  background-color: rgba(15, 23, 42, 0.8) !important;
+}
+html.dark .text-slate-800,
+html.dark .text-slate-900,
+html.dark .text-slate-700 {
+  color: var(--text-main) !important;
+}
+html.dark .text-slate-600 {
+  color: var(--text-secondary) !important;
+}
+html.dark .border-slate-200,
+html.dark .border-slate-100,
+html.dark .border-slate-300 {
+  border-color: var(--border-color) !important;
+}
+html.dark input,
+html.dark select,
+html.dark textarea {
+  color-scheme: dark;
+}
+html.dark .bg-slate-100 input,
+html.dark input.bg-slate-100,
+html.dark select.bg-slate-100,
+html.dark textarea.bg-slate-100 {
+  background-color: #334155 !important;
+  color: #f8fafc !important;
+}
+
+@layer components {
+  .btn-primary {
+    @apply text-white font-semibold rounded-lg transition duration-[250ms] hover:-translate-y-[3px];
+    background: linear-gradient(135deg, #1E40AF 0%, #7C3AED 100%);
+    box-shadow: 0 8px 20px rgba(30, 64, 175, 0.3);
+  }
+  .btn-save,
+  .btn-action {
+    @apply bg-code-action hover:brightness-110 text-white font-semibold rounded-lg transition duration-[250ms] hover:-translate-y-[3px];
+    box-shadow: 0 8px 20px rgba(30, 64, 175, 0.3);
+  }
+  .btn-secondary {
+    @apply bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-lg transition duration-[250ms];
+  }
+  .btn-cancel {
+    @apply bg-slate-400 hover:bg-slate-500 text-white font-semibold rounded-lg transition duration-[250ms];
+  }
+  .btn-danger {
+    @apply bg-code-danger hover:brightness-110 text-white font-semibold rounded-lg transition duration-[250ms];
+  }
+  .btn-success {
+    @apply bg-code-success hover:brightness-110 text-white font-semibold rounded-lg transition duration-[250ms];
+  }
+  .card-code {
+    @apply rounded-2xl border transition duration-[250ms];
+    background: var(--bg-card);
+    border-color: var(--border-color);
+    color: var(--text-main);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+  }
+  .card-code:hover {
+    background: var(--bg-card-hover);
+    transform: translateY(-2px);
+  }
+  .sidebar-code {
+    background: linear-gradient(180deg, #1E3A8A 0%, #6D28D9 100%);
+  }
+  .gradient-premium {
+    background: linear-gradient(135deg, #7C3AED 0%, #F97316 100%);
+  }
+  .btn-code {
+    @apply text-white font-semibold rounded-lg transition duration-[250ms] hover:-translate-y-[3px];
+    background: linear-gradient(135deg, #1E40AF 0%, #7C3AED 100%);
+    box-shadow: 0 8px 20px rgba(30, 64, 175, 0.3);
+  }
+  .btn-nx {
+    @apply bg-code-success hover:brightness-110 text-white font-semibold rounded-lg transition duration-[250ms];
+  }
+}

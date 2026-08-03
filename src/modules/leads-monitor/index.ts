@@ -8,11 +8,18 @@
 
 export type {
   FiltrosPesquisa,
+  FonteHealthStatus,
+  FontePesquisa,
+  FontePesquisaStatus,
+  FontePesquisaTipo,
   LeadMonitorStatus,
   LeadScoreResult,
   MonitorRunResult,
   OportunidadeMonitor,
   PesquisaSalva,
+  SearchRun,
+  SearchRunProgresso,
+  SearchRunStatus,
   TipoOportunidade,
 } from './types'
 
@@ -36,8 +43,12 @@ export {
   COL_DLQ,
   COL_AUDIT,
   COL_HEALTH,
+  COL_FONTES,
+  COL_SEARCH_RUNS,
   ESTADOS_BR,
   FILTROS_VAZIOS,
+  FONTES_TIPOS,
+  FONTE_LIMITE_DIARIO_DEFAULT,
   LEADS_MONITOR_VERSION,
   SEGMENTOS,
   JOB_MAX_ATTEMPTS,
@@ -58,6 +69,17 @@ export {
 
 export { useLeadsMonitor } from './hooks/useLeadsMonitor'
 export { runLeadPipeline, executarPesquisaMonitor } from './pipeline'
+export { normalizeFiltros, filtrosResumo } from './search/filters'
+export { runSearchEngine } from './search/SearchEngine'
+export { startIntelligentSearch, requestSearchCancel } from './search/startSearch'
+export {
+  seedFontesCatalogo,
+  updateFontePesquisa,
+  fonteTipoLabel,
+  healthBadgeClass,
+} from './services/fontesStore'
+export { parseCsv, mapCsvRow } from './connectors/csvParse'
+export { savePendingCsv, saveFonteCsvText } from './connectors/csvImport.connector'
 export { enviarOportunidadeParaCrm } from './pipeline/sendToCrm'
 export { aprovarOportunidade, rejeitarOportunidade } from './pipeline/approve'
 export { classifyLead } from './pipeline/classify'
@@ -66,7 +88,7 @@ export { writeLeadsMonitorAudit, sanitizeAuditPayload } from './services/auditTr
 export type { LeadsMonitorAuditEntry, AuditAction, AuditOrigem } from './services/auditTrail'
 export { enqueueJob, claimNextJob } from './services/jobQueue'
 export { processOneJob, startJobWorkerLoop } from './services/jobWorker'
-export { writeLeadsMonitorLog, moveToDlq, reprocessDlq } from './services/opsLogs'
+export { writeLeadsMonitorLog, moveToDlq, reprocessDlq, resolveDlq } from './services/opsLogs'
 export { recordConnectorSuccess, recordConnectorFailure } from './services/healthStore'
 export { getNexusAiQualifier, setNexusAiQualifier, defaultNexusAiQualifier } from './ai/INexusAiQualifier'
 export type { INexusAiQualifier } from './ai/INexusAiQualifier'

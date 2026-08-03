@@ -1,0 +1,68 @@
+==========================================================
+ CREDFLOW - ONDE PARAMOS (multi-empresa Parte 2 pronta)
+==========================================================
+
+TUDO JA FOI PROGRAMADO. FALTA SO PUBLICAR/ATIVAR (3 passos):
+
+--- PASSO 1: PUBLICAR O SITE (CRM) ---
+Pasta: Complete CRM App
+ npm run build
+ firebase deploy --only hosting --project crm-recomece
+
+--- PASSO 2: SUBIR O BACKEND (login funcionar) ---
+Pasta: backend-recomece-api (DIGITE, nao cole, pra nao travar)
+ git add main.py
+ git commit -m "endpoint criar-usuario"
+ git push
+(Render reinicia sozinho em ~2 min)
+
+--- PASSO 3: ATIVAR REGRAS DE SEGURANCA (Firestore) ---
+Link: https://console.firebase.google.com/project/recomece-cred-oficial/firestore/rules
+Apague tudo, cole o conteudo do arquivo firestore.rules (esta nesta pasta) e clique em Publicar.
+OBS: as regras vao no projeto recomece-cred-oficial (onde estao os dados),
+ NAO no crm-recomece (esse so hospeda o site).
+
+--- COMO TESTAR DEPOIS ---
+1. Aba Empresas > expande a empresa (setinha) > area "Criar acesso (login)"
+ > digita email + senha + escolhe Dono/Funcionario > Criar acesso.
+2. Abre aba anonima > credflowcrm.com.br > entra com esse login.
+ A pessoa ve so os dados da empresa dela e NAO ve a aba Empresas.
+
+--- RESUMO DO QUE JA FOI FEITO ---
+- Multi-empresa: cada login ve so os dados da sua empresa (campo empresaId).
+- Voce = super admin (ve tudo + aba Empresas).
+- Endpoint seguro /criar-usuario no backend (so super admin cria logins).
+- Tela de criar acesso dentro do cartao da empresa.
+- Regras de seguranca no arquivo firestore.rules.
+
+--- PLANOS FLOW (ja cadastrados no sistema) ---
+Flow Basico R$ 150 - Meta + WhatsApp, trafego 1x/mes
+Flow Prata R$ 250 - + trafego 2x/mes, manutencao + landing page
+Flow Bronze R$ 350 - + trafego 3x/mes, manutencao + landing page
+Flow Ouro R$ 490 - + Instagram, trafego 4x/mes, landing + relatorios
+Flow Diamante R$ 690 - tudo + trafego semanal + suporte prioritario
+Funcionario: R$ 90 por cabeca (soma no total automatico)
+
+--- PENDENCIA OPCIONAL ---
+- Travar 100% o super admin (criar perfil superadmin pra voce e remover a regra
+ que trata "login sem perfil" como super). Pedir pro Kiro quando quiser.
+==========================================================
+
+
+==========================================================
+ LEMBRETE - CONFIGURAR PIXEL (anuncios) [pendente]
+==========================================================
+Camila quer configurar o(s) pixel(s) de rastreamento.
+ONDE: na LANDING PAGE (pagina de vendas), nao no painel interno do CRM.
+ Arquivo: Desktop/credflow-landing/index.html
+
+O QUE O KIRO PRECISA PERGUNTAR / RECEBER:
+ 1) Qual pixel: Meta (Facebook/Instagram), Google (Analytics/Ads) ou os dois.
+ 2) O ID do pixel (no Meta: Gerenciador de Eventos, numero tipo 1234567890).
+ 3) Rastrear so visitas OU tambem cliques em "Falar no WhatsApp" / "Quero esse plano" (lead).
+
+OPCAO AVANCADA (futuro / white label):
+ Criar campo no CRM para cada empresa por o proprio Pixel ID e o sistema injeta sozinho.
+
+STATUS: aguardando Camila passar o ID do pixel para o Kiro instalar.
+==========================================================

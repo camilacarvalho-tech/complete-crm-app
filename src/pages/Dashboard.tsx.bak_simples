@@ -1,0 +1,347 @@
+import { useState, useEffect } from 'react'
+import { BarChart3, TrendingUp, Users, DollarSign, Target, Award, Clock, Phone, Calendar, AlertCircle, TrendingDown, Percent, FileText, Gift, Star, MessageCircle } from 'lucide-react'
+import { collection, query, onSnapshot, where } from 'firebase/firestore'
+import { db } from '../firebase'
+
+interface Cliente {
+  id: string
+  nome: string
+  status: string
+  valorSolicitado?: string
+  modalidade?: string
+  atendente?: string
+  criadoEm: any
+}
+
+export default function Dashboard() {
+  const [clientes, setClientes] = useState<Cliente[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const empresaId = localStorage.getItem('empresaId') || 'default'
+  const mesAtual = new Date().getMonth()
+  const diaAtual = new Date().getDate()
+
+  useEffect(() => {
+    const q = query(collection(db, 'empresas', empresaId, 'clientes'))
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const clientesData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Cliente[]
+      setClientes(clientesData)
+      setLoading(false)
+    }, (error) => {
+      console.error('Erro ao carregar dashboard:', error)
+      setLoading(false)
+    })
+    
+    const timeout = setTimeout(() => {
+      setLoading(false)
+    }, 3000)
+    
+    return () => {
+      unsubscribe()
+      clearTimeout(timeout)
+    }
+  }, [empresaId])
+
+  // ========== MÉTRICAS PRINCIPAIS ==========
+  const totalClientes = clientes.length
+  const leadCount = clientes.filter(c => c.status === 'Lead').length
+  const emAtendimento = clientes.filter(c => c.status === 'Em Atendimento').length
+  const propostaEnviada = clientes.filter(c => c.status === 'Proposta').length
+  const docRecebida = clientes.filter(c => c.status === 'Doc. Recebida').length
+  const emAnalise = clientes.filter(c => c.status === 'Análise Bancária').length
+  const aprovados = clientes.filter(c => c.status === 'Aprovado').length
+  const pagos = clientes.filter(c => c.status === 'Pago').length
+  const semContato = clientes.filter(c => c.status === 'Sem Contato').length
+  const recusados = clientes.filter(c => c.status === 'Recusado').length
+  
+  const taxaConversao = totalClientes > 0 ? ((pagos / totalClientes) * 100).toFixed(1) : '0'
+  const taxaAprovacao = (leadCount + emAtendimento) > 0 ? (((aprovados + pagos) / (leadCount + emAtendimento + aprovados + pagos)) * 100).toFixed(1) : '0'
+  
+  // Faturamento
+  const faturamentoTotal = clientes
+    .filter(c => c.status === 'Pago' && c.valorSolicitado)
+    .reduce((sum, c) => {
+      const valor = parseFloat(c.valorSolicitado?.replace(/[^\d,]/g, '').replace(',', '.') || '0')
+      return sum + valor
+    }, 0)
+
+  const ticketMedio = pagos > 0 ? faturamentoTotal / pagos : 0
+
+  // Clientes hoje
+  const hoje = new Date()
+  hoje.setHours(0, 0, 0, 0)
+  const clientesHoje = clientes.filter(c => {
+    if (!c.criadoEm?.seconds) return false
+    const dataCriacao = new Date(c.criadoEm.seconds * 1000)
+    dataCriacao.setHours(0, 0, 0, 0)
+    return dataCriacao.getTime() === hoje.getTime()
+  }).length
+
+  // ========== ORIGEM DOS LEADS ==========
+  const origemLeads = clientes.reduce((acc, c) => {
+    const origem = c.origem || 'Não informado'
+    acc[origem] = (acc[origem] || 0) + 1
+    return acc
+  }, {} as Record<string, number>)
+
+  const topOrigens = Object.entries(origemLeads)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+
+  // ========== MODALIDADES MAIS VENDIDAS ==========
+  const modalidadesVendidas = clientes
+    .filter(c => c.status === 'Pago' && c.modalidade)
+    .reduce((acc, c) => {
+      const mod = c.modalidade || 'Não informado'
+      acc[mod] = (acc[mod] || 0) + 1
+      return acc
+    }, {} as Record<string, number>)
+
+  const topModalidades = Object.entries(modalidadesVendidas)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+
+  // ========== TOP ATENDENTES ==========
+  const atendentes = clientes.reduce((acc, cliente) => {
+    if (cliente.atendente) {
+      if (!acc[cliente.atendente]) {
+        acc[cliente.atendente] = { nome: cliente.atendente, total: 0, fechados: 0, emAtendimento: 0, leads: 0 }
+      }
+      acc[cliente.atendente].total++
+      if (cliente.status === 'Pago') acc[cliente.atendente].fechados++
+      if (cliente.status === 'Em Atendimento') acc[cliente.atendente].emAtendimento++
+      if (cliente.status === 'Lead') acc[cliente.atendente].leads++
+    }
+    return acc
+  }, {} as Record<string, { nome: string, total: number, fechados: number, emAtendimento: number, leads: number }>)
+
+  const topAtendentes = Object.values(atendentes)
+    .sort((a, b) => b.fechados - a.fechados)
+    .slice(0, 5)
+
+  // ========== ANIVERSARIANTES DO MÊS ==========
+  const aniversariantes = clientes.filter(c => {
+    if (!c.nascimento) return false
+    const dataNasc = new Date(c.nascimento)
+    return dataNasc.getMonth() === mesAtual
+  }).sort((a, b) => {
+    const diaA = new Date(a.nascimento!).getDate()
+    const diaB = new Date(b.nascimento!).getDate()
+    return diaA - diaB
+  }).slice(0, 5)
+
+  // ========== ALERTAS ==========
+  const alertas = []
+  if (semContato > 0) alertas.push({ tipo: 'warning', texto: `${semContato} cliente(s) sem contato há mais de 7 dias` })
+  if (docRecebida > 5) alertas.push({ tipo: 'info', texto: `${docRecebida} documentações aguardando análise` })
+  if (leadCount > 10) alertas.push({ tipo: 'success', texto: `${leadCount} novos leads para atender` })
+  if (emAnalise > 0) alertas.push({ tipo: 'info', texto: `${emAnalise} proposta(s) em análise bancária` })
+
+  // ========== ÚLTIMAS ATIVIDADES ==========
+  const ultimasAtividades = clientes
+    .sort((a, b) => (b.criadoEm?.seconds || 0) - (a.criadoEm?.seconds || 0))
+    .slice(0, 8)
+
+  // ========== DADOS PARA GRÁFICO ==========
+  const mesesGrafico = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun']
+  const dadosGrafico = [45, 52, 48, 65, 72, 80]
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
+          <p className="mt-4 text-slate-600">Carregando dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
+          <BarChart3 className="w-8 h-8 text-orange-500" />
+          Dashboard
+        </h1>
+        <p className="text-slate-600 mt-2">Visão geral do seu negócio em tempo real</p>
+      </div>
+
+      {/* Cards de Métricas */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
+          <div className="flex items-center justify-between mb-4">
+            <Users className="w-8 h-8 opacity-80" />
+            <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded-full">Total</span>
+          </div>
+          <h3 className="text-3xl font-bold mb-1">{totalClientes}</h3>
+          <p className="text-sm opacity-90">Clientes Cadastrados</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white">
+          <div className="flex items-center justify-between mb-4">
+            <DollarSign className="w-8 h-8 opacity-80" />
+            <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded-full">Fechados</span>
+          </div>
+          <h3 className="text-3xl font-bold mb-1">{pagos}</h3>
+          <p className="text-sm opacity-90">Contratos Pagos</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl shadow-lg p-6 text-white">
+          <div className="flex items-center justify-between mb-4">
+            <TrendingUp className="w-8 h-8 opacity-80" />
+            <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded-full">Taxa</span>
+          </div>
+          <h3 className="text-3xl font-bold mb-1">{taxaConversao}%</h3>
+          <p className="text-sm opacity-90">Taxa de Conversão</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
+          <div className="flex items-center justify-between mb-4">
+            <Target className="w-8 h-8 opacity-80" />
+            <span className="text-xs bg-white bg-opacity-20 px-2 py-1 rounded-full">Pipeline</span>
+          </div>
+          <h3 className="text-3xl font-bold mb-1">{emAtendimento}</h3>
+          <p className="text-sm opacity-90">Em Atendimento</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {/* Gráfico de Vendas */}
+        <div className="lg:col-span-2 bg-white rounded-xl shadow-lg p-6">
+          <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+            <TrendingUp className="w-6 h-6 text-orange-500" />
+            Vendas Mensais
+          </h2>
+          <div className="flex items-end justify-between h-64 gap-4">
+            {mesesGrafico.map((mes, index) => (
+              <div key={mes} className="flex-1 flex flex-col items-center">
+                <div className="w-full bg-gradient-to-t from-orange-500 to-blue-600 rounded-t-lg transition-all hover:opacity-80" 
+                     style={{ height: `${(dadosGrafico[index] / Math.max(...dadosGrafico)) * 100}%` }}>
+                </div>
+                <div className="text-center mt-3">
+                  <p className="text-xs font-semibold text-slate-600">{mes}</p>
+                  <p className="text-sm font-bold text-slate-800">{dadosGrafico[index]}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Status Pipeline */}
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+            <Target className="w-6 h-6 text-blue-500" />
+            Pipeline Status
+          </h2>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-600">Lead</span>
+              <span className="font-bold text-purple-600">{leadCount}</span>
+            </div>
+            <div className="w-full bg-slate-200 rounded-full h-2">
+              <div className="bg-purple-500 h-2 rounded-full" style={{ width: `${(leadCount / totalClientes) * 100}%` }}></div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-600">Em Atendimento</span>
+              <span className="font-bold text-blue-600">{emAtendimento}</span>
+            </div>
+            <div className="w-full bg-slate-200 rounded-full h-2">
+              <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${(emAtendimento / totalClientes) * 100}%` }}></div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-600">Aprovado</span>
+              <span className="font-bold text-green-600">{aprovados}</span>
+            </div>
+            <div className="w-full bg-slate-200 rounded-full h-2">
+              <div className="bg-green-500 h-2 rounded-full" style={{ width: `${(aprovados / totalClientes) * 100}%` }}></div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-600">Pago</span>
+              <span className="font-bold text-emerald-600">{pagos}</span>
+            </div>
+            <div className="w-full bg-slate-200 rounded-full h-2">
+              <div className="bg-emerald-600 h-2 rounded-full" style={{ width: `${(pagos / totalClientes) * 100}%` }}></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Top Performers */}
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+            <Award className="w-6 h-6 text-yellow-500" />
+            Top Performers
+          </h2>
+          {topAtendentes.length === 0 ? (
+            <p className="text-slate-500 text-center py-8">Nenhum atendente registrado ainda</p>
+          ) : (
+            <div className="space-y-4">
+              {topAtendentes.map((atendente, index) => (
+                <div key={atendente.nome} className="flex items-center gap-4">
+                  <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold text-white
+                    ${index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-slate-400' : index === 2 ? 'bg-orange-400' : 'bg-slate-300'}`}>
+                    {index + 1}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-slate-800">{atendente.nome}</p>
+                    <p className="text-sm text-slate-600">{atendente.total} clientes • {atendente.fechados} fechados</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-bold text-green-600">{atendente.fechados}</p>
+                    <p className="text-xs text-slate-500">vendas</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Últimas Atividades */}
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+            <Clock className="w-6 h-6 text-blue-500" />
+            Últimas Atividades
+          </h2>
+          {ultimasAtividades.length === 0 ? (
+            <p className="text-slate-500 text-center py-8">Nenhuma atividade recente</p>
+          ) : (
+            <div className="space-y-4">
+              {ultimasAtividades.map((cliente) => (
+                <div key={cliente.id} className="flex items-start gap-3 pb-4 border-b border-slate-100 last:border-0">
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold">
+                    {cliente.nome.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-800 truncate">{cliente.nome}</p>
+                    <p className="text-sm text-slate-600">{cliente.modalidade || 'Modalidade não definida'}</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Status: <span className={`font-semibold ${
+                        cliente.status === 'Pago' ? 'text-green-600' :
+                        cliente.status === 'Aprovado' ? 'text-blue-600' :
+                        cliente.status === 'Lead' ? 'text-purple-600' : 'text-orange-600'
+                      }`}>{cliente.status}</span>
+                    </p>
+                  </div>
+                  {cliente.valorSolicitado && (
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-slate-800">{cliente.valorSolicitado}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

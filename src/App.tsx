@@ -20,6 +20,7 @@ import ChatCenter from './pages/ChatCenter'
 import Campanhas from './pages/Campanhas'
 import IAProspeccao from './pages/IAProspeccao'
 import LeadsMonitor from './pages/LeadsMonitor'
+import FontesPesquisa from './pages/FontesPesquisa'
 import { LeadsMonitorErrorBoundary } from './modules/leads-monitor/components/LeadsMonitorErrorBoundary'
 import NexusAI from './pages/NexusAI'
 import Discadora from './pages/Discadora'
@@ -93,6 +94,14 @@ function AppRoutes() {
                 element={
                   <LeadsMonitorErrorBoundary>
                     <LeadsMonitor />
+                  </LeadsMonitorErrorBoundary>
+                }
+              />
+              <Route
+                path="fontes-pesquisa"
+                element={
+                  <LeadsMonitorErrorBoundary>
+                    <FontesPesquisa />
                   </LeadsMonitorErrorBoundary>
                 }
               />

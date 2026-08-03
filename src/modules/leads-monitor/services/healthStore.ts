@@ -1,7 +1,7 @@
 /**
  * Saúde dos conectores — last sync, falhas, latência, online/offline.
  */
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { db } from '../../../firebase'
 import { COL_HEALTH } from '../constants'
 
@@ -59,8 +59,19 @@ export async function recordConnectorFailure(opts: {
   latencyMs?: number
   connectorVersion?: string
 }): Promise<void> {
-  const failures = (opts.previousFailures || 0) + 1
   const ref = doc(db, 'empresas', opts.empresaId, COL_HEALTH, opts.connectorId)
+  let previous = opts.previousFailures
+  if (previous == null) {
+    try {
+      const snap = await getDoc(ref)
+      previous = snap.exists()
+        ? Number((snap.data() as ConnectorHealth).consecutiveFailures || 0)
+        : 0
+    } catch {
+      previous = 0
+    }
+  }
+  const failures = previous + 1
   await setDoc(
     ref,
     {

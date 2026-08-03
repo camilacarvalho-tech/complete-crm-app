@@ -22,6 +22,7 @@ import type { ConnectorFetchContext, NormalizedLead } from '../connectors/types'
 import type { FiltrosPesquisa, MonitorRunResult, OportunidadeMonitor } from '../types'
 import { getNexusAiQualifier } from '../ai/INexusAiQualifier'
 import { recordConnectorFailure, recordConnectorSuccess } from '../services/healthStore'
+import { writeLeadsMonitorAudit } from '../services/auditTrail'
 import { normalizeFromConnector } from './normalize'
 import { buildDedupeKey, deduplicateLeads } from './dedupe'
 
@@ -134,7 +135,7 @@ export async function runLeadPipeline(opts: PipelineRunOptions): Promise<Monitor
     })
     if (budget > 0) budget -= 1
 
-    await addDoc(collection(db, 'empresas', empresaId, COL_OPORTUNIDADES), {
+    const opRef = await addDoc(collection(db, 'empresas', empresaId, COL_OPORTUNIDADES), {
       ...lead,
       /** @deprecated prefer connectorId — mantido para compatibilidade de leitura */
       origemFonte: lead.connectorId,
@@ -152,6 +153,21 @@ export async function runLeadPipeline(opts: PipelineRunOptions): Promise<Monitor
       atualizadoEm: serverTimestamp(),
     })
     novos += 1
+    await writeLeadsMonitorAudit({
+      empresaId,
+      action: 'oportunidade.create',
+      origem: 'worker',
+      connectorId: lead.connectorId,
+      connectorVersion: lead.connectorVersion,
+      entidade: 'oportunidade',
+      entidadeId: opRef.id,
+      after: {
+        nome: lead.nome,
+        status: 'novo',
+        score: scored.score,
+        dedupeKey: lead.dedupeKey,
+      },
+    })
   }
 
   if (pesquisaId) {

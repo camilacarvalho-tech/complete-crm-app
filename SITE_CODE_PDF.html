@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>CODE - Catálogo Completo de Produtos</title>
+    <style>
+        @page {
+            margin: 2cm;
+            size: A4;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 20px;
+            background: white;
+        }
+        
+        .cover {
+            text-align: center;
+            padding: 100px 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: -20px -20px 40px -20px;
+            page-break-after: always;
+        }
+        
+        .cover h1 {
+            font-size: 72px;
+            margin: 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .cover p {
+            font-size: 32px;
+            margin: 20px 0;
+        }
+        
+        h1 {
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+            margin-top: 40px;
+            page-break-before: always;
+        }
+        
+        h2 {
+            color: #764ba2;
+            margin-top: 30px;
+            font-size: 28px;
+        }
+        
+        h3 {
+            color: #667eea;
+            margin-top: 25px;
+            font-size: 22px;
+        }
+        
+        .product-card {
+            background: #f8f9fa;
+            border-left: 5px solid #667eea;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            page-break-inside: avoid;
+        }
+        
+        .product-header {
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px 20px;
+            margin: -20px -20px 20px -20px;
+            border-radius: 8px 8px 0 0;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        
+        .feature-item {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            border-left: 3px solid #10b981;
+        }
+        
+        .price-box {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin: 20px 0;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            page-break-inside: avoid;
+        }
+        
+        .table th {
+            background: #667eea;
+            color: white;
+            padding: 12px;
+            text-align: left;
+        }
+        
+        .table td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        .highlight {
+            background: #fef3c7;
+            padding: 15px;
+            border-left: 4px solid #f59e0b;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        
+        .icon {
+            font-size: 24px;
+            margin-right: 10px;
+        }
+        
+        ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        ul li:before {
+            content: "✅ ";
+            margin-right: 10px;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 2px solid #667eea;
+            color: #666;
+        }
+        
+        @media print {
+            body {
+                background: white;
+            }
+            .no-print {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="cover">
+        <h1>🚀 CODE</h1>
+        <p>Plataforma Completa de Soluções Empresariais</p>
+        <p style="font-size: 24px; margin-top: 50px;">Catálogo de Produtos 2026</p>
+    </div>
+
+    <h1>📋 Índice de Produtos</h1>
+    <div class="features">
+        <div class="feature-item">🔷 NEXUS CRM - Gestão de Clientes</div>
+        <div class="feature-item">💼 NEXUS ERP - Gestão Empresarial</div>
+        <div class="feature-item">🤖 NEXUS AI - Inteligência Artificial</div>
+        <div class="feature-item">📱 NEXUS APP - Mobile & PWA</div>
+        <div class="feature-item">☁️ NEXUS CLOUD - Armazenamento</div>
+        <div class="feature-item">🎓 NEXUS EDU - Educação</div>
+        <div class="feature-item">🏥 NEXUS HEALTH - Saúde</div>
+        <div class="feature-item">🏪 NEXUS RETAIL - Varejo</div>
+        <div class="feature-item">🏭 NEXUS IND - Indústria</div>
+    </div>
+
+    <h1>🔷 NEXUS CRM</h1>
+    <div class="product-card">
+        <div class="product-header">Gestão Completa de Clientes e Vendas</div>
+        
+        <h3>Descrição</h3>
+        <p>O NEXUS CRM é a solução definitiva para gestão de relacionamento com clientes. 
+        Automatize processos, aumente vendas e fidelize clientes com nossa plataforma inteligente.</p>
+        
+        <h3>Principais Funcionalidades</h3>
+        <div class="features">
+            <div class="feature-item">
+                <strong>Gestão de Clientes</strong><br>
+                Cadastro completo com histórico, segmentação inteligente e campos customizáveis
+            </div>
+            <div class="feature-item">
+                <strong>Pipeline de Vendas</strong><br>
+                Funil visual, estágios personalizados, automação de etapas
+            </div>
+            <div class="feature-item">
+                <strong>WhatsApp Business</strong><br>
+                Integração nativa, envio em massa, templates, chatbot com IA
+            </div>
+            <div class="feature-item">
+                <strong>Remarketing Automático</strong><br>
+                Campanhas programadas, segmentação avançada, múltiplos canais
+            </div>
+            <div class="feature-item">
+                <strong>Relatórios e Dashboards</strong><br>
+                KPIs em tempo real, gráficos interativos, exportação Excel/PDF
+            </div>
+            <div class="feature-item">
+                <strong>Automação de Marketing</strong><br>
+                Fluxos automatizados, email marketing, SMS, landing pages
+            </div>
+        </div>
+        
+        <h3>Planos e Preços</h3>
+        <table class="table">
+            <tr>
+                <th>Plano</th>
+                <th>Leads</th>
+                <th>Usuários</th>
+                <th>WhatsApp</th>
+                <th>Preço/mês</th>
+            </tr>
+            <tr>
+                <td><strong>STARTER</strong></td>
+                <td>1.000</td>
+                <td>2</td>
+                <td>500 msgs</td>
+                <td><strong>R$ 297</strong></td>
+            </tr>
+            <tr>
+                <td><strong>PROFESSIONAL</strong></td>
+                <td>5.000</td>
+                <td>10</td>
+                <td>2.000 msgs</td>
+                <td><strong>R$ 597</strong></td>
+            </tr>
+            <tr>
+                <td><strong>ENTERPRISE</strong></td>
+                <td>Ilimitado</td>
+                <td>Ilimitado</td>
+                <td>Ilimitado</td>
+                <td><strong>R$ 1.497</strong></td>
+            </tr>
+            <tr>
+                <td><strong>WHITE LABEL</strong></td>
+                <td>Ilimitado</td>
+                <td>Ilimitado</td>
+                <td>Ilimitado</td>
+                <td><strong>R$ 2.997</strong></td>
+            </tr>
+        </table>
+        
+        <div class="highlight">
+            <strong>✨ Ideal para:</strong> Consultorias, Empresas B2B, Varejo, Clínicas, Escolas
+        </div>
+    </div>
+
+    <h1>💼 NEXUS ERP</h1>
+    <div class="product-card">
+        <div class="product-header">Gestão Empresarial Completa e Integrada</div>
+        
+        <h3>Descrição</h3>
+        <p>Sistema ERP completo para gerenciar todas as áreas da sua empresa em uma única plataforma. 
+        Financeiro, estoque, vendas, compras, RH e muito mais!</p>
+        
+        <h3>Módulos Inclusos</h3>
+        <ul>
+            <li><strong>FINANCEIRO COMPLETO:</strong> Fluxo de Caixa, Contas a Pagar/Receber, DRE Automático, 
+            Conciliação Bancária, Faturamento, Boletos</li>
+            <li><strong>ESTOQUE E LOGÍSTICA:</strong> Controle de Estoque, Código de Barras, Movimentações, 
+            Inventário, Múltiplos Depósitos</li>
+            <li><strong>VENDAS E PDV:</strong> Pedidos, Orçamentos, PDV Touch Screen, Comissionamento, 
+            Metas</li>
+            <li><strong>COMPRAS:</strong> Pedidos de Compra, Cotações, Gestão de Fornecedores, 
+            Controle de Entrega</li>
+            <li><strong>RH E FOLHA:</strong> Funcionários, Férias, Controle de Ponto, Folha de Pagamento, 
+            Benefícios</li>
+            <li><strong>CONTRATOS:</strong> Gestão, Renovação Automática, Alertas, Assinatura Digital</li>
+            <li><strong>BI E RELATÓRIOS:</strong> Dashboards Executivos, Relatórios Gerenciais, 
+            Gráficos Interativos</li>
+        </ul>
+        
+        <div class="price-box">
+            A partir de R$ 497/mês
+        </div>
+        
+        <div class="highlight">
+            <strong>🏭 Certificações:</strong> NF-e, NFC-e, CT-e, MDF-e, SPED<br>
+            <strong>🎯 Segmentos:</strong> Indústrias, Comércio, Construção Civil, Restaurantes, 
+            Distribuidoras
+        </div>
+    </div>
+
+    <h1>🤖 NEXUS AI</h1>
+    <div class="product-card">
+        <div class="product-header">Inteligência Artificial para Seu Negócio</div>
+        
+        <h3>Descrição</h3>
+        <p>Potencialize seu negócio com inteligência artificial. Automação inteligente, análise 
+        preditiva e insights acionáveis.</p>
+        
+        <h3>Funcionalidades de IA</h3>
+        <div class="features">
+            <div class="feature-item">
+                <strong>Análise Preditiva</strong><br>
+                Previsão de vendas, churn, tendências, projeções
+            </div>
+            <div class="feature-item">
+                <strong>Chatbot Inteligente</strong><br>
+                Atendimento 24/7, múltiplos idiomas, aprendizado
+            </div>
+            <div class="feature-item">
+                <strong>Email Marketing IA</strong><br>
+                Assuntos otimizados, melhor horário, personalização
+            </div>
+            <div class="feature-item">
+                <strong>Segmentação</strong><br>
+                Clustering, ICP, propensão de compra, LTV
+            </div>
+        </div>
+        
+        <table class="table">
+            <tr>
+                <th>Plano</th>
+                <th>Tokens</th>
+                <th>Chatbots</th>
+                <th>Preço/mês</th>
+            </tr>
+            <tr>
+                <td><strong>STARTER</strong></td>
+                <td>10k</td>
+                <td>1</td>
+                <td><strong>R$ 397</strong></td>
+            </tr>
+            <tr>
+                <td><strong>PRO</strong></td>
+                <td>100k</td>
+                <td>5</td>
+                <td><strong>R$ 797</strong></td>
+            </tr>
+            <tr>
+                <td><strong>ENTERPRISE</strong></td>
+                <td>Ilimitado</td>
+                <td>Ilimitado</td>
+                <td><strong>R$ 1.997</strong></td>
+            </tr>
+        </table>
+    </div>
+
+    <h1>📱 NEXUS APP</h1>
+    <div class="product-card">
+        <div class="product-header">Sua Empresa no Bolso - iOS & Android</div>
+        
+        <p>Aplicativo mobile completo para gestão empresarial. Acesse tudo de qualquer lugar.</p>
+        
+        <ul>
+            <li>Todos os módulos do ERP acessíveis</li>
+            <li>Sincronização Real-Time</li>
+            <li>Modo Offline</li>
+            <li>Scanner de Código de Barras</li>
+            <li>Assinatura Digital</li>
+            <li>Push Notifications</li>
+            <li>Biometria (Face ID / Touch ID)</li>
+        </ul>
+        
+        <div class="highlight">
+            <strong>✨ Incluído em TODOS os planos!</strong>
+        </div>
+    </div>
+
+    <h1>☁️ NEXUS CLOUD</h1>
+    <div class="product-card">
+        <div class="product-header">Armazenamento e Backup Seguro na Nuvem</div>
+        
+        <h3>Recursos</h3>
+        <ul>
+            <li>Armazenamento Ilimitado (plano Enterprise)</li>
+            <li>Backup Automático Diário</li>
+            <li>Criptografia AES-256</li>
+            <li>Redundância Geográfica</li>
+            <li>Sincronização Desktop/Mobile</li>
+            <li>OCR (Digitalização de Documentos)</li>
+            <li>Assinatura Digital</li>
+        </ul>
+        
+        <table class="table">
+            <tr>
+                <th>Plano</th>
+                <th>Espaço</th>
+                <th>Backup</th>
+                <th>Preço/mês</th>
+            </tr>
+            <tr>
+                <td>BÁSICO</td>
+                <td>100 GB</td>
+                <td>7 dias</td>
+                <td><strong>R$ 97</strong></td>
+            </tr>
+            <tr>
+                <td>PROFISSIONAL</td>
+                <td>1 TB</td>
+                <td>30 dias</td>
+                <td><strong>R$ 197</strong></td>
+            </tr>
+            <tr>
+                <td>BUSINESS</td>
+                <td>5 TB</td>
+                <td>90 dias</td>
+                <td><strong>R$ 497</strong></td>
+            </tr>
+            <tr>
+                <td>ENTERPRISE</td>
+                <td>Ilimitado</td>
+                <td>1 ano</td>
+                <td><strong>R$ 997</strong></td>
+            </tr>
+        </table>
+    </div>
+
+    <h1>🎓 NEXUS EDU</h1>
+    <div class="product-card">
+        <div class="product-header">Plataforma Completa de Gestão Educacional</div>
+        
+        <h3>Módulos Educacionais</h3>
+        <ul>
+            <li><strong>Gestão Acadêmica:</strong> Matrícula Online, Turmas, Grade Curricular, Boletim, Certificados</li>
+            <li><strong>Ensino:</strong> Portal Aluno/Professor, Material Didático, Biblioteca Digital, Aulas Online</li>
+            <li><strong>Avaliações:</strong> Provas Online, Banco de Questões, Correção Automática</li>
+            <li><strong>Financeiro Escolar:</strong> Mensalidades, Boletos, Inadimplência, Bolsas</li>
+            <li><strong>Comunicação:</strong> Avisos, Chat, App Pais/Responsáveis</li>
+            <li><strong>Transporte Escolar:</strong> Rotas, GPS, Controle de Embarque</li>
+        </ul>
+        
+        <div class="price-box">
+            A partir de R$ 697/mês
+        </div>
+        
+        <div class="highlight">
+            <strong>🎯 Ideal para:</strong> Escolas, Universidades, Cursos Livres, Educação Infantil, 
+            Escolas de Idiomas
+        </div>
+    </div>
+
+    <h1>🏥 NEXUS HEALTH</h1>
+    <div class="product-card">
+        <div class="product-header">Sistema Completo para Gestão de Saúde</div>
+        
+        <h3>Módulos</h3>
+        <ul>
+            <li><strong>Atendimento:</strong> Prontuário Eletrônico (PEP), Prescrições, Receitas, Anamnese</li>
+            <li><strong>Agenda Médica:</strong> Agendamento Online, Confirmação WhatsApp/SMS, Lista de Espera</li>
+            <li><strong>Farmácia:</strong> Controle de Estoque, Medicamentos Controlados, Lotes</li>
+            <li><strong>Laboratório:</strong> Solicitações, Laudos Digitais, Integração Equipamentos</li>
+            <li><strong>Financeiro Saúde:</strong> Faturamento Particular/Convênio, TISS (ANS), Guias</li>
+            <li><strong>Internação:</strong> Controle de Leitos, Prescrição Hospitalar</li>
+        </ul>
+        
+        <div class="highlight">
+            <strong>✅ Conformidades:</strong> LGPD, ICP-Brasil, TISS (ANS), CFM, HL7/FHIR<br>
+            <strong>🏥 Ideal para:</strong> Hospitais, Clínicas, Odontologia, Fisioterapia, Psicologia
+        </div>
+        
+        <div class="price-box">
+            A partir de R$ 897/mês
+        </div>
+    </div>
+
+    <h1>🏪 NEXUS RETAIL</h1>
+    <div class="product-card">
+        <div class="product-header">Sistema Completo para Varejo</div>
+        
+        <h3>Recursos</h3>
+        <ul>
+            <li><strong>PDV:</strong> Touch Screen, Venda Rápida, Múltiplas Formas de Pagamento, TEF</li>
+            <li><strong>E-Commerce:</strong> Loja Virtual, Carrinho, Gateway Pagamento, Marketplaces</li>
+            <li><strong>Estoque Retail:</strong> Múltiplas Lojas, Transferência, RFID, Curva ABC</li>
+            <li><strong>Precificação:</strong> Tabelas de Preço, Promoções, Cupons, Fidelidade</li>
+            <li><strong>Delivery:</strong> Gestão de Entregas, Rastreamento, Integração iFood/Rappi</li>
+            <li><strong>Fiscal:</strong> NF-e, NFC-e, SAT-CF-e, Integração Sefaz</li>
+        </ul>
+        
+        <div class="price-box">
+            A partir de R$ 397/mês
+        </div>
+        
+        <div class="highlight">
+            <strong>🎯 Ideal para:</strong> Lojas de Roupas, Restaurantes, Eletrônicos, Supermercados, 
+            Farmácias, Livrarias
+        </div>
+    </div>
+
+    <h1>🏭 NEXUS IND</h1>
+    <div class="product-card">
+        <div class="product-header">ERP Completo para Indústrias</div>
+        
+        <h3>Módulos Industriais</h3>
+        <ul>
+            <li><strong>Produção (PCP):</strong> Ordem de Produção, BOM, Roteiro, Apontamento, MRP</li>
+            <li><strong>Engenharia:</strong> Ficha Técnica, Versões, Desenhos, Especificações</li>
+            <li><strong>Custos:</strong> Custo Padrão vs Real, Apropriação, Rateio, Rentabilidade</li>
+            <li><strong>Qualidade:</strong> Inspeções, Não Conformidades, Certificados, Rastreabilidade</li>
+            <li><strong>Manutenção:</strong> Preventiva, Corretiva, Preditiva, Plano de Manutenção</li>
+            <li><strong>Chão de Fábrica:</strong> Coletores, Apontamento Mobile, Dashboards Real-Time</li>
+        </ul>
+        
+        <div class="price-box">
+            A partir de R$ 1.997/mês
+        </div>
+        
+        <div class="highlight">
+            <strong>🏭 Ideal para:</strong> Metalúrgicas, Móveis, Alimentos, Têxtil, Química, Farmacêutica, 
+            Autopeças
+        </div>
+    </div>
+
+    <h1>🔌 INTEGRAÇÕES</h1>
+    <div class="product-card">
+        <div class="product-header">50+ Integrações Nativas</div>
+        
+        <h3>Categorias Principais</h3>
+        <div class="features">
+            <div class="feature-item">
+                <strong>💳 Pagamentos</strong><br>
+                Mercado Pago, PagSeguro, Stripe, Cielo, Stone, PicPay, PayPal
+            </div>
+            <div class="feature-item">
+                <strong>📧 Email & Comunicação</strong><br>
+                Gmail, Outlook, SendGrid, Mailchimp, RD Station
+            </div>
+            <div class="feature-item">
+                <strong>📱 Mensagens</strong><br>
+                WhatsApp Business API, Telegram, SMS (Twilio, Zenvia)
+            </div>
+            <div class="feature-item">
+                <strong>🛒 E-commerce</strong><br>
+                Mercado Livre, Shopee, Amazon, Shopify, WooCommerce
+            </div>
+            <div class="feature-item">
+                <strong>📦 Logística</strong><br>
+                Correios, Jadlog, Total Express, Loggi, Melhor Envio
+            </div>
+            <div class="feature-item">
+                <strong>🏦 Bancos</strong><br>
+                Bradesco, Itaú, Santander, BB, Nubank, Inter (Open Banking)
+            </div>
+        </div>
+        
+        <div class="highlight">
+            <strong>⚙️ API Própria:</strong> Documentação completa, OAuth 2.0, 10.000 req/hora, 
+            SDKs Python/PHP/Node.js/C#
+        </div>
+    </div>
+
+    <h1>💰 COMBOS E DESCONTOS</h1>
+    <div class="product-card">
+        <div class="product-header">Economize 30% com Combos</div>
+        
+        <table class="table">
+            <tr>
+                <th>Combo</th>
+                <th>De</th>
+                <th>Por</th>
+                <th>Economia</th>
+            </tr>
+            <tr>
+                <td><strong>CRM + ERP</strong></td>
+                <td>R$ 894/mês</td>
+                <td><strong>R$ 625/mês</strong></td>
+                <td>R$ 269/mês (30%)</td>
+            </tr>
+            <tr>
+                <td><strong>CRM + ERP + AI</strong></td>
+                <td>R$ 1.291/mês</td>
+                <td><strong>R$ 904/mês</strong></td>
+                <td>R$ 387/mês (30%)</td>
+            </tr>
+            <tr>
+                <td><strong>TUDO (9 produtos)</strong></td>
+                <td>R$ 5.373/mês</td>
+                <td><strong>R$ 3.761/mês</strong></td>
+                <td>R$ 1.612/mês (30%)</td>
+            </tr>
+        </table>
+        
+        <div class="highlight">
+            <strong>🎁 Plano Anual:</strong> 2 meses grátis + migração gratuita de dados!
+        </div>
+    </div>
+
+    <h1>🏆 GARANTIAS</h1>
+    <div class="product-card">
+        <div class="product-header">O Que Oferecemos</div>
+        
+        <ul>
+            <li><strong>30 dias de teste grátis</strong> (sem cartão de crédito)</li>
+            <li><strong>Garantia de satisfação 60 dias</strong> (ou seu dinheiro de volta)</li>
+            <li><strong>Migração gratuita</strong> de dados (de qualquer sistema)</li>
+            <li><strong>Treinamento incluído</strong> (online + presencial nos planos Business/Enterprise)</li>
+            <li><strong>Sem fidelidade</strong> (cancele quando quiser)</li>
+            <li><strong>Atualizações ilimitadas</strong> (sempre a versão mais recente)</li>
+            <li><strong>Suporte em português</strong> (time brasileiro)</li>
+        </ul>
+    </div>
+
+    <h1>🔒 SEGURANÇA</h1>
+    <div class="product-card">
+        <div class="product-header">Certificações e Infraestrutura</div>
+        
+        <h3>Certificações</h3>
+        <ul>
+            <li>✅ ISO 27001 - Segurança da Informação</li>
+            <li>✅ LGPD - Lei Geral de Proteção de Dados</li>
+            <li>✅ PCI-DSS - Segurança em Pagamentos</li>
+            <li>✅ SOC 2 - Service Organization Control</li>
+            <li>✅ ICP-Brasil - Certificado Digital</li>
+        </ul>
+        
+        <h3>Infraestrutura</h3>
+        <ul>
+            <li>🌍 Google Cloud Platform</li>
+            <li>🇧🇷 Data Centers no Brasil (São Paulo)</li>
+            <li>⚡ 99.9% - 99.99% Uptime SLA</li>
+            <li>🔐 Criptografia AES-256 + SSL/TLS</li>
+            <li>💾 Backup automático com retenção 90 dias</li>
+            <li>🛡️ DDoS Protection + WAF</li>
+        </ul>
+    </div>
+
+    <h1>🤝 PROGRAMA DE PARCERIAS</h1>
+    <div class="product-card">
+        <div class="product-header">Seja um Parceiro CODE</div>
+        
+        <h3>Programa de Revendas</h3>
+        <ul>
+            <li>💰 Comissão recorrente de 20-40%</li>
+            <li>📦 Material de vendas completo</li>
+            <li>🎓 Treinamento gratuito</li>
+            <li>🎨 White Label disponível</li>
+        </ul>
+        
+        <h3>Programa de Indicação</h3>
+        <ul>
+            <li>💵 R$ 500 por cliente indicado</li>
+            <li>🔄 Sem limite de indicações</li>
+            <li>⚡ Pagamento rápido</li>
+            <li>📊 Dashboard de acompanhamento</li>
+        </ul>
+        
+        <div class="price-box" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+            parcerias@code.com.br | (11) 3000-0000
+        </div>
+    </div>
+
+    <h1>📞 CONTATO</h1>
+    <div class="product-card">
+        <div class="product-header">Entre em Contato</div>
+        
+        <h3>Canais de Atendimento</h3>
+        <ul>
+            <li>📧 <strong>Email Vendas:</strong> vendas@code.com.br</li>
+            <li>📧 <strong>Email Suporte:</strong> suporte@code.com.br</li>
+            <li>📱 <strong>Telefone:</strong> (11) 3000-0000</li>
+            <li>📱 <strong>WhatsApp:</strong> (11) 99999-9999</li>
+            <li>🌐 <strong>Website:</strong> www.code.com.br</li>
+        </ul>
+        
+        <h3>Endereço</h3>
+        <p>
+            <strong>CODE Tecnologia Ltda</strong><br>
+            Av. Paulista, 1000 - 10º andar<br>
+            Bela Vista, São Paulo - SP<br>
+            CEP: 01310-100
+        </p>
+        
+        <h3>Horário de Atendimento</h3>
+        <ul>
+            <li>Segunda a Sexta: 8h às 20h</li>
+            <li>Sábado: 9h às 13h</li>
+            <li>Suporte 24/7 (planos Business e Enterprise)</li>
+        </ul>
+    </div>
+
+    <div class="footer">
+        <p><strong>© 2026 CODE Tecnologia - Todos os direitos reservados</strong></p>
+        <p>CNPJ: 00.000.000/0001-00</p>
+        <p>Razão Social: CODE Tecnologia e Inovação Ltda</p>
+        <p style="margin-top: 20px; font-size: 12px;">
+            Documento gerado em 15/07/2026<br>
+            Versão 1.0 - Catálogo Completo de Produtos
+        </p>
+    </div>
+
+    <div class="no-print" style="text-align: center; margin: 40px; padding: 20px; background: #f0f9ff; border-radius: 10px;">
+        <h2 style="color: #667eea;">📄 Para Salvar em PDF</h2>
+        <p style="font-size: 18px;">Pressione <strong>Ctrl + P</strong> e selecione <strong>"Salvar como PDF"</strong></p>
+    </div>
+
+</body>
+</html>
