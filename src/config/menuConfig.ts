@@ -19,6 +19,7 @@ import {
   Settings,
   Bot,
   Radar,
+  Database,
   // Correspondente Bancário
   Landmark,
   // Saúde
@@ -143,6 +144,13 @@ export const MENU_ITEMS: MenuItem[] = [
     label: 'Leads Monitor',
     nichos: [],
     badge: 'NOVO'
+  },
+  {
+    path: '/fontes-pesquisa',
+    icon: Database,
+    label: 'Fontes de Pesquisa',
+    nichos: [],
+    badge: 'V1.2'
   },
   {
     path: '/ia-prospeccao',
@@ -425,7 +433,7 @@ export const getMenuSections = (nicho: NichoEmpresa | null): MenuSection[] => {
     {
       title: 'Principal',
       items: menuItems.filter(item => 
-        ['/', '/clientes', '/pipeline', '/tarefas', '/chat-center', '/propostas', '/leads-monitor'].includes(item.path)
+        ['/', '/clientes', '/pipeline', '/tarefas', '/chat-center', '/propostas', '/leads-monitor', '/fontes-pesquisa'].includes(item.path)
       )
     },
     {

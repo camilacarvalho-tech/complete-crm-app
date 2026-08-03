@@ -53,6 +53,8 @@ export interface ConnectorFetchContext {
   limite?: number
   /** Se definido, o registry resolve esta apiVersion; senão usa a mais recente registrada. */
   preferredApiVersion?: number
+  /** Secrets/credenciais configurados para o conector (apiKey, authToken, etc) */
+  secrets?: Record<string, string>
 }
 
 /**

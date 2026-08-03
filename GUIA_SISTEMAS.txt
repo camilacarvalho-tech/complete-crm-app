@@ -1,0 +1,70 @@
+==========================================================
+ CREDFLOW - GUIA DOS SISTEMAS (o que e cada um)
+==========================================================
+
+>>> ONDE VOCE TRABALHA <<<
+CRM: https://credflowcrm.com.br (clientes, conversas, dashboard, etc.)
+
+==========================================================
+1) FIREBASE - https://console.firebase.google.com
+==========================================================
+Voce tem DOIS projetos:
+
+ a) crm-recomece -> HOSPEDA O SITE (o visual do CRM).
+ - So mexe aqui quando PUBLICA o site.
+
+ b) recomece-cred-oficial -> DADOS + LOGINS + SEGURANCA.
+ - Firestore = banco (clientes, conversas).
+ - Authentication = logins (criar/resetar senha de usuarios).
+ - Regras (Firestore > Regras) = blindagem dos dados.
+ - Templates de email (senha) ficam aqui (Authentication).
+
+==========================================================
+2) RENDER - https://dashboard.render.com
+==========================================================
+E o SERVIDOR que roda o BACKEND (o cerebro da Leticia + WhatsApp + robos).
+URL do backend: https://backend-recomece-api-1.onrender.com
+- Voce quase nunca precisa entrar aqui. Ele publica sozinho quando voce
+ da git push (veja item 3).
+
+==========================================================
+3) GITHUB / GIT (terminal) -> publica o BACKEND
+==========================================================
+Quando muda o ROBO/WhatsApp (arquivo main.py, pasta backend-recomece-api):
+ git add main.py
+ git commit -m "descricao"
+ git push
+(O Render pega e publica sozinho em ~2 min.)
+
+==========================================================
+4) CRON-JOB.ORG - https://console.cron-job.org/jobs
+==========================================================
+E o DESPERTADOR. Chama o robo de inatividade a cada 15 min
+(URL /robo-inatividade) e mantem o Render acordado 24h.
+- Ja esta configurado (tarefa Robo Leticia). Nao precisa mexer.
+
+==========================================================
+5) META / WHATSAPP MANAGER - business.facebook.com
+==========================================================
+O numero do WhatsApp e os TEMPLATES de mensagem (ex: remarketing).
+- So mexe quando for criar/aprovar um template novo.
+
+==========================================================
+ RESUMAO: O QUE FACO QUANDO MUDO ALGO?
+==========================================================
+- Mudei o SITE/telas (pasta Complete CRM App):
+ npm run build
+ firebase deploy --only hosting
+
+- Mudei o ROBO/WhatsApp (pasta backend-recomece-api / main.py):
+ git add main.py
+ git commit -m "descricao"
+ git push
+
+- Mudei as REGRAS de seguranca:
+ Firebase Console > projeto recomece-cred-oficial > Firestore > Regras > Publicar
+
+- Criar/resetar login de alguem:
+ Firebase Console > recomece-cred-oficial > Authentication > Users
+==========================================================
+

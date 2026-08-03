@@ -3,6 +3,7 @@
  * Capta, organiza e qualifica oportunidades; o CRM só recebe as aprovadas.
  */
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Radar,
   Search,
@@ -28,6 +29,7 @@ import {
   ScrollText,
   ClipboardList,
   Briefcase,
+  Database,
 } from 'lucide-react'
 import {
   useLeadsMonitor,
@@ -95,6 +97,7 @@ export default function LeadsMonitor() {
     inboxItems,
     logItems,
     auditItems,
+    activeSearchRun,
     loading,
     buscando,
     erro,
@@ -103,6 +106,7 @@ export default function LeadsMonitor() {
     stats,
     monitorAuto,
     executarBusca,
+    cancelarBusca,
     salvarPesquisa,
     carregarPesquisa,
     updatePesquisa,
@@ -144,9 +148,18 @@ export default function LeadsMonitor() {
     const r = await executarBusca()
     if (r) {
       toast.success(
-        'Busca enfileirada',
-        `Job assíncrono iniciado · ${r.fontes.join(', ')} · oportunidades atualizam em tempo real`
+        'Busca inteligente iniciada',
+        'Rodando em background · progresso em tempo real · UI liberada'
       )
+    }
+  }
+
+  const onCancelar = async () => {
+    try {
+      await cancelarBusca()
+      toast.info('Cancelamento solicitado', 'A busca será interrompida com segurança.')
+    } catch (e: any) {
+      toast.error('Não foi possível cancelar', e?.message)
     }
   }
 
@@ -177,10 +190,14 @@ export default function LeadsMonitor() {
     }
   }
 
+  const searchRunning =
+    activeSearchRun?.status === 'running' || activeSearchRun?.status === 'queued'
+  const progresso = activeSearchRun?.progresso
+
   const kpiCards = [
     { label: 'Encontrados', value: stats.encontrados, color: 'text-blue-500', icon: Inbox },
+    { label: 'Hoje', value: stats.empresasHoje, color: 'text-sky-500', icon: Building2 },
     { label: 'Aprovados', value: stats.aprovados, color: 'text-emerald-500', icon: CheckCircle2 },
-    { label: 'Rejeitados', value: stats.rejeitados, color: 'text-red-500', icon: Ban },
     { label: 'Enviados', value: stats.enviados, color: 'text-green-600', icon: Send },
     { label: 'Score médio', value: stats.scoreMedio, color: 'text-amber-500', icon: Activity },
   ]
@@ -201,6 +218,13 @@ export default function LeadsMonitor() {
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
+          <Link
+            to="/fontes-pesquisa"
+            className="text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center gap-1.5 hover:border-nexus-orange/50"
+          >
+            <Database className="w-3.5 h-3.5 text-nexus-orange" />
+            Fontes de Pesquisa
+          </Link>
           <div
             className={`flex items-center gap-2 text-xs rounded-xl px-3 py-2 border ${
               pesquisasAtivas > 0
@@ -349,6 +373,24 @@ export default function LeadsMonitor() {
                 </select>
               </div>
               <div>
+                <label className="text-xs text-slate-500">Bairro</label>
+                <input
+                  value={filtros.bairro || ''}
+                  onChange={(e) => setFiltros({ ...filtros, bairro: e.target.value })}
+                  placeholder="Opcional"
+                  className="w-full mt-1 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 dark:text-white text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500">CEP</label>
+                <input
+                  value={filtros.cep || ''}
+                  onChange={(e) => setFiltros({ ...filtros, cep: e.target.value })}
+                  placeholder="00000-000"
+                  className="w-full mt-1 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 dark:text-white text-sm"
+                />
+              </div>
+              <div>
                 <label className="text-xs text-slate-500">Segmento</label>
                 <select
                   value={filtros.segmento}
@@ -364,6 +406,24 @@ export default function LeadsMonitor() {
                 </select>
               </div>
               <div>
+                <label className="text-xs text-slate-500">CNAE</label>
+                <input
+                  value={filtros.cnae || ''}
+                  onChange={(e) => setFiltros({ ...filtros, cnae: e.target.value })}
+                  placeholder="Ex: 6499"
+                  className="w-full mt-1 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 dark:text-white text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500">Nome da empresa</label>
+                <input
+                  value={filtros.nomeEmpresa || ''}
+                  onChange={(e) => setFiltros({ ...filtros, nomeEmpresa: e.target.value })}
+                  placeholder="Razão social / fantasia"
+                  className="w-full mt-1 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 dark:text-white text-sm"
+                />
+              </div>
+              <div>
                 <label className="text-xs text-slate-500">Palavra-chave</label>
                 <input
                   value={filtros.palavraChave}
@@ -374,6 +434,36 @@ export default function LeadsMonitor() {
               </div>
             </div>
 
+            {searchRunning && progresso && (
+              <div className="rounded-xl border border-nexus-orange/30 bg-orange-50/50 dark:bg-orange-500/5 px-4 py-3 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    Busca em andamento · {progresso.etapa}
+                  </span>
+                  <span className="tabular-nums text-slate-500">
+                    {progresso.percent}% · {progresso.encontrados} encontrados ·{' '}
+                    {progresso.fontesConcluidas}/{progresso.fontesTotal} fontes
+                    {progresso.etaMs != null ? ` · ETA ~${Math.ceil(progresso.etaMs / 1000)}s` : ''}
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                  <div
+                    className="h-full bg-nexus-orange transition-all duration-500"
+                    style={{ width: `${Math.min(100, Math.max(0, progresso.percent))}%` }}
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={onCancelar}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-white"
+                  >
+                    Cancelar busca
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-2 items-center">
               <button
                 type="button"
@@ -382,7 +472,7 @@ export default function LeadsMonitor() {
                 className="px-4 py-2.5 bg-nexus-orange text-white rounded-lg flex items-center gap-2 text-sm font-semibold disabled:opacity-60 shadow-sm"
               >
                 {buscando ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                {buscando ? 'Buscando...' : 'Buscar Agora'}
+                {buscando ? 'Enfileirando…' : searchRunning ? 'Buscar novamente' : 'Buscar Agora'}
               </button>
               <input
                 value={nomePesquisa}

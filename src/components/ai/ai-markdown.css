@@ -1,0 +1,35 @@
+/* Estilos markdown Nexus AI */
+.ai-md .ai-p { margin: 0.35rem 0; }
+.ai-md .ai-h1 { font-size: 1.15rem; font-weight: 700; margin: 0.6rem 0 0.3rem; }
+.ai-md .ai-h2 { font-size: 1.05rem; font-weight: 650; margin: 0.5rem 0 0.25rem; }
+.ai-md .ai-h3 { font-size: 0.95rem; font-weight: 600; margin: 0.4rem 0 0.2rem; }
+.ai-md .ai-pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  font-size: 0.8rem;
+  margin: 0.5rem 0;
+}
+.ai-md .ai-code {
+  background: rgba(148, 163, 184, 0.2);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.ai-md .ai-pre .ai-code,
+.ai-md .ai-pre code {
+  background: transparent;
+  padding: 0;
+}
+.ai-md .ai-ul, .ai-md .ai-ol { margin: 0.4rem 0 0.4rem 1.2rem; }
+.ai-md .ai-quote {
+  border-left: 3px solid #14b8a6;
+  padding-left: 0.75rem;
+  color: #64748b;
+  margin: 0.4rem 0;
+}
+.ai-md .ai-link { color: #0d9488; text-decoration: underline; }
+.ai-md .ai-spacer { height: 0.4rem; }

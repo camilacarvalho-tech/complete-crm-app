@@ -1,0 +1,70 @@
+/**
+ * CODE Tecnologia Empresarial / Nexus Platform — Design Tokens Oficiais
+ * Fonte única de verdade. CRM e ERP compartilham estes tokens.
+ */
+
+:root {
+  /* Marca */
+  --code-primary: #1E40AF;
+  --code-secondary: #7C3AED;
+  --code-action: #F97316;
+  --code-menu-start: #1E3A8A;
+  --code-menu-end: #6D28D9;
+
+  /* Semânticas */
+  --code-success: #22C55E;
+  --code-warning: #F59E0B;
+  --code-danger: #EF4444;
+  --code-info: #0EA5E9;
+
+  /* Gráficos */
+  --chart-receita: #22C55E;
+  --chart-despesas: #EF4444;
+  --chart-lucro: #1E40AF;
+  --chart-previsao: #7C3AED;
+  --chart-estoque: #F59E0B;
+  --chart-compras: #0EA5E9;
+  --chart-marketing: #F97316;
+
+  /* Tema claro (default) */
+  --bg-main: #F8FAFC;
+  --bg-sidebar: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --bg-card-hover: #F1F5F9;
+  --border-color: #E2E8F0;
+  --text-main: #0F172A;
+  --text-secondary: #475569;
+  --text-disabled: #64748B;
+
+  /* Compat legado */
+  --nexus-orange: #F97316;
+  --nexus-blue: #1E40AF;
+  --nexus-purple: #7C3AED;
+  --nexus-green: #22C55E;
+  --surface: var(--bg-card);
+  --surface-2: var(--bg-main);
+  --text: var(--text-main);
+  --border: var(--border-color);
+
+  /* Sombras */
+  --shadow-card: 0 10px 25px rgba(0, 0, 0, 0.12);
+  --shadow-btn: 0 8px 20px rgba(30, 64, 175, 0.30);
+  --transition-ui: 0.25s ease;
+}
+
+html.dark {
+  color-scheme: dark;
+  --bg-main: #0F172A;
+  --bg-sidebar: #111827;
+  --bg-card: #1E293B;
+  --bg-card-hover: #273449;
+  --border-color: #334155;
+  --text-main: #F8FAFC;
+  --text-secondary: #CBD5E1;
+  --text-disabled: #64748B;
+
+  --surface: var(--bg-card);
+  --surface-2: var(--bg-main);
+  --text: var(--text-main);
+  --border: var(--border-color);
+}

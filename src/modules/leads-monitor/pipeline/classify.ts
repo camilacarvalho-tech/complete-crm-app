@@ -18,6 +18,7 @@ export interface LeadClassification {
   label: string
   motivo: string
   origem: 'nexus_ai_heuristica' | 'nexus_ai_llm'
+  sugestaoContato?: string
 }
 
 function classifyHeuristic(lead: NormalizedLead, filtros: FiltrosPesquisa): LeadClassification {

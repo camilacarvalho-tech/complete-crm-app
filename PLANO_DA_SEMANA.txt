@@ -1,0 +1,37 @@
+==========================================================
+ CREDFLOW - ONDE PARAMOS / PLANO
+==========================================================
+
+>>> PRONTO NO CODIGO (falta so publicar) <<<
+[x] Multi-empresa + login por empresa (Proprietario / Funcionario)
+[x] Funcionario ve so os clientes dele; Proprietario ve todos da empresa
+[x] Super admin (voce/Laiane) ve tudo + abas Empresas e Financeiro
+[x] Esqueci minha senha (cliente reseta sozinho por email)
+[x] Aba Financeira (entradas/saidas + categorias + VENCIMENTO dia 05/10/15/20)
+[x] Forma de pagamento na Empresa (PIX / Dinheiro / Cartao / 12x)
+[x] Funil de Vendas renomeado para Pipeline
+
+>>> PUBLICAR (pra subir as ultimas mudancas) <<<
+[ ] Na pasta Complete CRM App: firebase deploy --only hosting
+[ ] (Se mudou regras) re-colar no Firestore:
+ https://console.firebase.google.com/project/recomece-cred-oficial/firestore/rules
+
+>>> DAR ACESSO TOTAL PARA A LAIANE (socia) <<<
+Authentication > Adicionar usuario (email + senha). NAO usar o "Criar acesso" da aba Empresas.
+Link: https://console.firebase.google.com/project/recomece-cred-oficial/authentication/users
+Sem perfil = super admin = ve tudo igual a Camila.
+
+>>> COMO CRIAR ACESSO DE EMPRESA/FUNCIONARIO (clientes que alugam) <<<
+Aba Empresas > expande a empresa (setinha) > Criar acesso > email+senha > Proprietario ou Funcionario.
+Anotar sempre email e senha (a senha nao da pra ver depois, so resetar).
+
+>>> DURANTE A SEMANA (pendente) <<<
+[ ] Email profissional com dominio proprio (@credflowcrm.com.br) - tira spam e o nome recomece
+[ ] Email de redefinicao em portugues (modelo no Authentication)
+[ ] Ajustar as modalidades (definir o que muda)
+[ ] Robo de consulta em bancos (quando tiver API do banco)
+[ ] Enriquecimento de leads (precisa de API paga de consulta CPF/telefone)
+[ ] Melhorar aviso do WhatsApp (o "digitando" o WhatsApp nao fornece)
+
+==========================================================
+

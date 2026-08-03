@@ -18,7 +18,13 @@ import { COL_JOBS, JOB_LEASE_MS, JOB_MAX_ATTEMPTS } from '../constants'
 import { writeLeadsMonitorAudit } from './auditTrail'
 import type { FiltrosPesquisa } from '../types'
 
-export type JobType = 'search' | 'drain_inbox' | 'reprocess_dlq'
+export type JobType =
+  | 'search'
+  | 'drain_inbox'
+  | 'reprocess_dlq'
+  | 'search_inteligente'
+  | 'search_cancel'
+  | 'import_csv'
 export type JobStatus = 'queued' | 'leased' | 'running' | 'succeeded' | 'failed' | 'dead'
 
 export interface LeadsMonitorJob {
@@ -35,6 +41,8 @@ export interface LeadsMonitorJob {
   payload: {
     filtros?: FiltrosPesquisa
     connectorIds?: string[]
+    fontesIds?: string[]
+    searchRunId?: string
     dlqId?: string
     pesquisaId?: string
   }

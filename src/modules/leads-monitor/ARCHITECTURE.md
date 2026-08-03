@@ -51,6 +51,8 @@ Register with `registerConnector()`. Multiple `apiVersion`s of the same `id` can
 | `leadsMonitorDLQ` | Dead letter queue |
 | `leadsMonitorAudit` | Audit trail |
 | `leadsMonitorHealth` | Connector health |
+| `leadsMonitorFontes` | Search sources (V1.2) |
+| `leadsMonitorSearchRuns` | Intelligent search runs / progress (V1.2) |
 
 ## Secrets
 

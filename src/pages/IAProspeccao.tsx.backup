@@ -1,0 +1,841 @@
+import { useState, useEffect } from 'react'
+import { 
+  Bot, Search, TrendingUp, Users, DollarSign, 
+  CheckCircle, XCircle, Clock, AlertCircle,
+  Upload, Download, Filter, Phone, MessageSquare,
+  FileText, Play, Pause, BarChart3, Zap,
+  Target, Eye, RefreshCw, Plus, Settings,
+  Database, Activity, Shield
+} from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
+
+export default function IAProspeccao() {
+  const { user, empresa } = useAuth()
+  
+  // Define as abas baseado no nicho da empresa
+  const getAbasPorNicho = () => {
+    const nicho = empresa?.nicho
+    const perfil = user?.perfil
+    
+    // MASTER vê TODAS as abas de TODOS os nichos
+    if (perfil === 'master') {
+      return [
+        // CORRESPONDENTE BANCÁRIO
+        { id: 'inss', label: '💰 INSS', total: 127, nicho: 'Correspondente' },
+        { id: 'fgts', label: '💰 Saque FGTS', total: 89, nicho: 'Correspondente' },
+        { id: 'clt', label: '💰 Crédito CLT', total: 156, nicho: 'Correspondente' },
+        { id: 'siape', label: '💰 Siape', total: 78, nicho: 'Correspondente' },
+        { id: 'exercito', label: '💰 Exército', total: 34, nicho: 'Correspondente' },
+        { id: 'prefeituras', label: '💰 Prefeituras', total: 45, nicho: 'Correspondente' },
+        
+        // ODONTOLOGIA
+        { id: 'pacientes_odonto', label: '🦷 Pacientes Odonto', total: 245, nicho: 'Odontologia' },
+        { id: 'convenios_odonto', label: '🦷 Convênios Odonto', total: 18, nicho: 'Odontologia' },
+        { id: 'implantes', label: '🦷 Implantes', total: 87, nicho: 'Odontologia' },
+        { id: 'ortodontia', label: '🦷 Ortodontia', total: 134, nicho: 'Odontologia' },
+        { id: 'clareamento', label: '🦷 Clareamento', total: 92, nicho: 'Odontologia' },
+        
+        // CLÍNICA MÉDICA
+        { id: 'pacientes_clinica', label: '🏥 Pacientes Clínica', total: 312, nicho: 'Clínica' },
+        { id: 'convenios_clinica', label: '🏥 Convênios Clínica', total: 25, nicho: 'Clínica' },
+        { id: 'cardiologia', label: '🏥 Cardiologia', total: 98, nicho: 'Clínica' },
+        { id: 'ortopedia', label: '🏥 Ortopedia', total: 76, nicho: 'Clínica' },
+        
+        // PSICOLOGIA
+        { id: 'pacientes_psico', label: '🧠 Pacientes Psico', total: 189, nicho: 'Psicologia' },
+        { id: 'terapia_individual', label: '🧠 Terapia Individual', total: 112, nicho: 'Psicologia' },
+        { id: 'terapia_casal', label: '🧠 Terapia Casal', total: 43, nicho: 'Psicologia' },
+        
+        // NUTRIÇÃO
+        { id: 'pacientes_nutri', label: '🍎 Pacientes Nutrição', total: 203, nicho: 'Nutrição' },
+        { id: 'emagrecimento', label: '🍎 Emagrecimento', total: 98, nicho: 'Nutrição' },
+        { id: 'hipertrofia', label: '🍎 Hipertrofia', total: 65, nicho: 'Nutrição' },
+        
+        // ACADEMIA
+        { id: 'alunos', label: '💪 Alunos Academia', total: 456, nicho: 'Academia' },
+        { id: 'musculacao', label: '💪 Musculação', total: 234, nicho: 'Academia' },
+        { id: 'crossfit', label: '💪 CrossFit', total: 89, nicho: 'Academia' }
+      ]
+    }
+    
+    // CORRESPONDENTE BANCÁRIO
+    if (nicho === 'correspondente_bancario') {
+      return [
+        { id: 'inss', label: 'INSS', total: 127 },
+        { id: 'fgts', label: 'Saque FGTS', total: 89 },
+        { id: 'clt', label: 'Crédito CLT', total: 156 },
+        { id: 'siape', label: 'Siape', total: 78 },
+        { id: 'exercito', label: 'Exército', total: 34 },
+        { id: 'prefeituras', label: 'Prefeituras', total: 45 }
+      ]
+    }
+    
+    // ODONTOLOGIA
+    if (nicho === 'odontologia') {
+      return [
+        { id: 'pacientes', label: 'Buscar Pacientes', total: 245 },
+        { id: 'convenios', label: 'Buscar Convênios', total: 18 },
+        { id: 'implantes', label: 'Implantes', total: 87 },
+        { id: 'ortodontia', label: 'Ortodontia', total: 134 },
+        { id: 'clareamento', label: 'Clareamento', total: 92 }
+      ]
+    }
+    
+    // CLÍNICA MÉDICA
+    if (nicho === 'clinica_medica') {
+      return [
+        { id: 'pacientes', label: 'Buscar Pacientes', total: 312 },
+        { id: 'convenios', label: 'Buscar Convênios', total: 25 },
+        { id: 'cardiologia', label: 'Cardiologia', total: 98 },
+        { id: 'ortopedia', label: 'Ortopedia', total: 76 },
+        { id: 'pediatria', label: 'Pediatria', total: 145 }
+      ]
+    }
+    
+    // PSICOLOGIA
+    if (nicho === 'psicologia') {
+      return [
+        { id: 'pacientes', label: 'Buscar Pacientes', total: 189 },
+        { id: 'convenios', label: 'Buscar Convênios', total: 12 },
+        { id: 'terapia_individual', label: 'Terapia Individual', total: 112 },
+        { id: 'terapia_casal', label: 'Terapia Casal', total: 43 },
+        { id: 'terapia_infantil', label: 'Terapia Infantil', total: 67 }
+      ]
+    }
+    
+    // NUTRIÇÃO
+    if (nicho === 'nutricao') {
+      return [
+        { id: 'pacientes', label: 'Buscar Pacientes', total: 203 },
+        { id: 'convenios', label: 'Buscar Convênios', total: 15 },
+        { id: 'emagrecimento', label: 'Emagrecimento', total: 98 },
+        { id: 'hipertrofia', label: 'Hipertrofia', total: 65 },
+        { id: 'gestantes', label: 'Gestantes', total: 34 }
+      ]
+    }
+    
+    // ACADEMIA
+    if (nicho === 'academia') {
+      return [
+        { id: 'alunos', label: 'Buscar Alunos', total: 456 },
+        { id: 'musculacao', label: 'Musculação', total: 234 },
+        { id: 'crossfit', label: 'CrossFit', total: 89 },
+        { id: 'pilates', label: 'Pilates', total: 76 },
+        { id: 'personal', label: 'Personal Trainer', total: 123 }
+      ]
+    }
+    
+    // PADRÃO (se não identificar nicho)
+    return [
+      { id: 'geral', label: 'Buscar Clientes', total: 528 }
+    ]
+  }
+  
+  const abas = getAbasPorNicho()
+  const [abaAtiva, setAbaAtiva] = useState<string>('dashboard')
+  const [roboAtivo, setRoboAtivo] = useState(false)
+  const [consultasHoje, setConsultasHoje] = useState(0)
+  const [leadsEncontrados, setLeadsEncontrados] = useState(0)
+  const [nichoSelecionado, setNichoSelecionado] = useState<string | null>(null)
+  const [produtoSelecionado, setProdutoSelecionado] = useState<string | null>(null)
+
+  // Produtos por nicho (mesmo de Campanhas)
+  const PRODUTOS_POR_NICHO = {
+    correspondente_bancario: [
+      { id: 'inss', nome: 'INSS', total: 127 },
+      { id: 'fgts', nome: 'Saque FGTS', total: 89 },
+      { id: 'clt', nome: 'Crédito CLT', total: 156 },
+      { id: 'siape', nome: 'Siape', total: 78 },
+      { id: 'exercito', nome: 'Exército', total: 34 },
+      { id: 'prefeituras', nome: 'Prefeituras', total: 45 }
+    ],
+    odontologia: [
+      { id: 'implantes', nome: 'Implantes', total: 87 },
+      { id: 'ortodontia', nome: 'Ortodontia', total: 134 },
+      { id: 'clareamento', nome: 'Clareamento', total: 92 },
+      { id: 'limpeza', nome: 'Limpeza', total: 156 },
+      { id: 'canal', nome: 'Canal', total: 78 },
+      { id: 'protese', nome: 'Prótese', total: 65 }
+    ],
+    clinica_medica: [
+      { id: 'consulta_geral', nome: 'Consulta Geral', total: 312 },
+      { id: 'cardiologia', nome: 'Cardiologia', total: 98 },
+      { id: 'ortopedia', nome: 'Ortopedia', total: 76 },
+      { id: 'dermatologia', nome: 'Dermatologia', total: 89 },
+      { id: 'exames', nome: 'Exames', total: 145 },
+      { id: 'checkup', nome: 'Check-up', total: 67 }
+    ],
+    psicologia: [
+      { id: 'terapia_individual', nome: 'Terapia Individual', total: 112 },
+      { id: 'terapia_casal', nome: 'Terapia de Casal', total: 43 },
+      { id: 'terapia_familiar', nome: 'Terapia Familiar', total: 56 },
+      { id: 'terapia_infantil', nome: 'Terapia Infantil', total: 67 },
+      { id: 'avaliacao', nome: 'Avaliação', total: 34 },
+      { id: 'orientacao', nome: 'Orientação', total: 45 }
+    ],
+    nutricao: [
+      { id: 'emagrecimento', nome: 'Emagrecimento', total: 98 },
+      { id: 'hipertrofia', nome: 'Hipertrofia', total: 65 },
+      { id: 'reeducacao', nome: 'Reeducação', total: 87 },
+      { id: 'esportiva', nome: 'Esportiva', total: 56 },
+      { id: 'gestante', nome: 'Gestantes', total: 34 },
+      { id: 'infantil', nome: 'Infantil', total: 43 }
+    ],
+    academia: [
+      { id: 'musculacao', nome: 'Musculação', total: 234 },
+      { id: 'crossfit', nome: 'CrossFit', total: 89 },
+      { id: 'funcional', nome: 'Funcional', total: 123 },
+      { id: 'spinning', nome: 'Spinning', total: 67 },
+      { id: 'yoga', nome: 'Yoga', total: 45 },
+      { id: 'natacao', nome: 'Natação', total: 78 }
+    ]
+  }
+
+  // Simular perfil (remover quando tiver real)
+  const perfilTeste = 'master'
+  const nichoTeste = 'correspondente_bancario'
+
+  // KPIs
+  const kpis = {
+    totalConsultas: 1247,
+    consultasHoje: consultasHoje,
+    leadsQuentes: leadsEncontrados,
+    margemTotal: 2847500,
+    taxaConversao: 34.5,
+    roboAtivo: roboAtivo
+  }
+
+  const iniciarRobo = () => {
+    setRoboAtivo(true)
+    // Simula consultas automáticas
+    const interval = setInterval(() => {
+      setConsultasHoje(prev => prev + 1)
+      if (Math.random() > 0.7) {
+        setLeadsEncontrados(prev => prev + 1)
+      }
+    }, 3000)
+    
+    return () => clearInterval(interval)
+  }
+
+  const pararRobo = () => {
+    setRoboAtivo(false)
+  }
+
+  return (
+    <div className="h-full flex flex-col bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+      {/* Header */}
+      <div className="p-6 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
+              <div className="relative">
+                <Bot className="w-8 h-8 text-purple-500" />
+                {roboAtivo && (
+                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
+                )}
+              </div>
+              IA Prospecção - Robô Automático
+            </h1>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+              Sistema inteligente que busca automaticamente clientes com margem consignável disponível
+            </p>
+          </div>
+          <div className="flex gap-3">
+            {!roboAtivo ? (
+              <button
+                onClick={iniciarRobo}
+                className="px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all flex items-center gap-2 font-medium shadow-lg"
+              >
+                <Play className="w-5 h-5" />
+                Iniciar Robô
+              </button>
+            ) : (
+              <button
+                onClick={pararRobo}
+                className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 transition-all flex items-center gap-2 font-medium shadow-lg"
+              >
+                <Pause className="w-5 h-5" />
+                Pausar Robô
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* KPIs Dashboard */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-xl p-4 shadow-lg">
+            <div className="flex items-center justify-between mb-2">
+              <Database className="w-6 h-6 opacity-80" />
+            </div>
+            <div className="text-2xl font-bold">{kpis.totalConsultas.toLocaleString()}</div>
+            <div className="text-xs opacity-90 mt-1">Total Consultas</div>
+          </div>
+
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl p-4 shadow-lg">
+            <div className="flex items-center justify-between mb-2">
+              <Activity className={`w-6 h-6 opacity-80 ${roboAtivo ? 'animate-pulse' : ''}`} />
+            </div>
+            <div className="text-2xl font-bold">{kpis.consultasHoje}</div>
+            <div className="text-xs opacity-90 mt-1">Consultas Hoje</div>
+          </div>
+
+          <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl p-4 shadow-lg">
+            <div className="flex items-center justify-between mb-2">
+              <Target className="w-6 h-6 opacity-80" />
+            </div>
+            <div className="text-2xl font-bold">{kpis.leadsQuentes}</div>
+            <div className="text-xs opacity-90 mt-1">Leads Quentes</div>
+          </div>
+
+          <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white rounded-xl p-4 shadow-lg">
+            <div className="flex items-center justify-between mb-2">
+              <DollarSign className="w-6 h-6 opacity-80" />
+            </div>
+            <div className="text-2xl font-bold">R$ {(kpis.margemTotal / 1000).toFixed(0)}k</div>
+            <div className="text-xs opacity-90 mt-1">Margem Total</div>
+          </div>
+
+          <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-xl p-4 shadow-lg">
+            <div className="flex items-center justify-between mb-2">
+              <TrendingUp className="w-6 h-6 opacity-80" />
+            </div>
+            <div className="text-2xl font-bold">{kpis.taxaConversao}%</div>
+            <div className="text-xs opacity-90 mt-1">Taxa Conversão</div>
+          </div>
+
+          <div className={`bg-gradient-to-br ${roboAtivo ? 'from-green-500 to-green-600' : 'from-gray-500 to-gray-600'} text-white rounded-xl p-4 shadow-lg`}>
+            <div className="flex items-center justify-between mb-2">
+              <Shield className={`w-6 h-6 opacity-80 ${roboAtivo ? 'animate-pulse' : ''}`} />
+            </div>
+            <div className="text-2xl font-bold">{roboAtivo ? 'ATIVO' : 'PAUSADO'}</div>
+            <div className="text-xs opacity-90 mt-1">Status do Robô</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Abas */}
+      <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
+        <div className="flex gap-1 p-2 min-w-max">
+          <button
+            onClick={() => setAbaAtiva('dashboard')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
+              abaAtiva === 'dashboard'
+                ? 'bg-purple-500 text-white shadow-lg'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 inline mr-2" />
+            Dashboard Geral
+          </button>
+          
+          {/* Abas dinâmicas baseadas no nicho */}
+          {abas.map((aba) => (
+            <button
+              key={aba.id}
+              onClick={() => setAbaAtiva(aba.id)}
+              className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
+                abaAtiva === aba.id
+                  ? 'bg-purple-500 text-white shadow-lg'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+            >
+              <Users className="w-4 h-4 inline mr-2" />
+              {aba.label}
+              <span className="ml-2 bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">{aba.total}</span>
+            </button>
+          ))}
+          
+          <button
+            onClick={() => setAbaAtiva('configuracoes')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
+              abaAtiva === 'configuracoes'
+                ? 'bg-purple-500 text-white shadow-lg'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+          >
+            <Settings className="w-4 h-4 inline mr-2" />
+            Configurar
+          </button>
+        </div>
+      </div>
+
+      {/* Conteúdo das Abas */}
+      <div className="flex-1 overflow-auto p-6">
+        {abaAtiva === 'dashboard' && <AbaDashboard roboAtivo={roboAtivo} />}
+        {abaAtiva === 'configuracoes' && <AbaConfigurarRobo />}
+        {abaAtiva !== 'dashboard' && abaAtiva !== 'configuracoes' && (
+          <AbaLeadsPorNicho 
+            nicho={abas.find(a => a.id === abaAtiva)?.label || ''} 
+            total={abas.find(a => a.id === abaAtiva)?.total || 0} 
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Aba Dashboard
+function AbaDashboard({ roboAtivo }: { roboAtivo: boolean }) {
+  return (
+    <div className="space-y-6">
+      <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
+        <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
+          Status do Robô em Tempo Real
+        </h2>
+        {roboAtivo ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 text-green-600">
+              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="font-medium">Robô está ATIVO e buscando leads automaticamente...</span>
+            </div>
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+              <p className="text-sm text-green-800 dark:text-green-200">
+                ✓ Consultando APIs dos bancos (INSS, Siape)<br/>
+                ✓ Digitando automaticamente nos sistemas<br/>
+                ✓ Identificando clientes com margem disponível<br/>
+                ✓ Salvando leads no CRM automaticamente
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <Bot className="w-16 h-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+            <p className="text-slate-600 dark:text-slate-400 mb-4">
+              Robô está pausado. Clique em "Iniciar Robô" para começar a prospecção automática.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-6">
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
+          <h3 className="font-semibold text-slate-900 dark:text-white mb-4">Últimas Consultas</h3>
+          <div className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+            <p>• Consultando base INSS...</p>
+            <p>• Consultando base Siape...</p>
+            <p>• Consultando bancos parceiros...</p>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
+          <h3 className="font-semibold text-slate-900 dark:text-white mb-4">Próximas Ações</h3>
+          <div className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+            <p>• Enviar WhatsApp para leads quentes</p>
+            <p>• Gerar propostas automáticas</p>
+            <p>• Criar tarefas para atendentes</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Aba Configurar Robô
+function AbaConfigurarRobo() {
+  return (
+    <div className="max-w-4xl mx-auto">
+      <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
+        <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6">
+          Configurações do Robô
+        </h2>
+        
+        <div className="space-y-6">
+          {/* APIs Configuradas */}
+          <div>
+            <h3 className="font-semibold text-slate-900 dark:text-white mb-3">
+              Selecione as Modalidades para Buscar
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+              Ative ou desative cada modalidade. O robô só vai buscar nas que estiverem LIGADAS.
+            </p>
+            <div className="space-y-3">
+              {/* INSS */}
+              <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Database className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                  <div>
+                    <p className="font-medium text-slate-900 dark:text-white">INSS</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Aposentados e pensionistas</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" className="sr-only peer" defaultChecked />
+                  <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-slate-600 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-slate-600 peer-checked:bg-green-500"></div>
+                </label>
+              </div>
+
+              {/* Saque FGTS */}
+              <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Database className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                  <div>
+                    <p className="font-medium text-slate-900 dark:text-white">Saque FGTS</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Saque-aniversário disponível</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" className="sr-only peer" defaultChecked />
+                  <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-slate-600 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-slate-600 peer-checked:bg-green-500"></div>
+                </label>
+              </div>
+
+              {/* Crédito CLT */}
+              <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Database className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                  <div>
+                    <p className="font-medium text-slate-900 dark:text-white">Crédito CLT</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Trabalhadores com carteira assinada</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" className="sr-only peer" defaultChecked />
+                  <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-slate-600 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-slate-600 peer-checked:bg-green-500"></div>
+                </label>
+              </div>
+
+              {/* Siape */}
+              <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Database className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                  <div>
+                    <p className="font-medium text-slate-900 dark:text-white">Siape</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Servidores públicos federais</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" className="sr-only peer" defaultChecked />
+                  <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-slate-600 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-slate-600 peer-checked:bg-green-500"></div>
+                </label>
+              </div>
+
+              {/* Exército */}
+              <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Database className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                  <div>
+                    <p className="font-medium text-slate-900 dark:text-white">Exército</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Militares das Forças Armadas</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" className="sr-only peer" />
+                  <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-slate-600 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-slate-600 peer-checked:bg-green-500"></div>
+                </label>
+              </div>
+
+              {/* Prefeituras */}
+              <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Database className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                  <div>
+                    <p className="font-medium text-slate-900 dark:text-white">Prefeituras</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Servidores municipais</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" className="sr-only peer" />
+                  <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-slate-600 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-slate-600 peer-checked:bg-green-500"></div>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Configurações de Consulta */}
+          <div>
+            <h3 className="font-semibold text-slate-900 dark:text-white mb-3">Parâmetros de Busca</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Margem Mínima para Considerar Lead Quente
+                </label>
+                <input
+                  type="number"
+                  defaultValue={500}
+                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-purple-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                  placeholder="R$ 500,00"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Estados para Buscar
+                </label>
+                <select className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-purple-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white">
+                  <option>Todos os Estados do Brasil</option>
+                  <optgroup label="Região Norte">
+                    <option>AC - Acre</option>
+                    <option>AP - Amapá</option>
+                    <option>AM - Amazonas</option>
+                    <option>PA - Pará</option>
+                    <option>RO - Rondônia</option>
+                    <option>RR - Roraima</option>
+                    <option>TO - Tocantins</option>
+                  </optgroup>
+                  <optgroup label="Região Nordeste">
+                    <option>AL - Alagoas</option>
+                    <option>BA - Bahia</option>
+                    <option>CE - Ceará</option>
+                    <option>MA - Maranhão</option>
+                    <option>PB - Paraíba</option>
+                    <option>PE - Pernambuco</option>
+                    <option>PI - Piauí</option>
+                    <option>RN - Rio Grande do Norte</option>
+                    <option>SE - Sergipe</option>
+                  </optgroup>
+                  <optgroup label="Região Centro-Oeste">
+                    <option>DF - Distrito Federal</option>
+                    <option>GO - Goiás</option>
+                    <option>MT - Mato Grosso</option>
+                    <option>MS - Mato Grosso do Sul</option>
+                  </optgroup>
+                  <optgroup label="Região Sudeste">
+                    <option>ES - Espírito Santo</option>
+                    <option>MG - Minas Gerais</option>
+                    <option>RJ - Rio de Janeiro</option>
+                    <option>SP - São Paulo</option>
+                  </optgroup>
+                  <optgroup label="Região Sul">
+                    <option>PR - Paraná</option>
+                    <option>RS - Rio Grande do Sul</option>
+                    <option>SC - Santa Catarina</option>
+                  </optgroup>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Intervalo entre Consultas (segundos)
+                </label>
+                <input
+                  type="number"
+                  defaultValue={3}
+                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-purple-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                />
+              </div>
+            </div>
+          </div>
+
+          <button className="w-full px-6 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all font-medium">
+            Salvar Configurações
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Aba Leads por Nicho
+function AbaLeadsPorNicho({ nicho, total }: { nicho: string; total: number }) {
+  // Define os dados mockados baseado no tipo de nicho
+  const getNichoType = () => {
+    if (nicho.includes('INSS') || nicho.includes('FGTS') || nicho.includes('CLT') || nicho.includes('Siape') || nicho.includes('Exército') || nicho.includes('Prefeituras')) {
+      return 'correspondente'
+    }
+    if (nicho.includes('Odonto') || nicho.includes('Implantes') || nicho.includes('Ortodontia') || nicho.includes('Clareamento')) {
+      return 'odonto'
+    }
+    if (nicho.includes('Clínica') || nicho.includes('Cardiologia') || nicho.includes('Ortopedia')) {
+      return 'clinica'
+    }
+    if (nicho.includes('Psico') || nicho.includes('Terapia')) {
+      return 'psico'
+    }
+    if (nicho.includes('Nutrição') || nicho.includes('Emagrecimento') || nicho.includes('Hipertrofia')) {
+      return 'nutricao'
+    }
+    if (nicho.includes('Academia') || nicho.includes('Alunos') || nicho.includes('Musculação') || nicho.includes('CrossFit')) {
+      return 'academia'
+    }
+    return 'geral'
+  }
+
+  const nichoType = getNichoType()
+
+  // Dados para Correspondente Bancário
+  const leadsCorrespondente = [
+    { nome: 'João Silva Santos', cpf: '123.456.789-45', telefone: '(11) 98765-4321', margem: 3500, cidade: 'São Paulo', estado: 'SP', status: 'Novo' },
+    { nome: 'Maria Oliveira Costa', cpf: '987.654.321-67', telefone: '(21) 97654-3210', margem: 2800, cidade: 'Rio de Janeiro', estado: 'RJ', status: 'Novo' },
+    { nome: 'Pedro Henrique Lima', cpf: '456.789.123-89', telefone: '(31) 96543-2109', margem: 4200, cidade: 'Belo Horizonte', estado: 'MG', status: 'Novo' },
+    { nome: 'Ana Carolina Souza', cpf: '321.654.987-12', telefone: '(85) 95432-1098', margem: 5100, cidade: 'Fortaleza', estado: 'CE', status: 'Novo' },
+    { nome: 'Carlos Eduardo Alves', cpf: '789.123.456-34', telefone: '(71) 94321-0987', margem: 3900, cidade: 'Salvador', estado: 'BA', status: 'Novo' },
+  ]
+
+  // Dados para Odontologia
+  const leadsOdonto = [
+    { nome: 'Juliana Martins', cpf: '234.567.890-12', telefone: '(11) 99876-5432', procedimento: 'Implante Dentário', cidade: 'São Paulo', estado: 'SP', status: 'Interessado' },
+    { nome: 'Roberto Carlos Silva', cpf: '345.678.901-23', telefone: '(21) 98765-4321', procedimento: 'Ortodontia', cidade: 'Rio de Janeiro', estado: 'RJ', status: 'Agendado' },
+    { nome: 'Fernanda Lima', cpf: '456.789.012-34', telefone: '(31) 97654-3210', procedimento: 'Clareamento', cidade: 'Belo Horizonte', estado: 'MG', status: 'Novo' },
+    { nome: 'Ricardo Gomes', cpf: '567.890.123-45', telefone: '(85) 96543-2109', procedimento: 'Limpeza', cidade: 'Fortaleza', estado: 'CE', status: 'Novo' },
+    { nome: 'Patricia Santos', cpf: '678.901.234-56', telefone: '(71) 95432-1098', procedimento: 'Extração', cidade: 'Salvador', estado: 'BA', status: 'Interessado' },
+  ]
+
+  // Dados para Clínica Médica
+  const leadsClinica = [
+    { nome: 'Antonio Pereira', cpf: '789.012.345-67', telefone: '(11) 99988-7766', especialidade: 'Cardiologia', cidade: 'São Paulo', estado: 'SP', status: 'Agendado' },
+    { nome: 'Beatriz Almeida', cpf: '890.123.456-78', telefone: '(21) 98877-6655', especialidade: 'Ortopedia', cidade: 'Rio de Janeiro', estado: 'RJ', status: 'Novo' },
+    { nome: 'Claudio Ferreira', cpf: '901.234.567-89', telefone: '(31) 97766-5544', especialidade: 'Pediatria', cidade: 'Belo Horizonte', estado: 'MG', status: 'Novo' },
+    { nome: 'Daniela Costa', cpf: '012.345.678-90', telefone: '(85) 96655-4433', especialidade: 'Ginecologia', cidade: 'Fortaleza', estado: 'CE', status: 'Interessado' },
+    { nome: 'Eduardo Rocha', cpf: '123.456.789-01', telefone: '(71) 95544-3322', especialidade: 'Neurologia', cidade: 'Salvador', estado: 'BA', status: 'Agendado' },
+  ]
+
+  // Dados para Psicologia
+  const leadsPsico = [
+    { nome: 'Gabriela Mendes', cpf: '234.567.890-23', telefone: '(11) 99999-8888', tipo: 'Terapia Individual', cidade: 'São Paulo', estado: 'SP', status: 'Novo' },
+    { nome: 'Henrique Barbosa', cpf: '345.678.901-34', telefone: '(21) 98888-7777', tipo: 'Terapia Casal', cidade: 'Rio de Janeiro', estado: 'RJ', status: 'Agendado' },
+    { nome: 'Isabela Rodrigues', cpf: '456.789.012-45', telefone: '(31) 97777-6666', tipo: 'Terapia Infantil', cidade: 'Belo Horizonte', estado: 'MG', status: 'Novo' },
+    { nome: 'Jorge Oliveira', cpf: '567.890.123-56', telefone: '(85) 96666-5555', tipo: 'Ansiedade', cidade: 'Fortaleza', estado: 'CE', status: 'Interessado' },
+    { nome: 'Larissa Fernandes', cpf: '678.901.234-67', telefone: '(71) 95555-4444', tipo: 'Depressão', cidade: 'Salvador', estado: 'BA', status: 'Novo' },
+  ]
+
+  // Dados para Nutrição
+  const leadsNutricao = [
+    { nome: 'Marcos Vieira', cpf: '789.012.345-78', telefone: '(11) 99777-6666', objetivo: 'Emagrecimento', cidade: 'São Paulo', estado: 'SP', status: 'Novo' },
+    { nome: 'Natalia Campos', cpf: '890.123.456-89', telefone: '(21) 98666-5555', objetivo: 'Hipertrofia', cidade: 'Rio de Janeiro', estado: 'RJ', status: 'Agendado' },
+    { nome: 'Otavio Sousa', cpf: '901.234.567-90', telefone: '(31) 97555-4444', objetivo: 'Gestante', cidade: 'Belo Horizonte', estado: 'MG', status: 'Novo' },
+    { nome: 'Paula Dias', cpf: '012.345.678-01', telefone: '(85) 96444-3333', objetivo: 'Diabetes', cidade: 'Fortaleza', estado: 'CE', status: 'Interessado' },
+    { nome: 'Renato Pinto', cpf: '123.456.789-12', telefone: '(71) 95333-2222', objetivo: 'Colesterol Alto', cidade: 'Salvador', estado: 'BA', status: 'Novo' },
+  ]
+
+  // Dados para Academia
+  const leadsAcademia = [
+    { nome: 'Sofia Cardoso', cpf: '234.567.890-34', telefone: '(11) 99555-4444', plano: 'Musculação', cidade: 'São Paulo', estado: 'SP', status: 'Matriculado' },
+    { nome: 'Thiago Moraes', cpf: '345.678.901-45', telefone: '(21) 98444-3333', plano: 'CrossFit', cidade: 'Rio de Janeiro', estado: 'RJ', status: 'Novo' },
+    { nome: 'Ursula Freitas', cpf: '456.789.012-56', telefone: '(31) 97333-2222', plano: 'Pilates', cidade: 'Belo Horizonte', estado: 'MG', status: 'Novo' },
+    { nome: 'Victor Hugo', cpf: '567.890.123-67', telefone: '(85) 96222-1111', plano: 'Personal Trainer', cidade: 'Fortaleza', estado: 'CE', status: 'Agendado' },
+    { nome: 'Wanda Ribeiro', cpf: '678.901.234-78', telefone: '(71) 95111-0000', plano: 'Spinning', cidade: 'Salvador', estado: 'BA', status: 'Novo' },
+  ]
+
+  const leads = nichoType === 'correspondente' ? leadsCorrespondente :
+                nichoType === 'odonto' ? leadsOdonto :
+                nichoType === 'clinica' ? leadsClinica :
+                nichoType === 'psico' ? leadsPsico :
+                nichoType === 'nutricao' ? leadsNutricao :
+                nichoType === 'academia' ? leadsAcademia : leadsCorrespondente
+
+  const enviarParaCampanhas = () => {
+    alert(`✅ ${total} leads de ${nicho} enviados para CAMPANHAS com sucesso!\n\nJá estão prontos para criar a campanha.`)
+  }
+
+  const enviarParaSMS = () => {
+    alert(`✅ ${total} leads de ${nicho} enviados para SMS com sucesso!\n\nJá estão prontos para disparar mensagens.`)
+  }
+
+  const enviarTodosAutomatico = () => {
+    alert(`🚀 AUTOMÁTICO ATIVADO!\n\n✅ ${total} leads enviados para CAMPANHAS\n✅ ${total} leads enviados para SMS\n✅ Disparos agendados automaticamente\n\nTudo pronto para trabalhar!`)
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Ações Rápidas */}
+      <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl p-6 text-white">
+        <h2 className="text-2xl font-bold mb-2">Leads Encontrados: {nicho}</h2>
+        <p className="mb-6 opacity-90">
+          O robô encontrou <strong>{total} leads quentes</strong> em {nicho}
+        </p>
+        <div className="grid md:grid-cols-3 gap-4">
+          <button
+            onClick={enviarParaCampanhas}
+            className="bg-white text-purple-600 px-6 py-4 rounded-lg hover:bg-purple-50 transition-all font-semibold flex items-center justify-center gap-2"
+          >
+            <Target className="w-5 h-5" />
+            Enviar para Campanhas
+          </button>
+          <button
+            onClick={enviarParaSMS}
+            className="bg-white text-purple-600 px-6 py-4 rounded-lg hover:bg-purple-50 transition-all font-semibold flex items-center justify-center gap-2"
+          >
+            <MessageSquare className="w-5 h-5" />
+            Enviar para SMS
+          </button>
+          <button
+            onClick={enviarTodosAutomatico}
+            className="bg-green-500 text-white px-6 py-4 rounded-lg hover:bg-green-600 transition-all font-semibold flex items-center justify-center gap-2 shadow-lg"
+          >
+            <Zap className="w-5 h-5" />
+            ENVIAR TUDO AUTOMÁTICO
+          </button>
+        </div>
+      </div>
+
+      {/* Tabela de Leads */}
+      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+            Lista de Leads - {nicho}
+          </h3>
+          <button className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2">
+            <Download className="w-4 h-4" />
+            Exportar Excel
+          </button>
+        </div>
+        
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-slate-50 dark:bg-slate-700">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Nome Completo</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">CPF</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Telefone</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Cidade/Estado</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">
+                  {nichoType === 'correspondente' ? 'Margem' : 
+                   nichoType === 'odonto' ? 'Procedimento' :
+                   nichoType === 'clinica' ? 'Especialidade' :
+                   nichoType === 'psico' ? 'Tipo Terapia' :
+                   nichoType === 'nutricao' ? 'Objetivo' :
+                   nichoType === 'academia' ? 'Plano' : 'Info'}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+              {leads.map((lead: any, index) => (
+                <tr key={index} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                  <td className="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">{lead.nome}</td>
+                  <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">{lead.cpf}</td>
+                  <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">{lead.telefone}</td>
+                  <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">{lead.cidade}/{lead.estado}</td>
+                  <td className="px-6 py-4 text-sm">
+                    {nichoType === 'correspondente' ? (
+                      <span className="font-semibold text-green-600">R$ {lead.margem?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    ) : (
+                      <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">
+                        {lead.procedimento || lead.especialidade || lead.tipo || lead.objetivo || lead.plano}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700">
+                      {lead.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex gap-2">
+                      <button className="p-2 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors" title="WhatsApp">
+                        <MessageSquare className="w-4 h-4" />
+                      </button>
+                      <button className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors" title="Proposta">
+                        <FileText className="w-4 h-4" />
+                      </button>
+                      <button className="p-2 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors" title="Ver Detalhes">
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="p-4 bg-slate-50 dark:bg-slate-700 border-t border-slate-200 dark:border-slate-600 text-center text-sm text-slate-600 dark:text-slate-400">
+          Mostrando 5 de {total} leads encontrados
+        </div>
+      </div>
+    </div>
+  )
+}
+

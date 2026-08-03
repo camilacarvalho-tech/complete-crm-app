@@ -13,9 +13,13 @@
 | Item | Status |
 |------|--------|
 | Arquitetura escrita | ✅ `ARCHITECTURE_V1.2.md` |
-| Aprovação do usuário | ⏳ pendente |
-| Código V1.2 | ❌ ainda não iniciado (combinado: arquitetura antes de codar) |
-| Roadmap etapas | ✅ `ROADMAP_V1.2.md` |
+| Aprovação do usuário | ✅ (andamento 2026-08-01) |
+| **E1** tipos + coleções + filtros + `1.2.0` | ✅ |
+| **E2** CRUD Fontes de Pesquisa | ✅ `/fontes-pesquisa` |
+| **E3** SearchEngine + progresso/cancel | ✅ |
+| **E4** Conector CSV | ✅ |
+| E5 Score inteligente + métricas | ⏳ próximo |
+| E6–E9 | ⏳ pendente |
 
 ## V1.1 — estado (homolog / visual)
 

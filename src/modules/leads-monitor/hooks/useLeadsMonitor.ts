@@ -4,12 +4,14 @@ import { useAuth } from '../../../contexts/AuthContext'
 import {
   AUTO_REFRESH_MS,
   COL_AUDIT,
+  COL_FONTES,
   COL_HEALTH,
   COL_INBOX,
   COL_JOBS,
   COL_LOGS,
   COL_OPORTUNIDADES,
   COL_PESQUISAS,
+  COL_SEARCH_RUNS,
   COL_DLQ,
   FILTROS_VAZIOS,
 } from '../constants'
@@ -18,14 +20,21 @@ import { aprovarOportunidade, rejeitarOportunidade } from '../pipeline/approve'
 import { enviarOportunidadeParaCrm } from '../pipeline/sendToCrm'
 import { enqueueJob } from '../services/jobQueue'
 import { processOneJob, startJobWorkerLoop } from '../services/jobWorker'
+import { startIntelligentSearch, requestSearchCancel } from '../search/startSearch'
+import { normalizeFiltros } from '../search/filters'
 import type {
   FiltrosPesquisa,
   MonitorRunResult,
   OportunidadeMonitor,
   PesquisaSalva,
+  SearchRun,
 } from '../types'
 
 bootstrapConnectors()
+
+function runTs(r: SearchRun): number {
+  return (r.criadoEm as any)?.toMillis?.() || (r.criadoEm as any)?.seconds * 1000 || 0
+}
 
 export function useLeadsMonitor() {
   const { usuario } = useAuth()
@@ -33,6 +42,7 @@ export function useLeadsMonitor() {
   const [buscando, setBuscando] = useState(false)
   const [ultimoResultado, setUltimoResultado] = useState<MonitorRunResult | null>(null)
   const [ultimoJobId, setUltimoJobId] = useState<string | null>(null)
+  const [activeSearchRunId, setActiveSearchRunId] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [ultimaAutoExecucao, setUltimaAutoExecucao] = useState<number | null>(null)
   const autoBusy = useRef(false)
@@ -73,6 +83,12 @@ export function useLeadsMonitor() {
   const { items: auditItems } = useTenantCollection(COL_AUDIT, [], {
     tela: 'leads-monitor-audit',
   })
+  const { items: searchRunsRaw } = useTenantCollection<SearchRun>(COL_SEARCH_RUNS, [], {
+    tela: 'leads-monitor-search-runs',
+  })
+  const { items: fontesItems } = useTenantCollection(COL_FONTES, [], {
+    tela: 'leads-monitor-fontes-hook',
+  })
 
   const oportunidades = useMemo(() => {
     return [...oportunidadesRaw].sort((a, b) => {
@@ -90,6 +106,22 @@ export function useLeadsMonitor() {
     })
   }, [pesquisasRaw])
 
+  const searchRuns = useMemo(() => {
+    return [...searchRunsRaw].sort((a, b) => runTs(b) - runTs(a))
+  }, [searchRunsRaw])
+
+  const activeSearchRun = useMemo(() => {
+    if (activeSearchRunId) {
+      const found = searchRuns.find((r) => r.id === activeSearchRunId)
+      if (found) return found
+    }
+    return (
+      searchRuns.find(
+        (r) => r.status === 'running' || r.status === 'queued'
+      ) || null
+    )
+  }, [searchRuns, activeSearchRunId])
+
   const stats = useMemo(() => {
     const encontrados = oportunidades.length
     const aprovados = oportunidades.filter(
@@ -106,6 +138,15 @@ export function useLeadsMonitor() {
       pontuaveis.length === 0
         ? 0
         : Math.round(pontuaveis.reduce((a, o) => a + (o.score || 0), 0) / pontuaveis.length)
+
+    const hojeStart = new Date()
+    hojeStart.setHours(0, 0, 0, 0)
+    const hojeMs = hojeStart.getTime()
+    const empresasHoje = oportunidades.filter((o) => {
+      const t = (o.criadoEm as any)?.toMillis?.() || (o.criadoEm as any)?.seconds * 1000 || 0
+      return t >= hojeMs
+    }).length
+
     return {
       encontrados,
       aprovados,
@@ -115,10 +156,12 @@ export function useLeadsMonitor() {
       quentes,
       scoreMedio,
       total: encontrados,
+      empresasHoje,
+      fontesAtivas: fontesItems.filter((f: any) => f.status === 'ativa').length,
     }
-  }, [oportunidades])
+  }, [oportunidades, fontesItems])
 
-  /** Enfileira job (UI não bloqueia o pipeline) e dispara um processamento em background. */
+  /** Busca inteligente V1.2 — enfileira e retorna imediatamente (UI livre). */
   const executarBusca = useCallback(
     async (overrides?: Partial<FiltrosPesquisa>, pesquisaId?: string) => {
       if (!empresaId) {
@@ -128,51 +171,58 @@ export function useLeadsMonitor() {
       setBuscando(true)
       setErro(null)
       try {
-        const f = { ...filtros, ...overrides }
-        const jobId = await enqueueJob({
+        const f = normalizeFiltros({ ...filtros, ...overrides })
+        const { searchRunId, jobId, fontesIds } = await startIntelligentSearch({
           empresaId,
-          type: 'search',
-          payload: { filtros: f, pesquisaId },
+          filtros: f,
+          pesquisaId,
           actor: { usuarioId: usuario?.id, usuarioNome: usuario?.nome },
         })
+        setActiveSearchRunId(searchRunId)
         setUltimoJobId(jobId)
-        // Processa em background — lista atualiza via onSnapshot
-        void processOneJob(empresaId)
-          .then((did) => {
-            if (did) {
-              setUltimoResultado({
-                encontrados: 0,
-                novos: 0,
-                duplicados: 0,
-                fontes: [`job:${jobId}`],
-              })
-            }
-          })
-          .catch((e) => setErro(e?.message || 'Falha no worker'))
+        void processOneJob(empresaId).catch((e) => setErro(e?.message || 'Falha no worker'))
         const pending: MonitorRunResult = {
           encontrados: 0,
           novos: 0,
           duplicados: 0,
-          fontes: [`enfileirado:${jobId}`],
+          fontes: fontesIds.map((id) => `fonte:${id.slice(0, 6)}`),
         }
         setUltimoResultado(pending)
         return pending
       } catch (e: any) {
-        setErro(e?.message || 'Falha ao enfileirar busca')
+        setErro(e?.message || 'Falha ao iniciar busca inteligente')
         return null
       } finally {
+        // Libera UI imediatamente — progresso via SearchRun
         setBuscando(false)
       }
     },
     [empresaId, filtros, usuario?.id, usuario?.nome]
   )
 
+  const cancelarBusca = useCallback(async () => {
+    if (!empresaId || !activeSearchRun?.id) return
+    await requestSearchCancel({
+      empresaId,
+      searchRunId: activeSearchRun.id,
+      actor: { usuarioId: usuario?.id, usuarioNome: usuario?.nome },
+    })
+    await enqueueJob({
+      empresaId,
+      type: 'search_cancel',
+      payload: { searchRunId: activeSearchRun.id },
+      actor: { usuarioId: usuario?.id, usuarioNome: usuario?.nome },
+    })
+    void processOneJob(empresaId)
+  }, [empresaId, activeSearchRun?.id, usuario?.id, usuario?.nome])
+
   const salvarPesquisa = useCallback(
     async (nome: string) => {
       if (!empresaId) throw new Error('Empresa não identificada')
+      const f = normalizeFiltros(filtros)
       return createPesquisa({
-        nome: nome.trim() || `Pesquisa ${filtros.segmento || filtros.cidade || 'geral'}`,
-        ...filtros,
+        nome: nome.trim() || `Pesquisa ${f.segmento || f.cidade || 'geral'}`,
+        ...f,
         ativa: true,
         intervaloMinutos: Math.round(AUTO_REFRESH_MS / 60000),
       })
@@ -181,12 +231,22 @@ export function useLeadsMonitor() {
   )
 
   const carregarPesquisa = useCallback((p: PesquisaSalva) => {
-    setFiltros({
-      cidade: p.cidade || '',
-      estado: p.estado || '',
-      segmento: p.segmento || '',
-      palavraChave: p.palavraChave || '',
-    })
+    setFiltros(
+      normalizeFiltros({
+        cidade: p.cidade || '',
+        estado: p.estado || '',
+        segmento: p.segmento || '',
+        palavraChave: p.palavraChave || '',
+        bairro: p.bairro,
+        cep: p.cep,
+        cnae: p.cnae,
+        nomeEmpresa: p.nomeEmpresa,
+        site: p.site,
+        instagram: p.instagram,
+        facebook: p.facebook,
+        googleMapsQuery: p.googleMapsQuery,
+      })
+    )
   }, [])
 
   const aprovarEEnviar = useCallback(
@@ -215,13 +275,27 @@ export function useLeadsMonitor() {
     [empresaId, usuario?.id, usuario?.nome]
   )
 
-  // Worker loop (escala horizontal-ready via lease)
   useEffect(() => {
     if (!empresaId) return
-    return startJobWorkerLoop(empresaId, 8000)
+    return startJobWorkerLoop(empresaId, 4000)
   }, [empresaId])
 
-  // Auto-monitor: enfileira jobs das pesquisas ativas
+  // Sincroniza último resultado quando SearchRun termina
+  useEffect(() => {
+    if (!activeSearchRun) return
+    if (activeSearchRun.status === 'succeeded' || activeSearchRun.status === 'failed') {
+      const r = activeSearchRun.resultadoResumo
+      if (r) {
+        setUltimoResultado({
+          encontrados: r.encontrados,
+          novos: r.novos,
+          duplicados: r.duplicados,
+          fontes: r.fontes,
+        })
+      }
+    }
+  }, [activeSearchRun])
+
   useEffect(() => {
     if (!empresaId) return
     const tick = async () => {
@@ -231,25 +305,25 @@ export function useLeadsMonitor() {
       autoBusy.current = true
       try {
         for (const p of ativas) {
-          // Evita empilhar jobs se já há busca pendente para a mesma pesquisa
           const pendingSame = jobs.some(
             (j: any) =>
               j?.payload?.pesquisaId === p.id &&
               (j.status === 'queued' || j.status === 'leased' || j.status === 'running')
           )
           if (pendingSame) continue
-          await enqueueJob({
+          const runningSearch = searchRuns.some(
+            (r) => r.status === 'running' || r.status === 'queued'
+          )
+          if (runningSearch) continue
+          await startIntelligentSearch({
             empresaId,
-            type: 'search',
-            payload: {
-              filtros: {
-                cidade: p.cidade || '',
-                estado: p.estado || '',
-                segmento: p.segmento || '',
-                palavraChave: p.palavraChave || '',
-              },
-              pesquisaId: p.id,
-            },
+            filtros: normalizeFiltros({
+              cidade: p.cidade || '',
+              estado: p.estado || '',
+              segmento: p.segmento || '',
+              palavraChave: p.palavraChave || '',
+            }),
+            pesquisaId: p.id,
             actor: { usuarioId: usuario?.id, usuarioNome: usuario?.nome },
           })
         }
@@ -263,7 +337,7 @@ export function useLeadsMonitor() {
 
     const id = window.setInterval(tick, AUTO_REFRESH_MS)
     return () => window.clearInterval(id)
-  }, [empresaId, pesquisas, jobs, usuario?.id, usuario?.nome])
+  }, [empresaId, pesquisas, jobs, searchRuns, usuario?.id, usuario?.nome])
 
   return {
     empresaId,
@@ -277,6 +351,9 @@ export function useLeadsMonitor() {
     inboxItems,
     logItems,
     auditItems,
+    searchRuns,
+    activeSearchRun,
+    fontesItems,
     loading,
     buscando,
     erro: erro || loadError,
@@ -290,6 +367,7 @@ export function useLeadsMonitor() {
       ultimaExecucao: ultimaAutoExecucao,
     },
     executarBusca,
+    cancelarBusca,
     salvarPesquisa,
     carregarPesquisa,
     updatePesquisa,

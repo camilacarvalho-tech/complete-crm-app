@@ -1,0 +1,32 @@
+rules_version = "2";
+service cloud.firestore {
+ match /databases/{database}/documents {
+ function temPerfil() {
+ return request.auth != null && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid));
+ }
+ function perfil() {
+ return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+ }
+ function isSuper() {
+ return request.auth != null && (!temPerfil() || perfil().role == "superadmin");
+ }
+ function minhaEmpresa() {
+ return temPerfil() ? perfil().empresaId : "__nenhuma__";
+ }
+ match /usuarios/{uid} {
+ allow read: if request.auth != null && (request.auth.uid == uid || isSuper());
+ allow write: if false;
+ }
+ match /clientes/{id} {
+ allow read: if request.auth != null && (isSuper() || resource.data.empresaId == minhaEmpresa());
+ allow create: if request.auth != null && (isSuper() || request.resource.data.empresaId == minhaEmpresa());
+ allow update, delete: if request.auth != null && (isSuper() || resource.data.empresaId == minhaEmpresa());
+ match /mensagens/{m} {
+ allow read, write: if request.auth != null;
+ }
+ }
+ match /empresas/{id} {
+ allow read, write: if isSuper();
+ }
+ }
+}

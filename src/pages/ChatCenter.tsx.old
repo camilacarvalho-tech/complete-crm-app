@@ -1,0 +1,1392 @@
+import { useState, useEffect, useRef } from 'react'
+import { 
+  MessageCircle, Send, Phone, User, FileText, X, Save, CheckCircle, 
+  Paperclip, Edit2, Clock, Check, CheckCheck, MoreVertical, UserPlus,
+  ArrowRight, AlertCircle, Users, Search, Filter, RefreshCw, ChevronLeft, ChevronRight,
+  Download
+} from 'lucide-react'
+import * as XLSX from 'xlsx'
+
+// ========== INTERFACES ==========
+interface Conversa {
+  id: string
+  numeroWhatsApp: string
+  nomeCliente: string
+  cpfCliente: string
+  emailCliente?: string
+  status: 'nao_lida' | 'lida' | 'aguardando' | 'finalizada' | 'fila'
+  atendente?: string
+  ultimaMensagem?: string
+  timestampUltimaMensagem?: Date
+  naoLidas: number
+  prioridade?: 'normal' | 'urgente' | 'vip'
+  criadoEm: Date
+  atualizadoEm: Date
+}
+
+interface Mensagem {
+  id: string
+  texto: string
+  remetente: 'cliente' | 'atendente'
+  timestamp: Date
+  lida: boolean
+  editada: boolean
+  historicoEdicoes?: Array<{ texto: string, editadoEm: Date }>
+}
+
+interface Cliente {
+  id: string
+  nome: string
+  cpf: string
+  telefone: string
+  email?: string
+  whatsapp?: string
+  status: string
+  modalidade?: string
+  atendente?: string
+  observacoes?: string
+  empresa?: string
+  historico?: string
+  funil?: string
+  responsavel?: string
+}
+
+// ========== NICHOS E MODALIDADES ==========
+const nichosModalidades: Record<string, string[]> = {
+  'Odontologia': [
+    'Clareamento Dental',
+    'Implante Dentário',
+    'Ortodontia (Aparelho)',
+    'Prótese Dentária',
+    'Limpeza/Profilaxia',
+    'Canal (Endodontia)',
+    'Extração',
+    'Periodontia (Gengiva)',
+    'Harmonização Orofacial',
+    'Cirurgia Bucomaxilofacial'
+  ],
+  'Corban/INSS': [
+    'Aposentadoria por Idade',
+    'Aposentadoria por Tempo',
+    'Aposentadoria Especial',
+    'BPC/LOAS',
+    'Auxílio-Doença',
+    'Auxílio-Acidente',
+    'Pensão por Morte',
+    'Revisão de Benefício',
+    'Empréstimo Consignado',
+    'Refinanciamento',
+    'Portabilidade',
+    'Cartão Consignado'
+  ],
+  'Advocacia': [
+    'Direito Civil',
+    'Direito Trabalhista',
+    'Direito Criminal',
+    'Direito de Família',
+    'Direito Previdenciário',
+    'Direito do Consumidor',
+    'Direito Empresarial',
+    'Direito Imobiliário',
+    'Direito Tributário',
+    'Inventário',
+    'Divórcio',
+    'Ação de Despejo'
+  ],
+  'Academia/Fitness': [
+    'Musculação',
+    'Funcional',
+    'CrossFit',
+    'Spinning/Bike',
+    'Pilates',
+    'Yoga',
+    'Dança',
+    'Lutas/Artes Marciais',
+    'Personal Trainer',
+    'Avaliação Física',
+    'Nutrição Esportiva'
+  ],
+  'Clínica Médica': [
+    'Clínico Geral',
+    'Cardiologia',
+    'Dermatologia',
+    'Ortopedia',
+    'Pediatria',
+    'Ginecologia',
+    'Oftalmologia',
+    'Psiquiatria',
+    'Neurologia',
+    'Endocrinologia',
+    'Check-up',
+    'Exames Laboratoriais'
+  ],
+  'Estética/Beleza': [
+    'Limpeza de Pele',
+    'Peeling',
+    'Botox',
+    'Preenchimento',
+    'Harmonização Facial',
+    'Depilação a Laser',
+    'Massagem Modeladora',
+    'Drenagem Linfática',
+    'Microagulhamento',
+    'Tratamento Capilar',
+    'Manicure/Pedicure',
+    'Design de Sobrancelha'
+  ],
+  'Psicologia': [
+    'Terapia Individual',
+    'Terapia de Casal',
+    'Terapia Familiar',
+    'Terapia Infantil',
+    'Avaliação Psicológica',
+    'Orientação Vocacional',
+    'Psicoterapia Online'
+  ],
+  'Nutrição': [
+    'Consulta Nutricional',
+    'Avaliação Física',
+    'Dieta para Emagrecimento',
+    'Dieta para Ganho de Massa',
+    'Nutrição Esportiva',
+    'Nutrição Clínica',
+    'Acompanhamento Online'
+  ],
+  'Imobiliária': [
+    'Venda de Imóvel',
+    'Locação de Imóvel',
+    'Administração de Imóvel',
+    'Avaliação de Imóvel',
+    'Financiamento Imobiliário'
+  ],
+  'Marketing Digital': [
+    'Gestão de Redes Sociais',
+    'Tráfego Pago (Ads)',
+    'SEO',
+    'Landing Page',
+    'Design Gráfico',
+    'Consultoria Digital'
+  ]
+}
+
+// ========== DADOS MOCK ==========
+const conversasMock: Conversa[] = [
+  {
+    id: '1',
+    numeroWhatsApp: '11987654321',
+    nomeCliente: 'João Silva',
+    cpfCliente: '123.456.789-00',
+    emailCliente: 'joao@email.com',
+    status: 'nao_lida',
+    atendente: 'Carlos',
+    ultimaMensagem: 'Gostaria de saber sobre os serviços',
+    timestampUltimaMensagem: new Date(),
+    naoLidas: 3,
+    prioridade: 'normal',
+    criadoEm: new Date(),
+    atualizadoEm: new Date()
+  },
+  {
+    id: '2',
+    numeroWhatsApp: '11998765432',
+    nomeCliente: 'Maria Santos',
+    cpfCliente: '987.654.321-00',
+    emailCliente: 'maria@email.com',
+    status: 'lida',
+    atendente: 'Carlos',
+    ultimaMensagem: 'Obrigada pelo atendimento!',
+    timestampUltimaMensagem: new Date(Date.now() - 3600000),
+    naoLidas: 0,
+    prioridade: 'normal',
+    criadoEm: new Date(),
+    atualizadoEm: new Date()
+  },
+  {
+    id: '3',
+    numeroWhatsApp: '11976543210',
+    nomeCliente: 'Pedro Oliveira',
+    cpfCliente: '456.789.123-00',
+    status: 'fila',
+    ultimaMensagem: 'Olá, preciso de ajuda',
+    timestampUltimaMensagem: new Date(Date.now() - 7200000),
+    naoLidas: 1,
+    prioridade: 'urgente',
+    criadoEm: new Date(),
+    atualizadoEm: new Date()
+  }
+]
+
+const mensagensMock: Record<string, Mensagem[]> = {
+  '1': [
+    {
+      id: 'm1',
+      texto: 'Olá, gostaria de saber sobre os serviços disponíveis',
+      remetente: 'cliente',
+      timestamp: new Date(Date.now() - 300000),
+      lida: true,
+      editada: false
+    },
+    {
+      id: 'm2',
+      texto: 'Olá! Podemos ajudá-lo com nossos planos. Você tem alguma preferência?',
+      remetente: 'atendente',
+      timestamp: new Date(Date.now() - 240000),
+      lida: true,
+      editada: false
+    },
+    {
+      id: 'm3',
+      texto: 'Gostaria de saber sobre os serviços',
+      remetente: 'cliente',
+      timestamp: new Date(),
+      lida: true,
+      editada: false
+    }
+  ],
+  '2': [
+    {
+      id: 'm4',
+      texto: 'Obrigada pelo atendimento!',
+      remetente: 'cliente',
+      timestamp: new Date(Date.now() - 3600000),
+      lida: true,
+      editada: false
+    },
+    {
+      id: 'm5',
+      texto: 'Por nada! Estamos à disposição.',
+      remetente: 'atendente',
+      timestamp: new Date(Date.now() - 3300000),
+      lida: true,
+      editada: false
+    }
+  ]
+}
+
+// ========== COMPONENTE PRINCIPAL ==========
+export default function ChatCenter() {
+  // Estados principais
+  const [conversas, setConversas] = useState<Conversa[]>(conversasMock.filter(c => c.status !== 'fila'))
+  const [conversasFila, setConversasFila] = useState<Conversa[]>(conversasMock.filter(c => c.status === 'fila'))
+  const [conversaSelecionada, setConversaSelecionada] = useState<Conversa | null>(null)
+  const [mensagens, setMensagens] = useState<Mensagem[]>([])
+  const [novaMensagem, setNovaMensagem] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [modalFullscreen, setModalFullscreen] = useState(false)
+  
+  // Estados de modais
+  const [modalEditarMensagem, setModalEditarMensagem] = useState(false)
+  const [mensagemEditando, setMensagemEditando] = useState<Mensagem | null>(null)
+  const [textoEditado, setTextoEditado] = useState('')
+  const [painelClienteAberto, setPainelClienteAberto] = useState(true) // Sempre inicia aberto
+  
+  // Estados para nichos e modalidades
+  const [nichoSelecionado, setNichoSelecionado] = useState('')
+  const [modalidadesPorNicho, setModalidadesPorNicho] = useState<string[]>([])
+  
+  // Dados do cliente
+  const [clienteInfo, setClienteInfo] = useState<Cliente | null>(null)
+  const [formCliente, setFormCliente] = useState({
+    nome: '',
+    cpf: '',
+    email: '',
+    telefone: '',
+    empresa: '',
+    status: 'Lead',
+    nicho: '',
+    modalidade: '',
+    funil: 'Prospecção',
+    responsavel: 'Carlos',
+    observacoes: '',
+    historico: ''
+  })
+  
+  // Filtros
+  const [filtroStatus, setFiltroStatus] = useState<string>('todas')
+  const [busca, setBusca] = useState('')
+  
+  const chatEndRef = useRef<HTMLDivElement>(null)
+
+  // ========== CARREGAR MENSAGENS DA CONVERSA SELECIONADA ==========
+  useEffect(() => {
+    if (!conversaSelecionada) {
+      setMensagens([])
+      setClienteInfo(null)
+      return
+    }
+    
+    // Marcar como lida ao abrir
+    if (conversaSelecionada.status === 'nao_lida') {
+      marcarComoLida(conversaSelecionada.id)
+    }
+    
+    // Carregar mensagens mock
+    const mensagensData = mensagensMock[conversaSelecionada.id] || []
+    setMensagens(mensagensData)
+    
+    // Carregar dados do cliente
+    carregarDadosCliente()
+    
+    setTimeout(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, 100)
+  }, [conversaSelecionada])
+
+  // ========== FECHAR MODAL COM ESC ==========
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setModalFullscreen(false)
+      }
+    }
+    
+    if (modalFullscreen) {
+      document.addEventListener('keydown', handleEsc)
+      document.body.style.overflow = 'hidden' // Previne scroll do body
+    }
+    
+    return () => {
+      document.removeEventListener('keydown', handleEsc)
+      document.body.style.overflow = 'unset'
+    }
+  }, [modalFullscreen])
+
+  // ========== BUSCAR DADOS DO CLIENTE ==========
+  const carregarDadosCliente = () => {
+    if (!conversaSelecionada) return
+    
+    // Mock - simular cliente já cadastrado
+    const clienteMock: Cliente = {
+      id: 'c1',
+      nome: conversaSelecionada.nomeCliente || '',
+      cpf: conversaSelecionada.cpfCliente || '',
+      telefone: conversaSelecionada.numeroWhatsApp || '',
+      email: conversaSelecionada.emailCliente || '',
+      whatsapp: conversaSelecionada.numeroWhatsApp || '',
+      status: 'Lead',
+      modalidade: 'INSS',
+      atendente: 'Carlos',
+      empresa: 'Empresa XYZ',
+      observacoes: 'Cliente interessado em serviços',
+      funil: 'Prospecção',
+      responsavel: 'Carlos',
+      historico: 'Primeiro contato via WhatsApp'
+    }
+    
+    setClienteInfo(clienteMock)
+    setFormCliente({
+      nome: clienteMock.nome,
+      cpf: clienteMock.cpf,
+      email: clienteMock.email || '',
+      telefone: clienteMock.telefone,
+      empresa: clienteMock.empresa || '',
+      status: clienteMock.status,
+      nicho: 'Corban/INSS',
+      modalidade: clienteMock.modalidade || '',
+      funil: clienteMock.funil || 'Prospecção',
+      responsavel: clienteMock.responsavel || 'Carlos',
+      observacoes: clienteMock.observacoes || '',
+      historico: clienteMock.historico || ''
+    })
+    
+    // Definir nicho inicial
+    setNichoSelecionado('Corban/INSS')
+    setModalidadesPorNicho(nichosModalidades['Corban/INSS'] || [])
+  }
+
+  // ========== MUDAR NICHO E ATUALIZAR MODALIDADES ==========
+  const handleNichoChange = (novoNicho: string) => {
+    setNichoSelecionado(novoNicho)
+    setFormCliente({ ...formCliente, nicho: novoNicho, modalidade: '' })
+    setModalidadesPorNicho(nichosModalidades[novoNicho] || [])
+  }
+
+
+  // ========== PEGAR CLIENTE DA FILA ==========
+  const pegarClienteDaFila = (conversaId: string) => {
+    const conversa = conversasFila.find(c => c.id === conversaId)
+    if (!conversa) return
+    
+    conversa.status = 'nao_lida'
+    conversa.atendente = 'Carlos'
+    
+    setConversasFila(conversasFila.filter(c => c.id !== conversaId))
+    setConversas([conversa, ...conversas])
+    
+    alert('✅ Cliente atribuído a você!')
+  }
+
+  // ========== MARCAR COMO LIDA / NÃO LIDA ==========
+  const marcarComoLida = (conversaId: string) => {
+    setConversas(conversas.map(c => 
+      c.id === conversaId ? { ...c, status: 'lida', naoLidas: 0 } : c
+    ))
+  }
+
+  const marcarComoNaoLida = (conversaId: string) => {
+    setConversas(conversas.map(c => 
+      c.id === conversaId ? { ...c, status: 'nao_lida', naoLidas: 1 } : c
+    ))
+    alert('✅ Marcada como não lida!')
+  }
+
+  // ========== ENVIAR MENSAGEM ==========
+  const enviarMensagem = () => {
+    if (!novaMensagem.trim() || !conversaSelecionada) return
+    
+    const novaMens: Mensagem = {
+      id: 'm' + Date.now(),
+      texto: novaMensagem.trim(),
+      remetente: 'atendente',
+      timestamp: new Date(),
+      lida: true,
+      editada: false
+    }
+    
+    setMensagens([...mensagens, novaMens])
+    setNovaMensagem('')
+    
+    // Atualizar última mensagem
+    setConversas(conversas.map(c => 
+      c.id === conversaSelecionada.id 
+        ? { ...c, ultimaMensagem: novaMensagem.trim(), timestampUltimaMensagem: new Date() }
+        : c
+    ))
+    
+    setTimeout(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, 100)
+  }
+
+  // ========== EDITAR MENSAGEM ==========
+  const abrirEdicaoMensagem = (mensagem: Mensagem) => {
+    if (mensagem.remetente !== 'atendente') return
+    setMensagemEditando(mensagem)
+    setTextoEditado(mensagem.texto)
+    setModalEditarMensagem(true)
+  }
+
+  const salvarEdicaoMensagem = () => {
+    if (!mensagemEditando || !conversaSelecionada || !textoEditado.trim()) return
+    
+    setMensagens(mensagens.map(m => 
+      m.id === mensagemEditando.id 
+        ? { ...m, texto: textoEditado.trim(), editada: true }
+        : m
+    ))
+    
+    setModalEditarMensagem(false)
+    setMensagemEditando(null)
+    setTextoEditado('')
+    alert('✅ Mensagem editada com sucesso!')
+  }
+
+  // ========== SALVAR / ATUALIZAR CLIENTE ==========
+  const salvarCliente = () => {
+    if (!formCliente.nome.trim() || !conversaSelecionada) {
+      alert('⚠️ Preencha pelo menos o nome do cliente')
+      return
+    }
+    
+    setLoading(true)
+    setTimeout(() => {
+      setClienteInfo({
+        id: clienteInfo?.id || 'c' + Date.now(),
+        nome: formCliente.nome.trim(),
+        cpf: formCliente.cpf.trim(),
+        email: formCliente.email.trim(),
+        telefone: formCliente.telefone.trim(),
+        whatsapp: conversaSelecionada.numeroWhatsApp,
+        empresa: formCliente.empresa.trim(),
+        status: formCliente.status,
+        modalidade: formCliente.modalidade,
+        funil: formCliente.funil,
+        responsavel: formCliente.responsavel,
+        observacoes: formCliente.observacoes.trim(),
+        historico: formCliente.historico.trim()
+      })
+      
+      setLoading(false)
+      alert('✅ Cliente salvo com sucesso!')
+    }, 500)
+  }
+
+  // ========== FINALIZAR CONVERSA ==========
+  const finalizarConversa = () => {
+    if (!conversaSelecionada) return
+    
+    if (!formCliente.nome.trim()) {
+      alert('⚠️ Preencha os dados do cliente antes de finalizar!')
+      setPainelClienteAberto(true)
+      return
+    }
+    
+    if (!window.confirm('Deseja finalizar esta conversa?')) return
+    
+    salvarCliente()
+    
+    setConversas(conversas.filter(c => c.id !== conversaSelecionada.id))
+    setConversaSelecionada(null)
+    alert('✅ Conversa finalizada!')
+  }
+
+  // ========== EXPORTAR CLIENTES ==========
+  const exportarClientes = () => {
+    // Dados mock dos clientes - em produção viria do banco
+    const clientesParaExportar = [
+      {
+        'Nome': 'João Silva',
+        'CPF': '123.456.789-00',
+        'WhatsApp': '(11) 98765-4321',
+        'Email': 'joao@email.com',
+        'Empresa': 'Empresa XYZ',
+        'Status': 'Lead',
+        'Modalidade': 'INSS',
+        'Funil': 'Prospecção',
+        'Responsável': 'Carlos',
+        'Data': new Date().toLocaleDateString('pt-BR')
+      },
+      {
+        'Nome': 'Maria Santos',
+        'CPF': '987.654.321-00',
+        'WhatsApp': '(11) 99876-5432',
+        'Email': 'maria@email.com',
+        'Empresa': 'ABC Ltda',
+        'Status': 'Cliente',
+        'Modalidade': 'Consulta',
+        'Funil': 'Fechamento',
+        'Responsável': 'Carlos',
+        'Data': new Date().toLocaleDateString('pt-BR')
+      },
+      {
+        'Nome': 'Pedro Oliveira',
+        'CPF': '456.789.123-00',
+        'WhatsApp': '(11) 97654-3210',
+        'Email': 'pedro@email.com',
+        'Empresa': 'Tech Solutions',
+        'Status': 'Proposta Enviada',
+        'Modalidade': 'INSS',
+        'Funil': 'Negociação',
+        'Responsável': 'Carlos',
+        'Data': new Date().toLocaleDateString('pt-BR')
+      }
+    ]
+
+    const ws = XLSX.utils.json_to_sheet(clientesParaExportar)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Clientes')
+    
+    // Ajustar largura das colunas
+    const colWidths = [
+      { wch: 25 }, // Nome
+      { wch: 18 }, // CPF
+      { wch: 18 }, // WhatsApp
+      { wch: 30 }, // Email
+      { wch: 25 }, // Empresa
+      { wch: 15 }, // Status
+      { wch: 15 }, // Modalidade
+      { wch: 15 }, // Funil
+      { wch: 20 }, // Responsável
+      { wch: 12 }  // Data
+    ]
+    ws['!cols'] = colWidths
+    
+    const dataAtual = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')
+    XLSX.writeFile(wb, `Clientes_WhatsApp_${dataAtual}.xlsx`)
+    
+    alert('✅ Clientes exportados com sucesso!')
+  }
+
+  // ========== FORMATAÇÃO ==========
+  const formatarNumero = (numero: string) => {
+    const limpo = numero.replace(/\D/g, '')
+    if (limpo.length === 13) { // Com código do país (5511987654321)
+      return `+${limpo.slice(0, 2)} (${limpo.slice(2, 4)}) ${limpo.slice(4, 9)}-${limpo.slice(9)}`
+    }
+    if (limpo.length === 11) { // (11987654321)
+      return `(${limpo.slice(0, 2)}) ${limpo.slice(2, 7)}-${limpo.slice(7)}`
+    }
+    if (limpo.length === 10) { // (1198765432)
+      return `(${limpo.slice(0, 2)}) ${limpo.slice(2, 6)}-${limpo.slice(6)}`
+    }
+    return numero
+  }
+
+  const formatarDataMensagem = (timestamp: Date) => {
+    const data = timestamp
+    const hoje = new Date()
+    const ontem = new Date(hoje)
+    ontem.setDate(ontem.getDate() - 1)
+    
+    const ehHoje = data.toDateString() === hoje.toDateString()
+    const ehOntem = data.toDateString() === ontem.toDateString()
+    
+    const hora = data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    
+    if (ehHoje) return `Hoje ${hora}`
+    if (ehOntem) return `Ontem ${hora}`
+    
+    return `${data.toLocaleDateString('pt-BR')} ${hora}`
+  }
+
+  const formatarTempoRelativo = (timestamp: Date) => {
+    const data = timestamp
+    const agora = new Date()
+    const diff = Math.floor((agora.getTime() - data.getTime()) / 1000)
+    
+    if (diff < 60) return 'Agora'
+    if (diff < 3600) return `Há ${Math.floor(diff / 60)} min`
+    if (diff < 86400) return `Há ${Math.floor(diff / 3600)}h`
+    if (diff < 604800) return `Há ${Math.floor(diff / 86400)} dias`
+    
+    return data.toLocaleDateString('pt-BR')
+  }
+
+  // ========== ÍCONES DE STATUS ==========
+  const getStatusIcon = (status: string, naoLidas: number) => {
+    if (naoLidas > 0) return <span className="text-xl">🟢</span>
+    if (status === 'lida') return <span className="text-xl">⚪</span>
+    if (status === 'aguardando') return <span className="text-xl">⏰</span>
+    if (status === 'finalizada') return <span className="text-xl">✅</span>
+    return <span className="text-xl">🟢</span>
+  }
+
+  // ========== FILTRAR CONVERSAS ==========
+  const conversasFiltradas = conversas.filter(conv => {
+    const matchBusca = busca === '' || 
+      conv.nomeCliente?.toLowerCase().includes(busca.toLowerCase()) ||
+      conv.numeroWhatsApp.includes(busca)
+    
+    const matchStatus = filtroStatus === 'todas' || conv.status === filtroStatus
+    
+    return matchBusca && matchStatus
+  })
+
+  // ========== RENDER ==========
+  return (
+    <>
+      {/* BOTÃO PARA ABRIR MODAL FULLSCREEN */}
+      <div className="h-full flex items-center justify-center bg-slate-900">
+        <button
+          onClick={() => setModalFullscreen(true)}
+          className="px-8 py-4 bg-green-500 hover:bg-green-600 text-white rounded-xl font-bold text-lg flex items-center gap-3 transition-all transform hover:scale-105 shadow-2xl"
+        >
+          <MessageCircle className="w-7 h-7" />
+          Abrir Nexus Atendimento
+          <ArrowRight className="w-6 h-6" />
+        </button>
+      </div>
+
+      {/* MODAL FULLSCREEN */}
+      {modalFullscreen && (
+        <div className="fixed inset-0 z-50 bg-slate-900">
+          <div className="h-screen flex flex-col">
+            {/* Header com botão fechar */}
+            <div className="p-4 bg-slate-800 border-b border-slate-700 flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold flex items-center gap-2 text-white">
+                  <MessageCircle className="w-7 h-7 text-green-500" />
+                  Nexus Atendimento
+                </h1>
+                <p className="text-sm text-slate-400">
+                  Conversas WhatsApp sincronizadas em tempo real
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {conversasFila.length > 0 && (
+                  <div className="flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-lg">
+                    <Users className="w-5 h-5" />
+                    <span className="font-bold">{conversasFila.length}</span>
+                    <span className="text-sm">na fila</span>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => setModalFullscreen(false)}
+                  className="p-2 hover:bg-slate-700 rounded-lg transition text-slate-400 hover:text-white"
+                  title="Fechar (ESC)"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 flex overflow-hidden">>
+        {/* SIDEBAR ESQUERDA - LISTA DE CONVERSAS */}
+        <div className="w-80 bg-slate-800 border-r border-slate-700 flex flex-col">
+          {/* Busca e Filtros */}
+          <div className="p-3 border-b border-slate-700 space-y-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar conversa..."
+                className="w-full pl-10 pr-3 py-2 text-sm rounded-lg bg-slate-700 text-white placeholder-slate-400"
+              />
+            </div>
+            
+            <select
+              value={filtroStatus}
+              onChange={(e) => setFiltroStatus(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-lg bg-slate-700 text-white"
+            >
+              <option value="todas">Todas</option>
+              <option value="nao_lida">🟢 Não lidas</option>
+              <option value="lida">⚪ Lidas</option>
+              <option value="aguardando">⏰ Aguardando</option>
+            </select>
+          </div>
+
+          {/* FILA DE ATENDIMENTO */}
+          {conversasFila.length > 0 && (
+            <div className="p-3 bg-orange-500/10 border-b border-orange-500">
+              <h3 className="text-sm font-bold text-orange-400 mb-2 flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                Fila de Atendimento ({conversasFila.length})
+              </h3>
+              <div className="space-y-2">
+                {conversasFila.map(conv => (
+                  <div
+                    key={conv.id}
+                    className="p-2 rounded-lg flex items-center justify-between bg-slate-700"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate text-white">
+                        {conv.nomeCliente || 'Sem nome'}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {formatarNumero(conv.numeroWhatsApp)}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => pegarClienteDaFila(conv.id)}
+                      className="px-3 py-1 bg-orange-500 text-white text-xs rounded-lg hover:bg-orange-600 transition flex items-center gap-1"
+                    >
+                      <UserPlus className="w-3 h-3" />
+                      Pegar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* LISTA DE CONVERSAS */}
+          <div className="flex-1 overflow-y-auto">
+            {conversasFiltradas.length === 0 ? (
+              <div className="p-6 text-center">
+                <MessageCircle className="w-12 h-12 mx-auto mb-3 text-slate-600" />
+                <p className="text-sm text-slate-400">
+                  Nenhuma conversa encontrada
+                </p>
+              </div>
+            ) : (
+              conversasFiltradas.map((conv) => (
+                <div
+                  key={conv.id}
+                  onClick={() => setConversaSelecionada(conv)}
+                  className={`p-3 border-b cursor-pointer transition ${
+                    conversaSelecionada?.id === conv.id
+                      ? 'bg-slate-700 border-slate-600'
+                      : 'hover:bg-slate-700/50 border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-start gap-2">
+                    <div className="mt-0.5">
+                      {getStatusIcon(conv.status, conv.naoLidas)}
+                    </div>
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <h3 className={`font-semibold truncate text-sm ${
+                          conv.naoLidas > 0 ? 'font-bold' : ''
+                        } text-white`}>
+                          {conv.nomeCliente || 'Sem nome'}
+                        </h3>
+                        {conv.prioridade === 'vip' && <span className="text-yellow-500">⭐</span>}
+                        {conv.prioridade === 'urgente' && <span className="text-red-500">🔥</span>}
+                      </div>
+                      
+                      <p className="text-xs truncate text-slate-400">
+                        {formatarNumero(conv.numeroWhatsApp)}
+                      </p>
+                      
+                      {conv.atendente && (
+                        <p className="text-xs mt-1 text-slate-500">
+                          Atendente: {conv.atendente}
+                        </p>
+                      )}
+                      
+                      {conv.ultimaMensagem && (
+                        <p className={`text-xs truncate mt-1 ${
+                          conv.naoLidas > 0 ? 'font-semibold' : ''
+                        } text-slate-400`}>
+                          {conv.ultimaMensagem}
+                        </p>
+                      )}
+                      
+                      {conv.timestampUltimaMensagem && (
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          {formatarTempoRelativo(conv.timestampUltimaMensagem)}
+                        </p>
+                      )}
+                    </div>
+                    
+                    {conv.naoLidas > 0 && (
+                      <div className="bg-green-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                        {conv.naoLidas}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* ÁREA CENTRAL - CONVERSA */}
+        <div className="flex-1 flex flex-col bg-slate-900">
+          {!conversaSelecionada ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <MessageCircle className="w-20 h-20 mx-auto mb-4 text-slate-600" />
+                <h3 className="text-xl font-bold mb-2 text-white">
+                  Selecione uma conversa
+                </h3>
+                <p className="text-slate-400">
+                  Escolha uma conversa da lista ou pegue um cliente da fila
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Header da Conversa */}
+              <div className="p-4 bg-slate-800 border-b border-slate-700 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white font-bold">
+                    {conversaSelecionada.nomeCliente?.[0]?.toUpperCase() || '?'}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-white">
+                      {conversaSelecionada.nomeCliente || 'Sem nome'}
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      {formatarNumero(conversaSelecionada.numeroWhatsApp)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => marcarComoNaoLida(conversaSelecionada.id)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold transition bg-slate-700 text-white hover:bg-slate-600"
+                    title="Marcar como não lida"
+                  >
+                    Não Lida
+                  </button>
+                  
+                  <button
+                    onClick={finalizarConversa}
+                    disabled={loading}
+                    className="px-4 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 transition text-xs font-semibold disabled:opacity-50 flex items-center gap-1"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Finalizar
+                  </button>
+                </div>
+              </div>
+
+              {/* Área de Mensagens */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-900">
+                {mensagens.length === 0 ? (
+                  <div className="text-center py-12">
+                    <MessageCircle className="w-12 h-12 mx-auto mb-3 text-slate-700" />
+                    <p className="text-slate-500">
+                      Nenhuma mensagem ainda
+                    </p>
+                  </div>
+                ) : (
+                  mensagens.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`flex ${msg.remetente === 'atendente' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div
+                        className={`group relative max-w-[70%] rounded-lg px-4 py-2 ${
+                          msg.remetente === 'atendente'
+                            ? 'bg-green-500 text-white'
+                            : 'bg-slate-700 text-white'
+                        }`}
+                      >
+                        {msg.remetente === 'atendente' && (
+                          <button
+                            onClick={() => abrirEdicaoMensagem(msg)}
+                            className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition bg-blue-500 text-white p-1.5 rounded-full shadow-lg"
+                            title="Editar mensagem"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                        )}
+                        
+                        <p className="text-sm break-words whitespace-pre-wrap">{msg.texto}</p>
+                        
+                        <div className="flex items-center justify-end gap-1 mt-1">
+                          <p className="text-[10px] opacity-70">
+                            {formatarDataMensagem(msg.timestamp)}
+                          </p>
+                          
+                          {msg.editada && (
+                            <span className="text-[10px] opacity-70 italic ml-1" title="Mensagem editada">
+                              (editada)
+                            </span>
+                          )}
+                          
+                          {msg.remetente === 'atendente' && (
+                            <CheckCheck className="w-3 h-3 opacity-70" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+                <div ref={chatEndRef} />
+              </div>
+
+              {/* Input de Mensagem */}
+              <div className="p-4 bg-slate-800 border-t border-slate-700">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={novaMensagem}
+                    onChange={(e) => setNovaMensagem(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && enviarMensagem()}
+                    placeholder="Digite sua mensagem..."
+                    className="flex-1 px-4 py-3 rounded-lg bg-slate-700 text-white placeholder-slate-400 outline-none"
+                  />
+                  <button
+                    onClick={enviarMensagem}
+                    disabled={!novaMensagem.trim()}
+                    className="px-6 bg-green-500 text-white rounded-lg hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    <Send className="w-5 h-5" />
+                    Enviar
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* PAINEL DIREITO - FORMULÁRIO DO CLIENTE */}
+        {conversaSelecionada && (
+          <div className="relative">
+            {/* Botão Toggle com Seta - MAIOR E MAIS VISÍVEL */}
+            <button
+              onClick={() => setPainelClienteAberto(!painelClienteAberto)}
+              className="absolute left-0 top-20 w-8 h-16 bg-green-500 hover:bg-green-600 text-white rounded-l-xl flex items-center justify-center transition-all shadow-2xl z-50 border-l-4 border-green-400 animate-pulse hover:animate-none"
+              title={painelClienteAberto ? 'Fechar formulário do cliente' : 'Abrir formulário do cliente'}
+            >
+              {painelClienteAberto ? (
+                <ChevronRight className="w-5 h-5" />
+              ) : (
+                <ChevronLeft className="w-5 h-5" />
+              )}
+            </button>
+            
+            <div className={`bg-slate-800 border-l border-slate-700 transition-all duration-300 h-full overflow-y-auto ${
+              painelClienteAberto ? 'w-96' : 'w-0 overflow-hidden'
+            }`}>
+            <div className="p-6 space-y-4">
+              <div className="border-b border-slate-700 pb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <User className="w-5 h-5 text-blue-500" />
+                    Dados do Cliente
+                  </h3>
+                  <button
+                    onClick={exportarClientes}
+                    className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg transition flex items-center gap-1.5 text-xs font-semibold"
+                    title="Exportar todos os clientes para Excel"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Exportar
+                  </button>
+                </div>
+                <p className="text-xs text-slate-400">
+                  {clienteInfo ? 'Editar informações do cliente' : 'Cadastrar novo cliente'}
+                </p>
+              </div>
+
+              {/* Nome */}
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-slate-300">
+                  Nome Completo *
+                </label>
+                <input
+                  type="text"
+                  value={formCliente.nome}
+                  onChange={(e) => setFormCliente({ ...formCliente, nome: e.target.value })}
+                  placeholder="Nome do cliente"
+                  className="w-full px-3 py-2 text-sm rounded-lg outline-none bg-slate-700 text-white placeholder-slate-400"
+                />
+              </div>
+
+              {/* CPF */}
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-slate-300">
+                  CPF
+                </label>
+                <input
+                  type="text"
+                  value={formCliente.cpf}
+                  onChange={(e) => setFormCliente({ ...formCliente, cpf: e.target.value })}
+                  placeholder="000.000.000-00"
+                  className="w-full px-3 py-2 text-sm rounded-lg outline-none bg-slate-700 text-white placeholder-slate-400"
+                />
+              </div>
+
+              {/* WhatsApp (readonly) */}
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-slate-300">
+                  WhatsApp
+                </label>
+                <input
+                  type="text"
+                  value={formatarNumero(conversaSelecionada.numeroWhatsApp)}
+                  readOnly
+                  className="w-full px-3 py-2 text-sm rounded-lg outline-none bg-slate-700/50 text-slate-400"
+                />
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-slate-300">
+                  E-mail
+                </label>
+                <input
+                  type="email"
+                  value={formCliente.email}
+                  onChange={(e) => setFormCliente({ ...formCliente, email: e.target.value })}
+                  placeholder="email@exemplo.com"
+                  className="w-full px-3 py-2 text-sm rounded-lg outline-none bg-slate-700 text-white placeholder-slate-400"
+                />
+              </div>
+
+              {/* Telefone */}
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-slate-300">
+                  Telefone
+                </label>
+                <input
+                  type="text"
+                  value={formCliente.telefone}
+                  onChange={(e) => setFormCliente({ ...formCliente, telefone: e.target.value })}
+                  placeholder="(00) 00000-0000"
+                  className="w-full px-3 py-2 text-sm rounded-lg outline-none bg-slate-700 text-white placeholder-slate-400"
+                />
+              </div>
+
+              {/* Empresa */}
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-slate-300">
+                  Empresa
+                </label>
+                <input
+                  type="text"
+                  value={formCliente.empresa}
+                  onChange={(e) => setFormCliente({ ...formCliente, empresa: e.target.value })}
+                  placeholder="Nome da empresa"
+                  className="w-full px-3 py-2 text-sm rounded-lg outline-none bg-slate-700 text-white placeholder-slate-400"
+                />
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-slate-300">
+                  Status
+                </label>
+                <select
+                  value={formCliente.status}
+                  onChange={(e) => setFormCliente({ ...formCliente, status: e.target.value })}
+                  className="w-full px-3 py-2 text-sm rounded-lg outline-none bg-slate-700 text-white"
+                >
+                  <option value="Lead">Lead</option>
+                  <option value="Contato Feito">Contato Feito</option>
+                  <option value="Qualificado">Qualificado</option>
+                  <option value="Proposta Enviada">Proposta Enviada</option>
+                  <option value="Negociação">Negociação</option>
+                  <option value="Cliente">Cliente</option>
+                  <option value="Perdido">Perdido</option>
+                </select>
+              </div>
+
+              {/* Nicho */}
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-slate-300">
+                  Nicho/Segmento
+                </label>
+                <select
+                  value={formCliente.nicho}
+                  onChange={(e) => handleNichoChange(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg outline-none bg-slate-700 text-white"
+                >
+                  <option value="">Selecione o nicho</option>
+                  {Object.keys(nichosModalidades).map((nicho) => (
+                    <option key={nicho} value={nicho}>{nicho}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Modalidade (só aparece se nicho selecionado) */}
+              {formCliente.nicho && (
+                <div>
+                  <label className="block text-xs font-semibold mb-1 text-slate-300">
+                    Modalidade/Serviço
+                  </label>
+                  <select
+                    value={formCliente.modalidade}
+                    onChange={(e) => setFormCliente({ ...formCliente, modalidade: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-lg outline-none bg-slate-700 text-white"
+                  >
+                    <option value="">Selecione a modalidade</option>
+                    {modalidadesPorNicho.map((modalidade) => (
+                      <option key={modalidade} value={modalidade}>{modalidade}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Funil */}
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-slate-300">
+                  Funil
+                </label>
+                <select
+                  value={formCliente.funil}
+                  onChange={(e) => setFormCliente({ ...formCliente, funil: e.target.value })}
+                  className="w-full px-3 py-2 text-sm rounded-lg outline-none bg-slate-700 text-white"
+                >
+                  <option value="Prospecção">Prospecção</option>
+                  <option value="Qualificação">Qualificação</option>
+                  <option value="Proposta">Proposta</option>
+                  <option value="Negociação">Negociação</option>
+                  <option value="Fechamento">Fechamento</option>
+                </select>
+              </div>
+
+              {/* Responsável */}
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-slate-300">
+                  Responsável
+                </label>
+                <input
+                  type="text"
+                  value={formCliente.responsavel}
+                  onChange={(e) => setFormCliente({ ...formCliente, responsavel: e.target.value })}
+                  placeholder="Nome do responsável"
+                  className="w-full px-3 py-2 text-sm rounded-lg outline-none bg-slate-700 text-white placeholder-slate-400"
+                />
+              </div>
+
+              {/* Observações */}
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-slate-300">
+                  Observações
+                </label>
+                <textarea
+                  value={formCliente.observacoes}
+                  onChange={(e) => setFormCliente({ ...formCliente, observacoes: e.target.value })}
+                  placeholder="Anotações sobre o cliente..."
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm rounded-lg outline-none resize-none bg-slate-700 text-white placeholder-slate-400"
+                />
+              </div>
+
+              {/* Histórico */}
+              <div>
+                <label className="block text-xs font-semibold mb-1 text-slate-300">
+                  Histórico
+                </label>
+                <textarea
+                  value={formCliente.historico}
+                  onChange={(e) => setFormCliente({ ...formCliente, historico: e.target.value })}
+                  placeholder="Histórico de interações..."
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm rounded-lg outline-none resize-none bg-slate-700 text-white placeholder-slate-400"
+                />
+              </div>
+
+              {/* SEÇÃO DE DOCUMENTOS */}
+              <div className="border-t border-slate-700 pt-4">
+                <h4 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-purple-500" />
+                  Documentos do Cliente
+                </h4>
+                
+                <div className="space-y-2">
+                  {/* Upload de Documento */}
+                  <div className="p-3 rounded-lg bg-slate-700/50 border border-slate-600">
+                    <label className="block cursor-pointer">
+                      <div className="flex items-center justify-center gap-2 text-sm text-slate-300 hover:text-white transition">
+                        <Paperclip className="w-4 h-4" />
+                        <span>Clique para adicionar documento</span>
+                      </div>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                        multiple
+                        onChange={(e) => {
+                          if (e.target.files) {
+                            alert(`✅ ${e.target.files.length} arquivo(s) selecionado(s)!`)
+                          }
+                        }}
+                      />
+                    </label>
+                    <p className="text-[10px] text-slate-500 mt-1 text-center">
+                      PDF, JPG, PNG, DOC (máx. 5MB cada)
+                    </p>
+                  </div>
+
+                  {/* Lista de documentos mock */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between p-2 rounded bg-slate-700/30 text-xs">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <FileText className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                        <span className="truncate text-slate-300">RG_João_Silva.pdf</span>
+                      </div>
+                      <button
+                        onClick={() => alert('Download do documento')}
+                        className="text-green-400 hover:text-green-300 transition flex-shrink-0"
+                        title="Baixar documento"
+                      >
+                        <Download className="w-3 h-3" />
+                      </button>
+                    </div>
+                    
+                    <div className="flex items-center justify-between p-2 rounded bg-slate-700/30 text-xs">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <FileText className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                        <span className="truncate text-slate-300">CPF_João_Silva.pdf</span>
+                      </div>
+                      <button
+                        onClick={() => alert('Download do documento')}
+                        className="text-green-400 hover:text-green-300 transition flex-shrink-0"
+                        title="Baixar documento"
+                      >
+                        <Download className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Botão Salvar */}
+              <button
+                onClick={salvarCliente}
+                disabled={loading}
+                className="w-full py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                {clienteInfo ? 'Atualizar Cliente' : 'Salvar Cliente'}
+              </button>
+
+              {/* Info Atendente */}
+              {conversaSelecionada.atendente && (
+                <div className="p-3 rounded-lg border bg-slate-700/50 border-slate-600">
+                  <p className="text-xs font-semibold mb-1 text-slate-300">
+                    Atendente Responsável
+                  </p>
+                  <p className="text-sm font-bold text-white">
+                    {conversaSelecionada.atendente}
+                  </p>
+                </div>
+              )}
+            </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* MODAL EDITAR MENSAGEM - MAIS CENTRALIZADO */}
+      {modalEditarMensagem && mensagemEditando && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="max-w-xl w-full rounded-2xl shadow-2xl bg-slate-800 border border-slate-700">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-700">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold flex items-center gap-2 text-white">
+                  <Edit2 className="w-5 h-5 text-blue-500" />
+                  Editar Mensagem
+                </h3>
+                <button
+                  onClick={() => {
+                    setModalEditarMensagem(false)
+                    setMensagemEditando(null)
+                    setTextoEditado('')
+                  }}
+                  className="p-2 hover:bg-slate-700 rounded-lg transition"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4">
+              {/* Texto Original */}
+              <div>
+                <label className="block text-sm font-semibold mb-2 text-slate-300">
+                  Texto Original
+                </label>
+                <div className="p-3 rounded-lg text-sm bg-slate-700 text-slate-400">
+                  {mensagemEditando.texto}
+                </div>
+              </div>
+
+              {/* Novo Texto */}
+              <div>
+                <label className="block text-sm font-semibold mb-2 text-slate-300">
+                  Novo Texto
+                </label>
+                <textarea
+                  value={textoEditado}
+                  onChange={(e) => setTextoEditado(e.target.value)}
+                  placeholder="Digite o novo texto..."
+                  rows={4}
+                  className="w-full px-3 py-2 text-sm rounded-lg outline-none resize-none bg-slate-700 text-white placeholder-slate-400"
+                  autoFocus
+                />
+              </div>
+
+              {/* Botões */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setModalEditarMensagem(false)
+                    setMensagemEditando(null)
+                    setTextoEditado('')
+                  }}
+                  className="flex-1 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={salvarEdicaoMensagem}
+                  disabled={!textoEditado.trim()}
+                  className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  Salvar Alterações
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
