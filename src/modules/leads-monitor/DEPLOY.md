@@ -1,6 +1,6 @@
 # Nexus Leads Monitor V1.1 — Guia de implantação
 
-Versão do módulo: **1.1.0** (`LEADS_MONITOR_VERSION`).
+Versão do módulo: **1.1.0+** (`LEADS_MONITOR_VERSION`; branch atual pode exibir `1.2.0` com Busca Inteligente).
 
 ## Pré-requisitos
 
@@ -31,7 +31,7 @@ firebase deploy --only functions
 
 Região: `southamerica-east1`  
 Codebase: `leads-monitor`  
-Funções: `leadsMonitorWebhook`, `leadsMonitorSaveSecret`
+Funções: `leadsMonitorWebhook`, `leadsMonitorSaveSecret`, `leadsMonitorJobWorker` (schedule `every 1 minutes`)
 
 ### Secret Manager (após Blaze)
 

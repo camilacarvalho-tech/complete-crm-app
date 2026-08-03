@@ -55,6 +55,33 @@ function workerId(): string {
   return `worker-${Math.random().toString(36).slice(2, 10)}`
 }
 
+function toMillis(v: unknown): number {
+  if (!v) return 0
+  if (typeof (v as { toMillis?: () => number }).toMillis === 'function') {
+    return (v as { toMillis: () => number }).toMillis()
+  }
+  if (v instanceof Date) return v.getTime()
+  if (typeof v === 'number') return v
+  return 0
+}
+
+function isClaimable(cur: Omit<LeadsMonitorJob, 'id'>, now: number): boolean {
+  if (cur.empresaId == null) return false
+  if ((cur.attempts || 0) >= (cur.maxAttempts || JOB_MAX_ATTEMPTS)) return false
+
+  const nextAt = toMillis(cur.nextAttemptAt)
+  if (nextAt > now && (cur.status === 'queued' || cur.status === 'failed')) return false
+
+  if (cur.status === 'queued' || cur.status === 'failed') return true
+
+  // Reclaim expired lease (horizontal scale — worker crash / timeout)
+  if (cur.status === 'leased' || cur.status === 'running') {
+    const leaseUntilMs = toMillis(cur.leaseUntil)
+    return leaseUntilMs > 0 && leaseUntilMs <= now
+  }
+  return false
+}
+
 export async function enqueueJob(opts: {
   empresaId: string
   type: JobType
@@ -65,6 +92,25 @@ export async function enqueueJob(opts: {
   const { empresaId, type, payload = {}, actor } = opts
   const idempotencyKey =
     opts.idempotencyKey || `${type}:${empresaId}:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`
+
+  // Best-effort dedupe: skip if identical key still active
+  try {
+    const existing = await getDocs(
+      query(
+        collection(db, 'empresas', empresaId, COL_JOBS),
+        where('idempotencyKey', '==', idempotencyKey),
+        limit(5)
+      )
+    )
+    for (const d of existing.docs) {
+      const st = (d.data() as LeadsMonitorJob).status
+      if (st === 'queued' || st === 'leased' || st === 'running' || st === 'failed') {
+        return d.id
+      }
+    }
+  } catch {
+    /* index may be missing — continue enqueue */
+  }
 
   const ref = await addDoc(collection(db, 'empresas', empresaId, COL_JOBS), {
     empresaId,
@@ -97,25 +143,36 @@ export async function enqueueJob(opts: {
 }
 
 /**
- * Claim atômico de um job queued (ou lease expirado).
- * Vários workers podem chamar em paralelo sem double-processing.
+ * Claim atômico de um job queued/failed (respeitando nextAttemptAt)
+ * ou leased/running com lease expirado.
+ * Vários workers em paralelo sem double-processing.
  */
 export async function claimNextJob(
   empresaId: string,
   owner = workerId()
 ): Promise<LeadsMonitorJob | null> {
-  const q = query(
-    collection(db, 'empresas', empresaId, COL_JOBS),
-    where('status', 'in', ['queued', 'failed']),
-    limit(10)
-  )
-  const snap = await getDocs(q)
   const now = Date.now()
 
-  for (const d of snap.docs) {
+  // Pass 1: queued / failed
+  const qReady = query(
+    collection(db, 'empresas', empresaId, COL_JOBS),
+    where('status', 'in', ['queued', 'failed']),
+    limit(15)
+  )
+  // Pass 2: possibly expired leases
+  const qLeased = query(
+    collection(db, 'empresas', empresaId, COL_JOBS),
+    where('status', 'in', ['leased', 'running']),
+    limit(10)
+  )
+
+  const [readySnap, leasedSnap] = await Promise.all([getDocs(qReady), getDocs(qLeased)])
+  const candidates = [...readySnap.docs, ...leasedSnap.docs]
+
+  for (const d of candidates) {
     const data = d.data() as Omit<LeadsMonitorJob, 'id'>
     if (data.empresaId !== empresaId) continue
-    if ((data.attempts || 0) >= (data.maxAttempts || JOB_MAX_ATTEMPTS)) continue
+    if (!isClaimable(data, now)) continue
 
     try {
       const claimed = await runTransaction(db, async (tx) => {
@@ -124,17 +181,12 @@ export async function claimNextJob(
         if (!fresh.exists()) return null
         const cur = fresh.data() as Omit<LeadsMonitorJob, 'id'>
         if (cur.empresaId !== empresaId) return null
-        if (cur.status !== 'queued' && cur.status !== 'failed') return null
-        const leaseUntilMs =
-          cur.leaseUntil && typeof (cur.leaseUntil as any).toMillis === 'function'
-            ? (cur.leaseUntil as any).toMillis()
-            : 0
-        if (cur.status === 'leased' && leaseUntilMs > now) return null
+        if (!isClaimable(cur, Date.now())) return null
 
         tx.update(ref, {
           status: 'leased',
           leaseOwner: owner,
-          leaseUntil: new Date(now + JOB_LEASE_MS),
+          leaseUntil: new Date(Date.now() + JOB_LEASE_MS),
           updatedAt: serverTimestamp(),
         })
         return { id: d.id, ...cur, status: 'leased' as JobStatus, leaseOwner: owner }
@@ -195,7 +247,7 @@ export async function markJobFailed(
 
   await writeLeadsMonitorAudit({
     empresaId,
-    action: dead ? 'job.fail' : 'job.fail',
+    action: 'job.fail',
     origem: 'worker',
     entidade: 'job',
     entidadeId: job.id,

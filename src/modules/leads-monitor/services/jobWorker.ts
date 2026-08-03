@@ -13,7 +13,7 @@ import {
   markJobSucceeded,
   type LeadsMonitorJob,
 } from './jobQueue'
-import { writeLeadsMonitorLog, moveToDlq } from './opsLogs'
+import { writeLeadsMonitorLog, moveToDlq, resolveDlq } from './opsLogs'
 import { FILTROS_VAZIOS } from '../constants'
 
 let loopTimer: ReturnType<typeof setInterval> | null = null
@@ -92,6 +92,16 @@ export async function processOneJob(empresaId: string): Promise<boolean> {
         pesquisaId: job.payload.pesquisaId,
         llmBudget: job.type === 'search' ? 3 : 0,
       })
+
+      if (job.type === 'reprocess_dlq' && job.payload.dlqId) {
+        await resolveDlq({ empresaId, dlqId: job.payload.dlqId })
+        await writeLeadsMonitorLog({
+          empresaId,
+          level: 'info',
+          message: `DLQ resolvido: ${job.payload.dlqId}`,
+          jobId: job.id,
+        })
+      }
 
       await markJobSucceeded(empresaId, job.id, result)
       await writeLeadsMonitorLog({

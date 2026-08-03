@@ -28,6 +28,8 @@ export function IntegrationsAdminPanel({
   empresaId,
   healthItems,
   dlqItems,
+  jobItems,
+  auditItems,
   actor,
 }: {
   empresaId: string | null
@@ -45,6 +47,8 @@ export function IntegrationsAdminPanel({
     jobId?: string
     connectorId?: string
   }>
+  jobItems?: Array<{ id: string; type?: string; status?: string }>
+  auditItems?: Array<{ id: string; action?: string; acao?: string }>
   actor?: { usuarioId?: string; usuarioNome?: string }
 }) {
   const toast = useToast()
@@ -230,6 +234,31 @@ export function IntegrationsAdminPanel({
             ))}
           </ul>
         )}
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700 space-y-2">
+        <div className="text-sm font-semibold">Jobs recentes</div>
+        <ul className="space-y-1 text-xs text-slate-600 dark:text-slate-300 max-h-28 overflow-y-auto">
+          {(jobItems || []).slice(0, 6).map((j) => (
+            <li key={j.id} className="flex justify-between gap-2">
+              <span className="truncate">{j.type || 'job'} · {j.id.slice(0, 8)}</span>
+              <span className="text-slate-400 shrink-0">{j.status}</span>
+            </li>
+          ))}
+          {!(jobItems || []).length && <li className="text-slate-400">Nenhum</li>}
+        </ul>
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700 space-y-2">
+        <div className="text-sm font-semibold">Audit (últimos)</div>
+        <ul className="space-y-1 text-xs text-slate-600 dark:text-slate-300 max-h-28 overflow-y-auto">
+          {(auditItems || []).slice(0, 6).map((a) => (
+            <li key={a.id} className="truncate">
+              {a.action || a.acao || a.id}
+            </li>
+          ))}
+          {!(auditItems || []).length && <li className="text-slate-400">Sem eventos</li>}
+        </ul>
       </div>
 
       <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700 space-y-3">

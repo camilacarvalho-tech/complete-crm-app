@@ -4,13 +4,18 @@
 
 Independent module for capturing, qualifying and approving opportunities before they enter Nexus CRM.
 
-**Core pipeline (unchanged by new connectors):**
+**Core pipeline:**
 
-`IConnector.fetch` → `normalize` → Dedupe → Classify/Score (Nexus AI hook) → Approval → CRM
+`IConnector.fetch` → `normalize` → Dedupe → `INexusAiQualifier` → Score → Approval → CRM
 
 ## Multi-tenant
 
 All data lives under `empresas/{empresaId}/…`. Workers, Cloud Functions and Firestore rules must always scope by `empresaId`. Cross-tenant access is forbidden.
+
+- Inbox create: Admin SDK only
+- Audit: append-only; `empresaId` must match path
+- Webhook logs: Admin SDK only
+- Jobs/Logs/DLQ/Health/Config: tenant write requires `empresaId == path`
 
 ## IConnector (versioned)
 
@@ -20,9 +25,9 @@ All data lives under `empresas/{empresaId}/…`. Workers, Cloud Functions and Fi
 | `meta.apiVersion` | Contract generation (1, 2, …) |
 | `meta.version` | Implementation semver |
 | `meta.autorizado` | LGPD / legal gate |
-| `meta.enabled` | Default runnable flag (company config can override later) |
+| `meta.enabled` | Default runnable flag |
 
-Register with `registerConnector()`. Multiple `apiVersion`s of the same `id` can coexist; companies may pin a version in config.
+Register with `registerConnector()`. Multiple `apiVersion`s of the same `id` can coexist; companies may pin a version in config. See `connectors/README.md` for deprecation policy (≥1 release after vN+1).
 
 ### Adding a connector
 
@@ -44,7 +49,7 @@ Register with `registerConnector()`. Multiple `apiVersion`s of the same `id` can
 |------------|------|
 | `leadsMonitorOportunidades` | Opportunities |
 | `leadsMonitorPesquisas` | Saved searches |
-| `leadsMonitorConfig` | Non-secret config (V1.1) |
+| `leadsMonitorConfig` | Non-secret config |
 | `leadsMonitorJobs` | Async queue with lease |
 | `leadsMonitorInbox` | Webhook raw events |
 | `leadsMonitorLogs` | Operational logs |
@@ -52,25 +57,41 @@ Register with `registerConnector()`. Multiple `apiVersion`s of the same `id` can
 | `leadsMonitorAudit` | Audit trail |
 | `leadsMonitorHealth` | Connector health |
 | `leadsMonitorFontes` | Search sources (V1.2) |
-| `leadsMonitorSearchRuns` | Intelligent search runs / progress (V1.2) |
+| `leadsMonitorSearchRuns` | Intelligent search runs (V1.2) |
 
 ## Secrets
 
 Never store tokens/keys in Firestore plaintext. Use Cloud Function `leadsMonitorSaveSecret` + KEK in **Secret Manager** (`LEADS_MONITOR_KEK`). UI shows masked values only. See `SECRETS.md`.
 
+## Health
+
+Doc `leadsMonitorHealth/{connectorId}`: `online` | `degraded` | `offline`, `consecutiveFailures`, `lastLatencyMs`, `lastSyncAt`, `lastError`.
+
+## Horizontal scale (jobs)
+
+Jobs use `leaseOwner` / `leaseUntil` / `idempotencyKey` / `nextAttemptAt`:
+
+- Claim is transactional; expired leases can be reclaimed
+- Retry with exponential backoff → DLQ after max attempts
+- Workers: browser loop + Cloud Function `leadsMonitorJobWorker` (schedule)
+
+## Cloud Functions
+
+| Function | Role |
+|----------|------|
+| `leadsMonitorWebhook` | Bearer + optional HMAC → inbox + job + audit |
+| `leadsMonitorSaveSecret` | AES-GCM ciphertext |
+| `leadsMonitorJobWorker` | Schedule: claim `drain_inbox` / `reprocess_dlq` |
+
 ## Production connectors (V1.1)
 
-Runnable: `integracao_api`, `webhook` only. Demo generators (`formularios_autorizados`, `bases_publicas_empresas`) are **not registered**.
-
-## Horizontal scale
-
-Jobs use `leaseOwner` / `leaseUntil` / `idempotencyKey` so multiple workers can claim without double-processing.
+Runnable: `integracao_api`, `webhook`. Demo generators are **not registered**.
 
 ## Docs
 
-- `connectors/README.md` — connector checklist
-- `functions/README.md` — webhook deploy (V1.1)
+- `connectors/README.md` — checklist + deprecation
+- `functions/README.md` — deploy, Secret Manager, curl (+ HMAC)
 - `SECRETS.md` — KEK / Secret Manager
-- `DEPLOY.md` — guia de implantação V1.1
-- `ROADMAP_V1.2.md` — pendências
-- `CHANGELOG.md` (raiz) — notas de versão
+- `DEPLOY.md` — guia de implantação
+- `ROADMAP_V1.2.md` — Busca Inteligente
+- `CHANGELOG.md` — notas de versão

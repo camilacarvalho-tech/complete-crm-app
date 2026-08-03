@@ -760,6 +760,8 @@ export default function LeadsMonitor() {
               empresaId={empresaId}
               healthItems={healthItems || []}
               dlqItems={dlqItems || []}
+              jobItems={jobs || []}
+              auditItems={auditItems || []}
               actor={{ usuarioId: usuario?.id, usuarioNome: usuario?.nome }}
             />
           </div>

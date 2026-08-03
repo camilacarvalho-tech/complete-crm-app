@@ -91,7 +91,8 @@ service cloud.firestore {
       match /leadsMonitorInbox/{docId} {
         allow read: if belongsToTenant(empresaId);
         allow create: if false;
-        allow update: if belongsToTenant(empresaId);
+        allow update: if belongsToTenant(empresaId)
+                      && request.resource.data.empresaId == empresaId;
         allow delete: if isMaster();
       }
 
@@ -104,12 +105,83 @@ service cloud.firestore {
         allow delete: if isMaster();
       }
 
-      // Demais subcoleções do tenant (CRM + Monitor config/jobs/etc.)
+      // Webhook HTTP logs: só Admin SDK
+      match /leadsMonitorWebhookLogs/{docId} {
+        allow read: if belongsToTenant(empresaId);
+        allow create, update, delete: if false;
+      }
+
+      // Jobs / Logs / DLQ / Health / Config / Oportunidades / Pesquisas / Fontes / SearchRuns
+      match /leadsMonitorJobs/{docId} {
+        allow read: if belongsToTenant(empresaId);
+        allow create, update: if belongsToTenant(empresaId)
+                              && request.resource.data.empresaId == empresaId;
+        allow delete: if isMaster() || isEmpresario();
+      }
+      match /leadsMonitorLogs/{docId} {
+        allow read: if belongsToTenant(empresaId);
+        allow create: if belongsToTenant(empresaId)
+                      && request.resource.data.empresaId == empresaId;
+        allow update, delete: if isMaster();
+      }
+      match /leadsMonitorDLQ/{docId} {
+        allow read: if belongsToTenant(empresaId);
+        allow create, update: if belongsToTenant(empresaId)
+                              && request.resource.data.empresaId == empresaId;
+        allow delete: if isMaster();
+      }
+      match /leadsMonitorHealth/{docId} {
+        allow read: if belongsToTenant(empresaId);
+        allow create, update: if belongsToTenant(empresaId)
+                              && request.resource.data.empresaId == empresaId;
+        allow delete: if isMaster();
+      }
+      match /leadsMonitorConfig/{docId} {
+        allow read: if belongsToTenant(empresaId);
+        allow create, update: if belongsToTenant(empresaId)
+                              && request.resource.data.empresaId == empresaId;
+        allow delete: if isMaster();
+      }
+      match /leadsMonitorOportunidades/{docId} {
+        allow read: if belongsToTenant(empresaId);
+        allow create, update, delete: if belongsToTenant(empresaId)
+                                      && (!('empresaId' in request.resource.data)
+                                          || request.resource.data.empresaId == empresaId);
+      }
+      match /leadsMonitorPesquisas/{docId} {
+        allow read: if belongsToTenant(empresaId);
+        allow create, update, delete: if belongsToTenant(empresaId);
+      }
+      match /leadsMonitorFontes/{docId} {
+        allow read: if belongsToTenant(empresaId);
+        allow create, update, delete: if belongsToTenant(empresaId)
+                                      && (!('empresaId' in request.resource.data)
+                                          || request.resource.data.empresaId == empresaId);
+      }
+      match /leadsMonitorSearchRuns/{docId} {
+        allow read: if belongsToTenant(empresaId);
+        allow create, update: if belongsToTenant(empresaId)
+                              && (!('empresaId' in request.resource.data)
+                                  || request.resource.data.empresaId == empresaId);
+        allow delete: if isMaster() || isEmpresario();
+      }
+
+      // Demais subcoleções do tenant (CRM + outras)
       match /{collection}/{docId} {
         allow read: if belongsToTenant(empresaId);
         allow write: if belongsToTenant(empresaId)
                      && collection != 'leadsMonitorInbox'
-                     && collection != 'leadsMonitorAudit';
+                     && collection != 'leadsMonitorAudit'
+                     && collection != 'leadsMonitorWebhookLogs'
+                     && collection != 'leadsMonitorJobs'
+                     && collection != 'leadsMonitorLogs'
+                     && collection != 'leadsMonitorDLQ'
+                     && collection != 'leadsMonitorHealth'
+                     && collection != 'leadsMonitorConfig'
+                     && collection != 'leadsMonitorOportunidades'
+                     && collection != 'leadsMonitorPesquisas'
+                     && collection != 'leadsMonitorFontes'
+                     && collection != 'leadsMonitorSearchRuns';
 
         match /{subcollection}/{subDocId} {
           allow read, write: if belongsToTenant(empresaId);

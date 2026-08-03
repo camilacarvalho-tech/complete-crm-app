@@ -88,7 +88,7 @@ export { writeLeadsMonitorAudit, sanitizeAuditPayload } from './services/auditTr
 export type { LeadsMonitorAuditEntry, AuditAction, AuditOrigem } from './services/auditTrail'
 export { enqueueJob, claimNextJob } from './services/jobQueue'
 export { processOneJob, startJobWorkerLoop } from './services/jobWorker'
-export { writeLeadsMonitorLog, moveToDlq, reprocessDlq } from './services/opsLogs'
+export { writeLeadsMonitorLog, moveToDlq, reprocessDlq, resolveDlq } from './services/opsLogs'
 export { recordConnectorSuccess, recordConnectorFailure } from './services/healthStore'
 export { getNexusAiQualifier, setNexusAiQualifier, defaultNexusAiQualifier } from './ai/INexusAiQualifier'
 export type { INexusAiQualifier } from './ai/INexusAiQualifier'

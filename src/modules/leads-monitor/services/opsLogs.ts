@@ -1,7 +1,7 @@
 /**
  * Logs operacionais + DLQ do Leads Monitor.
  */
-import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { db } from '../../../firebase'
 import { COL_DLQ, COL_LOGS } from '../constants'
 import { enqueueJob } from './jobQueue'
@@ -66,15 +66,29 @@ export async function reprocessDlq(opts: {
   dlqId: string
   actor?: { usuarioId?: string; usuarioNome?: string }
 }): Promise<string> {
+  const dlqSnap = await getDoc(doc(db, 'empresas', opts.empresaId, COL_DLQ, opts.dlqId))
+  if (!dlqSnap.exists()) throw new Error('DLQ item não encontrado')
+  const dlq = dlqSnap.data() as {
+    payload?: { type?: string; payload?: Record<string, unknown> }
+    jobId?: string
+  }
+  const originalType = (dlq.payload?.type as string) || 'drain_inbox'
+  const originalPayload = (dlq.payload?.payload || {}) as Record<string, unknown>
+
   const jobId = await enqueueJob({
     empresaId: opts.empresaId,
     type: 'reprocess_dlq',
-    payload: { dlqId: opts.dlqId },
+    payload: {
+      dlqId: opts.dlqId,
+      ...(originalPayload as any),
+    },
+    idempotencyKey: `dlq-reprocess:${opts.dlqId}:${Date.now()}`,
     actor: opts.actor,
   })
   await updateDoc(doc(db, 'empresas', opts.empresaId, COL_DLQ, opts.dlqId), {
     status: 'requeued',
     requeueJobId: jobId,
+    originalType,
     updatedAt: serverTimestamp(),
   })
   await writeLeadsMonitorAudit({
@@ -85,7 +99,19 @@ export async function reprocessDlq(opts: {
     usuarioNome: opts.actor?.usuarioNome,
     entidade: 'dlq',
     entidadeId: opts.dlqId,
-    after: { jobId },
+    after: { jobId, originalType },
   })
   return jobId
+}
+
+/** Marca item DLQ como resolvido após reprocessamento bem-sucedido. */
+export async function resolveDlq(opts: {
+  empresaId: string
+  dlqId: string
+}): Promise<void> {
+  await updateDoc(doc(db, 'empresas', opts.empresaId, COL_DLQ, opts.dlqId), {
+    status: 'resolved',
+    resolvedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  })
 }

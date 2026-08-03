@@ -9,6 +9,7 @@
 import * as admin from 'firebase-admin'
 import { FieldValue } from 'firebase-admin/firestore'
 import { onRequest } from 'firebase-functions/v2/https'
+import { onSchedule } from 'firebase-functions/v2/scheduler'
 import { defineSecret } from 'firebase-functions/params'
 import * as crypto from 'crypto'
 
@@ -289,3 +290,268 @@ export const leadsMonitorSaveSecret = onRequest(fnOpts, async (req, res) => {
     res.status(500).json({ error: 'internal', message: e?.message || String(e) })
   }
 })
+
+const JOB_LEASE_MS = 60_000
+const JOB_MAX_ATTEMPTS = 5
+
+function toMillis(v: any): number {
+  if (!v) return 0
+  if (typeof v.toMillis === 'function') return v.toMillis()
+  if (v instanceof Date) return v.getTime()
+  if (typeof v === 'number') return v
+  return 0
+}
+
+function isClaimableAdmin(cur: Record<string, any>, now: number): boolean {
+  if ((cur.attempts || 0) >= (cur.maxAttempts || JOB_MAX_ATTEMPTS)) return false
+  const nextAt = toMillis(cur.nextAttemptAt)
+  if (nextAt > now && (cur.status === 'queued' || cur.status === 'failed')) return false
+  if (cur.status === 'queued' || cur.status === 'failed') return true
+  if (cur.status === 'leased' || cur.status === 'running') {
+    const leaseUntilMs = toMillis(cur.leaseUntil)
+    return leaseUntilMs > 0 && leaseUntilMs <= now
+  }
+  return false
+}
+
+/**
+ * Worker server-side (escala horizontal).
+ * Processa drain_inbox / reprocess_dlq via Admin SDK.
+ * Jobs search* permanecem elegíveis ao worker do cliente (conectores SPA).
+ */
+export const leadsMonitorJobWorker = onSchedule(
+  {
+    schedule: 'every 1 minutes',
+    region: 'southamerica-east1',
+    secrets: [leadsMonitorKek],
+    timeoutSeconds: 120,
+  },
+  async () => {
+    const owner = `cf-worker-${process.env.K_REVISION || 'local'}-${Date.now().toString(36)}`
+    const now = Date.now()
+
+    // Collection group: jobs queued/failed across tenants
+    const snap = await db
+      .collectionGroup('leadsMonitorJobs')
+      .where('status', 'in', ['queued', 'failed', 'leased', 'running'])
+      .limit(25)
+      .get()
+
+    for (const jobDoc of snap.docs) {
+      const data = jobDoc.data()
+      const empresaId = String(data.empresaId || '')
+      if (!empresaId) continue
+      if (!jobDoc.ref.path.includes(`empresas/${empresaId}/leadsMonitorJobs/`)) continue
+      if (!['drain_inbox', 'reprocess_dlq'].includes(String(data.type))) continue
+      if (!isClaimableAdmin(data, now)) continue
+
+      let claimed = false
+      try {
+        await db.runTransaction(async (tx) => {
+          const fresh = await tx.get(jobDoc.ref)
+          if (!fresh.exists) return
+          const cur = fresh.data()!
+          if (cur.empresaId !== empresaId) return
+          if (!isClaimableAdmin(cur, Date.now())) return
+          tx.update(jobDoc.ref, {
+            status: 'leased',
+            leaseOwner: owner,
+            leaseUntil: new Date(Date.now() + JOB_LEASE_MS),
+            updatedAt: FieldValue.serverTimestamp(),
+          })
+          claimed = true
+        })
+      } catch (e) {
+        console.warn('[leadsMonitorJobWorker] claim race', e)
+        continue
+      }
+      if (!claimed) continue
+
+      await jobDoc.ref.update({
+        status: 'running',
+        updatedAt: FieldValue.serverTimestamp(),
+      })
+
+      try {
+        const result = await processDrainInboxAdmin(empresaId)
+        if (data.type === 'reprocess_dlq' && data.payload?.dlqId) {
+          await db.doc(`empresas/${empresaId}/leadsMonitorDLQ/${data.payload.dlqId}`).set(
+            {
+              status: 'resolved',
+              resolvedAt: FieldValue.serverTimestamp(),
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          )
+        }
+        await jobDoc.ref.update({
+          status: 'succeeded',
+          leaseOwner: null,
+          leaseUntil: null,
+          lastError: null,
+          result,
+          updatedAt: FieldValue.serverTimestamp(),
+        })
+        await db.collection(`empresas/${empresaId}/leadsMonitorAudit`).add({
+          empresaId,
+          action: 'job.complete',
+          origem: 'worker',
+          entidade: 'job',
+          entidadeId: jobDoc.id,
+          after: { status: 'succeeded', worker: 'cloud_function', ...result },
+          at: FieldValue.serverTimestamp(),
+        })
+        await db.collection(`empresas/${empresaId}/leadsMonitorLogs`).add({
+          empresaId,
+          level: 'info',
+          message: `CF worker ok: +${result.novos} leads`,
+          jobId: jobDoc.id,
+          at: FieldValue.serverTimestamp(),
+        })
+      } catch (e: any) {
+        const msg = e?.message || String(e)
+        const attempts = (data.attempts || 0) + 1
+        const dead = attempts >= (data.maxAttempts || JOB_MAX_ATTEMPTS)
+        const backoffMs = Math.min(30 * 60 * 1000, 1000 * 2 ** Math.min(attempts, 8))
+        await jobDoc.ref.update({
+          status: dead ? 'dead' : 'failed',
+          attempts,
+          lastError: msg.slice(0, 500),
+          leaseOwner: null,
+          leaseUntil: null,
+          nextAttemptAt: dead ? null : new Date(Date.now() + backoffMs),
+          updatedAt: FieldValue.serverTimestamp(),
+        })
+        if (dead) {
+          await db.collection(`empresas/${empresaId}/leadsMonitorDLQ`).add({
+            empresaId,
+            jobId: jobDoc.id,
+            reason: msg.slice(0, 500),
+            payload: { type: data.type, payload: data.payload || {} },
+            status: 'open',
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          })
+        }
+        await db.collection(`empresas/${empresaId}/leadsMonitorLogs`).add({
+          empresaId,
+          level: 'error',
+          message: msg.slice(0, 1000),
+          jobId: jobDoc.id,
+          at: FieldValue.serverTimestamp(),
+        })
+      }
+    }
+  }
+)
+
+async function processDrainInboxAdmin(
+  empresaId: string
+): Promise<{ encontrados: number; novos: number; duplicados: number; fontes: string[] }> {
+  const inboxSnap = await db
+    .collection(`empresas/${empresaId}/leadsMonitorInbox`)
+    .where('status', '==', 'pending')
+    .limit(20)
+    .get()
+
+  let novos = 0
+  let duplicados = 0
+  const existing = await db.collection(`empresas/${empresaId}/leadsMonitorOportunidades`).get()
+  const keys = new Set(
+    existing.docs.map((d) => {
+      const x = d.data()
+      return String(x.dedupeKey || (x.telefone ? `tel:${x.telefone}` : `nome:${x.nome}`))
+    })
+  )
+
+  for (const inbox of inboxSnap.docs) {
+    const payload = (inbox.data().payload || {}) as Record<string, any>
+    const nome = String(payload.nome || payload.name || '').trim()
+    if (!nome) {
+      await inbox.ref.update({ status: 'ignored', updatedAt: FieldValue.serverTimestamp() })
+      continue
+    }
+    const telefone = String(payload.telefone || payload.phone || '').replace(/\D/g, '')
+    const email = String(payload.email || '').trim().toLowerCase()
+    const dedupeKey = telefone
+      ? `tel:${telefone}`
+      : email
+        ? `email:${email}`
+        : `nome:${nome.toLowerCase()}`
+
+    await inbox.ref.update({ status: 'processing', updatedAt: FieldValue.serverTimestamp() })
+
+    if (keys.has(dedupeKey)) {
+      duplicados += 1
+      await inbox.ref.update({ status: 'processed', updatedAt: FieldValue.serverTimestamp() })
+      continue
+    }
+
+    const score = 60
+    const ref = await db.collection(`empresas/${empresaId}/leadsMonitorOportunidades`).add({
+      empresaId,
+      connectorId: 'webhook',
+      origemLabel: 'Webhook',
+      origemFonte: 'webhook',
+      dedupeKey,
+      tipo: 'pessoa',
+      nome,
+      telefone: telefone || null,
+      email: email || null,
+      cidade: String(payload.cidade || ''),
+      estado: String(payload.estado || '').toUpperCase(),
+      segmento: String(payload.segmento || 'credito_clt'),
+      consentimentoLgpd: payload.consentimentoLgpd !== false,
+      baseLegal: 'Webhook autenticado',
+      status: 'novo',
+      score,
+      temperatura: 'Morno',
+      classificacao: 'Qualificar',
+      motivosScore: ['Ingestão webhook (CF worker)'],
+      origemScore: 'nexus_ai_heuristica',
+      encontradoEm: FieldValue.serverTimestamp(),
+      criadoEm: FieldValue.serverTimestamp(),
+      atualizadoEm: FieldValue.serverTimestamp(),
+    })
+    keys.add(dedupeKey)
+    novos += 1
+
+    await db.collection(`empresas/${empresaId}/leadsMonitorAudit`).add({
+      empresaId,
+      action: 'oportunidade.create',
+      origem: 'worker',
+      connectorId: 'webhook',
+      entidade: 'oportunidade',
+      entidadeId: ref.id,
+      after: { nome, status: 'novo', score, dedupeKey },
+      at: FieldValue.serverTimestamp(),
+    })
+
+    await inbox.ref.update({
+      status: 'processed',
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+  }
+
+  await db.doc(`empresas/${empresaId}/leadsMonitorHealth/webhook`).set(
+    {
+      empresaId,
+      connectorId: 'webhook',
+      status: 'online',
+      lastSyncAt: FieldValue.serverTimestamp(),
+      lastAttemptAt: FieldValue.serverTimestamp(),
+      consecutiveFailures: 0,
+      lastError: null,
+      connectorVersion: '1.1.0',
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  )
+
+  return {
+    encontrados: inboxSnap.size,
+    novos,
+    duplicados,
+    fontes: novos || duplicados ? ['Webhook'] : [],
+  }
+}

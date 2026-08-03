@@ -5,6 +5,15 @@
 - Node 20
 - Firebase CLI autenticado (`firebase login`)
 - Secret Manager: `LEADS_MONITOR_KEK`
+- Plano Blaze (Functions + Scheduler)
+
+## Functions
+
+| Export | Tipo | Papel |
+|--------|------|--------|
+| `leadsMonitorWebhook` | HTTPS | Bearer (+ HMAC opcional) → inbox + job |
+| `leadsMonitorSaveSecret` | HTTPS | Grava ciphertext (AES-GCM / KEK) |
+| `leadsMonitorJobWorker` | Schedule `every 1 minutes` | Claim/lease `drain_inbox` / `reprocess_dlq` |
 
 ## Deploy
 
@@ -33,6 +42,21 @@ curl -X POST "https://southamerica-east1-PROJECT.cloudfunctions.net/leadsMonitor
 
 Expect `202 { id, jobId, status: "accepted" }`.
 
+### Com HMAC (opcional)
+
+Se `hmacSecret` estiver configurado na UI:
+
+```bash
+BODY='{"nome":"Lead HMAC","telefone":"11988887777","consentimentoLgpd":true,"cidade":"São Paulo","estado":"SP","segmento":"credito_clt"}'
+SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "SEU_HMAC_SECRET" | awk '{print $2}')
+
+curl -X POST "https://southamerica-east1-PROJECT.cloudfunctions.net/leadsMonitorWebhook?empresaId=SEU_TENANT" \
+  -H "Authorization: Bearer SEU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "x-hub-signature-256: sha256=$SIG" \
+  -d "$BODY"
+```
+
 ## Save secret
 
 Requires Firebase ID token of a user belonging to the tenant (or master):
@@ -45,3 +69,7 @@ curl -X POST "https://southamerica-east1-PROJECT.cloudfunctions.net/leadsMonitor
 ```
 
 SPA: set `VITE_LEADS_MONITOR_SAVE_SECRET_URL` to this URL.
+
+## Job worker
+
+`leadsMonitorJobWorker` roda a cada minuto, faz claim atômico (lease) em `leadsMonitorJobs` e processa `drain_inbox` / `reprocess_dlq` no Admin SDK (escala horizontal sem double-processing). Jobs `search*` continuam no worker do cliente (conectores SPA / Search Engine).
