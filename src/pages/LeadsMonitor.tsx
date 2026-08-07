@@ -159,7 +159,7 @@ export default function LeadsMonitor() {
     try {
       const r = await aprovarEEnviar(op)
       toast.success(
-        r.jaExistia ? 'Já existia no CRM' : 'Enviado ao Nexus CRM',
+        r.jaExistia ? 'Já existia no CRM' : 'Enviado ao CRM',
         r.jaExistia
           ? 'Oportunidade vinculada ao cliente existente.'
           : 'Lead criado em Clientes · Pipeline Novo Lead.'
@@ -184,14 +184,14 @@ export default function LeadsMonitor() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-            <Radar className="w-8 h-8 text-nexus-orange" />
-            Nexus Leads Monitor
+            <Radar className="w-8 h-8 text-amber-500" />
+            Leads Monitor
             <span className="text-xs font-semibold px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-500">
               v{LEADS_MONITOR_VERSION}
             </span>
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            Módulo independente · conectores autorizados (LGPD) · score Nexus AI · CRM só recebe aprovados
+            Módulo independente · conectores autorizados (LGPD) · score IA · CRM só recebe aprovados
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
@@ -429,7 +429,7 @@ export default function LeadsMonitor() {
                           {op.score ?? '—'}
                         </div>
                         <div className="text-[10px] uppercase tracking-wide text-slate-400">
-                          {op.origemScore === 'nexus_ai_llm' ? 'Nexus AI' : 'Score Nexus AI'}
+                          {op.origemScore === 'nexus_ai_llm' ? 'IA' : 'Score IA'}
                         </div>
                         <div className="flex gap-1.5">
                           {op.status !== 'enviado_crm' && op.status !== 'rejeitado' && (
@@ -439,7 +439,7 @@ export default function LeadsMonitor() {
                                 disabled={enviandoId === op.id}
                                 onClick={() => onAprovar(op)}
                                 className="px-2.5 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1 disabled:opacity-60"
-                                title="Aprovar e enviar ao Nexus CRM"
+                                title="Aprovar e enviar ao CRM"
                               >
                                 {enviandoId === op.id ? (
                                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />

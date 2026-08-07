@@ -1,0 +1,52 @@
+# Deploy Recomece Cred (Firebase Hosting)
+
+name: Deploy Recomece Cred Hosting
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "index.html"
+      - "firebase.json"
+      - ".firebaserc"
+      - "package.json"
+      - "vite.config.ts"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Guard — sem marca NX no artefato
+        run: |
+          if grep -qiE 'Nexus Platform|Nexus CRM|CredFlow' dist/index.html; then
+            echo "Build contém marca NX/CredFlow — abortando"
+            exit 1
+          fi
+          grep -qi 'Recomece' dist/index.html
+
+      - name: Deploy Firebase Hosting
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          if [ -z "${FIREBASE_TOKEN:-}" ]; then
+            echo "Secret FIREBASE_TOKEN ausente. Gere com: firebase login:ci"
+            exit 1
+          fi
+          npx --yes firebase-tools@13 deploy --only hosting --project recomece-cred-oficial --non-interactive --token "$FIREBASE_TOKEN"

@@ -1,11 +1,23 @@
+# Recomece Cred — CRM Oficial
 
-  # Complete CRM App
+CRM da **Recomece Cred** (Firebase project `recomece-cred-oficial`).
 
-  This is a code bundle for Complete CRM App. The original project is available at https://www.figma.com/design/Sy9unoXiJOVry45WSGamJJ/Complete-CRM-App.
+**Site de produção:** https://recomece-cred-oficial.web.app
 
-  ## Running the code
+> Este repositório NÃO é NX CRM / Nexus Platform.
 
-  Run `npm i` to install the dependencies.
+## Desenvolvimento
 
-  Run `npm run dev` to start the development server.
-  
+```bash
+npm i
+npm run dev
+```
+
+## Deploy (Firebase Hosting)
+
+```bash
+# Requer Firebase CLI autenticado (firebase login) ou FIREBASE_TOKEN
+./scripts/deploy-recomece-hosting.sh
+```
+
+Ou via GitHub Actions: secret `FIREBASE_TOKEN` (gere com `firebase login:ci`) + workflow `Deploy Recomece Cred Hosting`.

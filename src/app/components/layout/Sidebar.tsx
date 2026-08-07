@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import { LayoutDashboard, Users, TrendingUp, CheckSquare, BarChart3, LogOut } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "../../../firebase";
+import logo from "../../../assets/LOGO RECOMECE.png";
 
 const navItems = [
   { to: "/",           icon: LayoutDashboard, label: "Painel" },
@@ -26,14 +27,13 @@ export function Sidebar() {
       <div className="px-5 py-5 border-b border-white/10">
         <div className="flex items-center gap-3">
           <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg"
-            style={{ background: 'linear-gradient(135deg, #f59e0b, #ef4444)' }}
+            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg overflow-hidden bg-white"
           >
-            <span className="text-white font-black text-sm">CF</span>
+            <img src={logo} alt="Recomece Cred" className="w-full h-full object-contain p-0.5" />
           </div>
           <div>
-            <h1 className="text-sm font-black text-white leading-tight">CredFlow CRM</h1>
-            <p className="text-[11px] font-semibold" style={{ color: '#f59e0b' }}>Sistema CRM · RC</p>
+            <h1 className="text-sm font-black text-white leading-tight">Recomece Cred</h1>
+            <p className="text-[11px] font-semibold" style={{ color: '#f59e0b' }}>CRM Oficial</p>
           </div>
         </div>
       </div>

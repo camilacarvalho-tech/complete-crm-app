@@ -52,7 +52,7 @@ export function scoreLead(
 
   if (classification.origem === 'nexus_ai_llm') {
     score += 2
-    motivos.push('Classificado pela Nexus AI')
+    motivos.push('Classificado pela IA')
   }
 
   score = Math.max(5, Math.min(98, Math.round(score)))

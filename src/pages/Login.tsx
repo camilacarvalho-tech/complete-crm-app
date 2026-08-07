@@ -5,6 +5,7 @@ import { doc, setDoc, getDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 import { LogIn, Mail, Lock, UserPlus } from 'lucide-react'
 import { PerfilUsuario } from '../types/database.types'
+import logoRecomece from '../assets/LOGO RECOMECE.png'
 
 export default function Login() {
   const location = useLocation()
@@ -76,14 +77,14 @@ export default function Login() {
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           {/* Logo */}
           <div className="text-center mb-8">
-            <div className="inline-block bg-gradient-to-r from-orange-500 to-blue-600 rounded-xl p-4 mb-4">
-              <span className="text-4xl font-bold text-white">NX</span>
+            <div className="inline-block bg-white rounded-xl p-3 mb-4 shadow border border-slate-100">
+              <img src={logoRecomece} alt="Recomece Cred" className="h-16 w-auto mx-auto object-contain" />
             </div>
-            <h1 className="text-3xl font-bold text-slate-800">Nexus CRM</h1>
-            <p className="text-slate-600 mt-2">Gestão Inteligente</p>
+            <h1 className="text-3xl font-bold text-slate-800">Recomece Cred</h1>
+            <p className="text-slate-600 mt-2">CRM Oficial</p>
             {destinoLeadsMonitor && (
-              <div className="mt-4 text-left bg-orange-50 border border-orange-200 text-orange-800 text-sm rounded-lg px-3 py-2">
-                Faça login para abrir o <strong>Nexus Leads Monitor</strong> e validar o fluxo completo.
+              <div className="mt-4 text-left bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded-lg px-3 py-2">
+                Faça login para abrir o <strong>Leads Monitor</strong> e validar o fluxo completo.
               </div>
             )}
           </div>
