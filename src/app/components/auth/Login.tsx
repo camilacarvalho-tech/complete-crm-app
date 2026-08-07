@@ -44,8 +44,11 @@ function Login({ onLogin }: LoginProps) {
           />
 
           <h1 className="text-2xl font-bold text-center">
-            Login CRM
+            Recomece Cred
           </h1>
+          <p className="text-sm text-gray-500 mt-1 text-center">
+            CRM Oficial
+          </p>
         </div>
 
         <input
