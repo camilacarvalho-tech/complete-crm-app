@@ -24,7 +24,7 @@ export class LeadsMonitorErrorBoundary extends Component<Props, State> {
         <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/40 dark:border-red-800 p-6 space-y-3">
           <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-semibold">
             <AlertTriangle className="w-5 h-5" />
-            Erro ao carregar o Nexus Leads Monitor
+            Erro ao carregar o Leads Monitor
           </div>
           <p className="text-sm text-red-600 dark:text-red-200 font-mono break-all">
             {this.state.error.message}

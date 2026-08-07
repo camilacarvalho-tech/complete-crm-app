@@ -98,7 +98,7 @@ export async function classifyLead(
     if (!(await isNexusAiBackendUp())) return base
 
     const prompt = [
-      'Você é a classificação do Nexus Leads Monitor (Nexus AI).',
+      'Você é a classificação do Leads Monitor (IA Recomece Cred).',
       'Classifique o lead em UMA categoria: prioridade_maxima | alta | qualificar | baixa',
       'Responda em 2 linhas:',
       'categoria: ...',

@@ -120,7 +120,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     path: '/chat-center',
     icon: MessageCircle,
-    label: 'Nexus Atendimento',
+    label: 'Atendimento',
     nichos: [],
     badge: 'NOVO'
   },
@@ -133,7 +133,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     path: '/nexus-ai',
     icon: Bot,
-    label: 'Nexus AI',
+    label: 'Assistente IA',
     nichos: [],
     badge: 'AI'
   },
@@ -359,7 +359,7 @@ export const MENU_ITEMS: MenuItem[] = [
   {
     path: '/comunicacao-interna',
     icon: MessageCircle,
-    label: 'Nexus Interno',
+    label: 'Comunicacao Interna',
     nichos: []
   },
   {

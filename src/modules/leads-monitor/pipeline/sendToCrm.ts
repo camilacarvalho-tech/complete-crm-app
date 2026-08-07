@@ -89,7 +89,7 @@ export async function enviarOportunidadeParaCrm(
     classificacao: oportunidade.classificacao,
     observacoes: [
       oportunidade.observacoes,
-      `Score Nexus AI: ${oportunidade.score}`,
+      `Score IA: ${oportunidade.score}`,
       `Base legal: ${oportunidade.baseLegal}`,
       oportunidade.cnpj ? `CNPJ: ${oportunidade.cnpj}` : null,
     ]
