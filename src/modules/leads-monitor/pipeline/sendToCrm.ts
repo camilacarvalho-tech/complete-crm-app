@@ -38,6 +38,12 @@ export async function enviarOportunidadeParaCrm(
   if (oportunidade.status !== 'aprovado' && oportunidade.status !== 'enviado_crm') {
     throw new Error('Aprove a oportunidade no Monitor antes de enviar ao CRM.')
   }
+  const scoreMinimo = Number(oportunidade.metadados?.scoreMinimo || 70)
+  if ((oportunidade.score || 0) < scoreMinimo) {
+    throw new Error(
+      `Score ${oportunidade.score} abaixo do mínimo ${scoreMinimo}. O CRM só recebe leads aprovados e no corte configurado.`
+    )
+  }
 
   const tel = phoneDigits(oportunidade.telefone)
   const origemLabel = oportunidade.origemLabel || oportunidade.connectorId || 'Leads Monitor'
@@ -61,7 +67,7 @@ export async function enviarOportunidadeParaCrm(
       })
       await writeLeadsMonitorAudit({
         empresaId,
-        action: 'oportunidade.send_crm',
+        action: 'opportunity.send_crm',
         origem: 'ui',
         connectorId: oportunidade.connectorId,
         ...auditActor,
@@ -115,7 +121,7 @@ export async function enviarOportunidadeParaCrm(
 
   await writeLeadsMonitorAudit({
     empresaId,
-    action: 'oportunidade.send_crm',
+    action: 'opportunity.send_crm',
     origem: 'ui',
     connectorId: oportunidade.connectorId,
     ...auditActor,

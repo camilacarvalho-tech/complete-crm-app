@@ -20,6 +20,7 @@ import ChatCenter from './pages/ChatCenter'
 import Campanhas from './pages/Campanhas'
 import IAProspeccao from './pages/IAProspeccao'
 import LeadsMonitor from './pages/LeadsMonitor'
+import FontesPesquisa from './pages/FontesPesquisa'
 import { LeadsMonitorErrorBoundary } from './modules/leads-monitor/components/LeadsMonitorErrorBoundary'
 import NexusAI from './pages/NexusAI'
 import Discadora from './pages/Discadora'
@@ -30,6 +31,7 @@ import Digitacao from './pages/Digitacao'
 import Documentos from './pages/Documentos'
 import Automacoes from './pages/Automacoes'
 import EmDesenvolvimento from './pages/EmDesenvolvimento'
+import MonitorCODE from './pages/monitor/MonitorCODE'
 // ERP
 import ERPLayout from './components/ERPLayout'
 import DashboardERP from './pages/erp/DashboardERP'
@@ -96,6 +98,14 @@ function AppRoutes() {
                   </LeadsMonitorErrorBoundary>
                 }
               />
+              <Route
+                path="fontes-pesquisa"
+                element={
+                  <LeadsMonitorErrorBoundary>
+                    <FontesPesquisa />
+                  </LeadsMonitorErrorBoundary>
+                }
+              />
               <Route path="nexus-ai" element={<NexusAI />} />
               <Route path="discadora" element={<Discadora />} />
               <Route path="tarefas" element={<Tarefas />} />
@@ -113,6 +123,7 @@ function AppRoutes() {
               <Route path="configuracoes" element={<Configuracoes />} />
               <Route path="propostas" element={<Propostas />} />
               <Route path="digitacao" element={<Digitacao />} />
+              <Route path="monitor-code" element={<MonitorCODE />} />
               {MODULOS_EM_DESENVOLVIMENTO.map((path) => (
                 <Route key={path} path={path} element={<EmDesenvolvimento />} />
               ))}

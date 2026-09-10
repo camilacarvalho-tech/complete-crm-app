@@ -22,6 +22,7 @@ import {
 } from '../services/saveSecretClient'
 import { reprocessDlq } from '../services/opsLogs'
 import { listConnectorMetas } from '../connectors'
+import { placesHealth } from '../services/placesClient'
 import { useToast } from '../../../components/ui/Toast'
 
 export function IntegrationsAdminPanel({
@@ -55,6 +56,11 @@ export function IntegrationsAdminPanel({
   const [hmacPlain, setHmacPlain] = useState('')
   const [saving, setSaving] = useState(false)
   const [reprocessingId, setReprocessingId] = useState<string | null>(null)
+  const [placesStatus, setPlacesStatus] = useState<{
+    status: string
+    message: string
+    ok: boolean
+  } | null>(null)
   const metas = listConnectorMetas()
   const secretsViaFn = isSaveSecretViaFunctionConfigured()
   const openDlq = (dlqItems || []).filter((d) => !d.status || d.status === 'open')
@@ -64,6 +70,8 @@ export function IntegrationsAdminPanel({
     void (async () => {
       setApi(await loadApiConfig(empresaId))
       setWebhook(await loadWebhookConfig(empresaId))
+      const health = await placesHealth(empresaId)
+      setPlacesStatus({ status: health.status, message: health.message, ok: health.ok })
     })()
   }, [empresaId])
 
@@ -173,6 +181,18 @@ export function IntegrationsAdminPanel({
         <div className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2 flex items-center gap-2">
           <Activity className="w-4 h-4" /> Saúde dos conectores
         </div>
+        {placesStatus && (
+          <div
+            className={`mb-3 text-xs rounded-lg px-3 py-2 border ${
+              placesStatus.ok
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300'
+            }`}
+          >
+            <div className="font-semibold">Google Places · STATUS: {placesStatus.status}</div>
+            <div className="mt-0.5">{placesStatus.message}</div>
+          </div>
+        )}
         <ul className="space-y-2">
           {metas.map((m) => {
             const h = healthItems.find((x) => x.id === m.id)

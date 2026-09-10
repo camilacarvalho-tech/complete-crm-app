@@ -1,23 +1,38 @@
 /**
- * Etapa 3 — Deduplicação.
+ * Deduplicação — nunca inserir a mesma empresa duas vezes.
+ * Prioridade: CNPJ → Place ID → domínio → telefone → nome + endereço.
  */
 import type { NormalizedLead } from '../connectors/types'
+import { digitsOnly, hostnameFromUrl, normalizeAddress, normalizeCompanyName } from './normalizeFields'
 
-function digits(v?: string) {
-  return (v || '').replace(/\D/g, '')
+export function collectDedupeKeys(
+  lead: Pick<
+    NormalizedLead,
+    'dedupeKey' | 'cnpj' | 'placeId' | 'dominio' | 'website' | 'telefone' | 'nome' | 'endereco' | 'cidade' | 'externalId'
+  >
+): string[] {
+  const keys: string[] = []
+  const cnpj = digitsOnly(lead.cnpj)
+  if (cnpj.length === 14) keys.push(`cnpj:${cnpj}`)
+  const placeId = String(lead.placeId || lead.externalId || '').trim()
+  if (placeId) keys.push(`place:${placeId.toLowerCase()}`)
+  const dominio = (lead.dominio || hostnameFromUrl(lead.website)).toLowerCase()
+  if (dominio) keys.push(`dom:${dominio}`)
+  const tel = digitsOnly(lead.telefone)
+  if (tel.length >= 10) keys.push(`tel:${tel}`)
+  const nome = normalizeCompanyName(lead.nome).toLowerCase()
+  const endereco = normalizeAddress(lead.endereco || lead.cidade).toLowerCase()
+  if (nome && endereco) keys.push(`nomeaddr:${nome}|${endereco}`)
+  if (lead.dedupeKey) keys.push(lead.dedupeKey.toLowerCase())
+  return Array.from(new Set(keys.filter(Boolean)))
 }
 
 export function buildDedupeKey(
-  lead: Pick<NormalizedLead, 'dedupeKey' | 'telefone' | 'email' | 'cnpj' | 'nome'>
+  lead: Pick<NormalizedLead, 'dedupeKey' | 'telefone' | 'email' | 'cnpj' | 'nome'> &
+    Partial<Pick<NormalizedLead, 'placeId' | 'dominio' | 'website' | 'endereco' | 'cidade' | 'externalId'>>
 ): string {
-  if (lead.dedupeKey) return lead.dedupeKey.toLowerCase()
-  const cnpj = digits(lead.cnpj)
-  if (cnpj.length >= 14) return `cnpj:${cnpj}`
-  const tel = digits(lead.telefone)
-  if (tel.length >= 10) return `tel:${tel}`
-  const email = (lead.email || '').trim().toLowerCase()
-  if (email.includes('@')) return `email:${email}`
-  return `nome:${(lead.nome || '').trim().toLowerCase()}`
+  const keys = collectDedupeKeys(lead)
+  return keys[0] || `nome:${normalizeCompanyName(lead.nome).toLowerCase()}`
 }
 
 export function deduplicateLeads(
@@ -29,15 +44,27 @@ export function deduplicateLeads(
   const duplicados: NormalizedLead[] = []
 
   for (const item of incoming) {
-    const key = buildDedupeKey(item)
-    const withKey = { ...item, dedupeKey: key }
-    if (seen.has(key)) {
+    const keys = collectDedupeKeys(item)
+    const primary = keys[0] || buildDedupeKey(item)
+    const withKey = { ...item, dedupeKey: primary }
+    if (keys.some((k) => seen.has(k))) {
       duplicados.push(withKey)
       continue
     }
-    seen.add(key)
+    keys.forEach((k) => seen.add(k))
     unicos.push(withKey)
   }
 
   return { unicos, duplicados }
+}
+
+export function matchExistingId(
+  lead: NormalizedLead,
+  existing: Array<{ id: string; keys: string[] }>
+): string | null {
+  const keys = new Set(collectDedupeKeys(lead))
+  for (const row of existing) {
+    if (row.keys.some((k) => keys.has(k))) return row.id
+  }
+  return null
 }

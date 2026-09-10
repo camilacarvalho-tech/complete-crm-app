@@ -6,14 +6,17 @@
 import { registerConnector } from './registry'
 import { integracaoApiConnector } from './integracaoApi.connector'
 import { webhookConnector } from './webhook.connector'
+import { csvImportConnector } from './csvImport.connector'
+import { googlePlacesConnector } from './googlePlaces.connector'
 
 let bootstrapped = false
 
 export function bootstrapConnectors(): void {
   if (bootstrapped) return
-  // Produção V1.1: apenas fontes reais configuráveis
   registerConnector(integracaoApiConnector)
   registerConnector(webhookConnector)
+  registerConnector(csvImportConnector)
+  registerConnector(googlePlacesConnector)
   bootstrapped = true
 }
 

@@ -18,6 +18,7 @@ export interface LeadClassification {
   label: string
   motivo: string
   origem: 'nexus_ai_heuristica' | 'nexus_ai_llm'
+  sugestaoContato?: string
 }
 
 function classifyHeuristic(lead: NormalizedLead, filtros: FiltrosPesquisa): LeadClassification {
@@ -31,9 +32,9 @@ function classifyHeuristic(lead: NormalizedLead, filtros: FiltrosPesquisa): Lead
   if (lead.connectorId === 'formularios_autorizados') {
     pontos += 3
     motivos.push('formulário autorizado')
-  } else if (lead.connectorId === 'bases_publicas_empresas') {
-    pontos += 1
-    motivos.push('base pública')
+  } else if (lead.connectorId === 'google-places') {
+    pontos += 2
+    motivos.push('Google Places')
   }
 
   const seg = (filtros.segmento || '').toLowerCase()
@@ -129,14 +130,26 @@ export async function classifyLead(
     }
 
     const motivoMatch = texto.match(/motivo\s*[:=]\s*(.+)/i)
+    
+    // Gerar sugestão de contato baseada na categoria
+    const sugestoesPorCategoria: Record<LeadClassificacaoCategoria, string> = {
+      prioridade_maxima: 'Contato prioritário em até 2 horas úteis',
+      alta: 'Contato em até 24 horas',
+      qualificar: 'Contato em até 48 horas para qualificação',
+      baixa: 'Contato quando houver disponibilidade',
+    }
 
     return {
       categoria: cat,
       label: labels[cat],
       motivo: (motivoMatch?.[1] || '').trim() || base.motivo,
       origem: 'nexus_ai_llm',
+      sugestaoContato: sugestoesPorCategoria[cat],
     }
   } catch {
-    return base
+    return {
+      ...base,
+      sugestaoContato: undefined,
+    }
   }
 }

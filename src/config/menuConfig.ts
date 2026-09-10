@@ -19,6 +19,7 @@ import {
   Settings,
   Bot,
   Radar,
+  Database,
   // Correspondente Bancário
   Landmark,
   // Saúde
@@ -55,6 +56,7 @@ export interface MenuItem {
   labelOriginal?: string // Nome genérico (ex: "Clientes")
   nichos?: NichoEmpresa[] // Se vazio, aparece para todos
   badge?: string
+  featured?: boolean
 }
 
 /**
@@ -128,28 +130,39 @@ export const MENU_ITEMS: MenuItem[] = [
     path: '/campanhas',
     icon: Megaphone,
     label: 'Campanhas',
-    nichos: []
+    nichos: [],
+    featured: true
   },
   {
     path: '/nexus-ai',
     icon: Bot,
     label: 'Nexus AI',
     nichos: [],
-    badge: 'AI'
+    badge: 'AI',
+    featured: true
   },
   {
     path: '/leads-monitor',
     icon: Radar,
     label: 'Leads Monitor',
     nichos: [],
-    badge: 'NOVO'
+    badge: 'NOVO',
+    featured: true
+  },
+  {
+    path: '/fontes-pesquisa',
+    icon: Database,
+    label: 'Fontes de Pesquisa',
+    nichos: [],
+    badge: 'V1.2'
   },
   {
     path: '/ia-prospeccao',
     icon: Bot,
     label: 'IA Prospecção',
     nichos: [], // Vazio = aparece para todos
-    badge: 'IA'
+    badge: 'IA',
+    featured: true
   },
   {
     path: '/discadora',
@@ -418,40 +431,86 @@ export interface MenuSection {
   items: MenuItem[]
 }
 
+const uniqueByPath = (items: MenuItem[]): MenuItem[] =>
+  items.filter((item, index, list) => list.findIndex((other) => other.path === item.path) === index)
+
+const orderByPaths = (items: MenuItem[], paths: string[]): MenuItem[] => {
+  const byPath = new Map(uniqueByPath(items).map((item) => [item.path, item]))
+  return paths.map((path) => byPath.get(path)).filter((item): item is MenuItem => Boolean(item))
+}
+
+/** Fluxo comercial/prospecção visível no menu principal */
+export const SIDEBAR_PRINCIPAL_PATHS = [
+  '/',
+  '/clientes',
+  '/pipeline',
+  '/tarefas',
+  '/chat-center',
+  '/campanhas',
+  '/nexus-ai',
+  '/leads-monitor',
+  '/fontes-pesquisa',
+  '/ia-prospeccao',
+  '/discadora',
+  '/marketing-roi',
+  '/documentos',
+  '/automacoes',
+  '/propostas',
+  '/digitacao',
+  '/bancos-convenios',
+  '/agenda',
+  '/empresas',
+  '/configuracoes',
+] as const
+
+/** Módulos de outros segmentos — ordem de exibição em "Outros Nichos" */
+export const SIDEBAR_OUTROS_NICHOS_PATHS = [
+  '/profissionais',
+  '/prontuario',
+  '/exames',
+  '/estoque',
+  '/odontograma',
+  '/tratamentos',
+  '/radiografias',
+  '/sessoes',
+  '/prontuario-psicologico',
+  '/receitas',
+  '/plano-alimentar',
+  '/avaliacao-antropometrica',
+  '/avaliacoes-fisicas',
+  '/treinos',
+  '/personal-trainers',
+  '/convenios',
+  '/comunicacao-interna',
+  '/recibos',
+  '/planos-mensalidades',
+  '/relatorios',
+  '/remarketing',
+] as const
+
+export const getSidebarNav = (items: MenuItem[] = MENU_ITEMS): { principal: MenuItem[]; outrosNichos: MenuItem[] } => {
+  const unique = uniqueByPath(items)
+  const principal = orderByPaths(unique, [...SIDEBAR_PRINCIPAL_PATHS])
+  const orderedOutros = orderByPaths(unique, [...SIDEBAR_OUTROS_NICHOS_PATHS])
+  const known = new Set<string>([...SIDEBAR_PRINCIPAL_PATHS, ...SIDEBAR_OUTROS_NICHOS_PATHS])
+  const extras = unique.filter((item) => !known.has(item.path))
+  return { principal, outrosNichos: [...orderedOutros, ...extras] }
+}
+
 export const getMenuSections = (nicho: NichoEmpresa | null): MenuSection[] => {
-  const menuItems = getMenuByNicho(nicho)
-  
+  const { principal, outrosNichos } = getSidebarNav(getMenuByNicho(nicho))
+
   const sections: MenuSection[] = [
     {
       title: 'Principal',
-      items: menuItems.filter(item => 
-        ['/', '/clientes', '/pipeline', '/tarefas', '/chat-center', '/propostas', '/leads-monitor'].includes(item.path)
-      )
+      items: principal
     },
     {
-      title: 'Marketing',
-      items: menuItems.filter(item => 
-        ['/campanhas', '/remarketing', '/marketing-roi'].includes(item.path)
-      )
-    },
-    {
-      title: 'Módulos Específicos',
-      items: menuItems.filter(item => {
-        const coreItems = ['/', '/clientes', '/pipeline', '/tarefas', '/chat-center', '/propostas',
-                          '/campanhas', '/marketing-roi', '/comunicacao-interna', '/relatorios', 
-                          '/remarketing', '/empresas', '/configuracoes', '/ia-prospeccao', '/discadora']
-        return !coreItems.includes(item.path)
-      })
-    },
-    {
-      title: 'Gestão',
-      items: menuItems.filter(item => 
-        ['/comunicacao-interna', '/relatorios', '/empresas', '/configuracoes'].includes(item.path)
-      )
+      title: 'Outros Nichos',
+      items: outrosNichos
     }
   ]
-  
-  // Remove seções vazias
+
   return sections.filter(section => section.items.length > 0)
 }
 

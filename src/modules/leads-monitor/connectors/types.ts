@@ -53,6 +53,8 @@ export interface ConnectorFetchContext {
   limite?: number
   /** Se definido, o registry resolve esta apiVersion; senão usa a mais recente registrada. */
   preferredApiVersion?: number
+  /** Secrets/credenciais configurados para o conector (apiKey, authToken, etc) */
+  secrets?: Record<string, string>
 }
 
 /**
@@ -80,6 +82,26 @@ export interface NormalizedLead {
   observacoes?: string
   metadados?: Record<string, unknown>
   externalId?: string
+  website?: string
+  endereco?: string
+  cep?: string
+  placeId?: string
+  dominio?: string
+  cnpjValidado?: boolean
+  dadosEnriquecidos?: {
+    telefoneFormatado?: string
+    razaoSocial?: string
+    nomeFantasia?: string
+    situacaoCadastral?: string
+    cnaePrincipal?: string
+    cnaesSecundarios?: string[]
+    porteEmpresa?: string
+    dataAbertura?: string
+    cnpjValidado?: boolean
+    scoreEnriquecimento?: number
+    fonteEnriquecimento?: string[]
+    observacao?: string
+  }
 }
 
 /**

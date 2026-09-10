@@ -4,7 +4,6 @@ import { signInWithEmailAndPassword } from 'firebase/auth'
 import { doc, setDoc, getDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 import { LogIn, Mail, Lock, UserPlus } from 'lucide-react'
-import { PerfilUsuario } from '../types/database.types'
 
 export default function Login() {
   const location = useLocation()
@@ -36,7 +35,7 @@ export default function Login() {
             email: normalized,
             telefone: '',
             avatar: '',
-            perfil: PerfilUsuario.MASTER,
+            perfil: 'MASTER',
             verFilaGeral: true,
             verFinanceiroEquipe: true,
             verRelatoriosEmpresa: true,
@@ -54,7 +53,7 @@ export default function Login() {
           try {
             await setDoc(
               userRef,
-              { empresaId: 'nexus-homologacao-v1', perfil: PerfilUsuario.MASTER, atualizadoEm: new Date() },
+              { empresaId: 'nexus-homologacao-v1', perfil: 'MASTER', atualizadoEm: new Date() },
               { merge: true }
             )
           } catch {

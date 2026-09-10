@@ -20,8 +20,14 @@ export type AuditAction =
   | 'oportunidade.approve'
   | 'oportunidade.reject'
   | 'oportunidade.send_crm'
+  | 'opportunity.send_crm'
   | 'pesquisa.create'
   | 'pesquisa.update'
+  | 'fonte.create'
+  | 'fonte.update'
+  | 'search.start'
+  | 'search.complete'
+  | 'search.cancel'
   | 'connector.health'
   | string
 
