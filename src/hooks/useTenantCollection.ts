@@ -5,6 +5,15 @@ import { useAuth } from '../contexts/AuthContext'
 
 type TenantOptions = { tela?: string }
 type TenantItem = { id: string }
+
+function firestoreSafe(data: Record<string, unknown>) {
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(data)) {
+    if (value === undefined) continue
+    out[key] = value
+  }
+  return out
+}
 type TenantState<T extends TenantItem> = {
   items: T[]; loading: boolean; error: string | null; empresaId: string | null
   create: (data: Omit<T, 'id'>) => Promise<string>
@@ -35,8 +44,36 @@ export function useTenantCollection<T extends TenantItem>(collectionName: string
   if (!monitorMode) return ref
   return {
     items, loading, error, empresaId,
-    create: async (data) => { if (!empresaId) throw new Error('Empresa não identificada'); const created = await addDoc(ref, { ...data, empresaId, criadoEm: serverTimestamp(), atualizadoEm: serverTimestamp() }); return created.id },
-    update: async (id, data) => { if (!empresaId) throw new Error('Empresa não identificada'); await updateDoc(doc(db, 'empresas', empresaId, collectionName, id), { ...data, atualizadoEm: serverTimestamp() }) },
+    create: async (data) => {
+      if (!empresaId) throw new Error('Empresa não identificada')
+      const created = await addDoc(ref, firestoreSafe({ ...data, empresaId, tenant_id: empresaId, criadoEm: serverTimestamp(), atualizadoEm: serverTimestamp() } as Record<string, unknown>))
+      const triggers: Record<string, string> = {
+        clientes: 'novo_lead',
+        propostas: 'proposta_criada',
+        transacoesFinanceiras: 'novo_lancamento_financeiro',
+        agenda: 'nova_tarefa',
+        mensagens: 'nova_mensagem',
+        digitacoes: 'digitacao_criada',
+      }
+      const gatilho = triggers[collectionName]
+      if (gatilho) {
+        try {
+          await addDoc(collection(db, 'empresas', empresaId, 'automacaoEventos'), {
+            empresaId,
+            gatilho,
+            entidade: collectionName,
+            entidadeId: created.id,
+            record: { id: created.id, ...data },
+            status: 'pendente',
+            criadoEm: serverTimestamp(),
+          })
+        } catch (e) {
+          console.warn('[leticia] evento não enfileirado', e)
+        }
+      }
+      return created.id
+    },
+    update: async (id, data) => { if (!empresaId) throw new Error('Empresa não identificada'); await updateDoc(doc(db, 'empresas', empresaId, collectionName, id), firestoreSafe({ ...data, atualizadoEm: serverTimestamp() } as Record<string, unknown>)) },
     remove: async (id) => { if (!empresaId) throw new Error('Empresa não identificada'); await deleteDoc(doc(db, 'empresas', empresaId, collectionName, id)) },
   }
 }

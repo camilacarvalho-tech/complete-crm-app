@@ -80,6 +80,7 @@ export async function enviarOportunidadeParaCrm(
   }
 
   const ref = await addDoc(collection(db, 'empresas', empresaId, 'clientes'), {
+    tenant_id: empresaId,
     nome: oportunidade.nome,
     telefone: tel || oportunidade.telefone || '',
     whatsapp: tel || '',
@@ -87,9 +88,16 @@ export async function enviarOportunidadeParaCrm(
     cidade: oportunidade.cidade,
     estado: oportunidade.estado,
     modalidade: oportunidade.segmento,
+    modalidades: oportunidade.segmento ? [oportunidade.segmento] : [],
     origem: `Leads Monitor · ${origemLabel}`,
+    source: 'leads_monitor',
+    campaign_id: oportunidade.metadados?.campaign_id || '',
+    utm_source: 'leads_monitor',
+    utm_medium: oportunidade.connectorId || 'monitor',
+    utm_campaign: origemLabel,
     status: 'Lead',
     pipeline: 'Novo Lead',
+    pipelineStage: 'novo_lead',
     score: oportunidade.score,
     temperatura: oportunidade.temperatura,
     classificacao: oportunidade.classificacao,

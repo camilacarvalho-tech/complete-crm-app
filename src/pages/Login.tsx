@@ -72,16 +72,16 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       <div className="w-full max-w-md p-8">
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
+        <div className="nexus-card rounded-2xl p-8">
           {/* Logo */}
           <div className="text-center mb-8">
             <div className="inline-block bg-gradient-to-r from-orange-500 to-blue-600 rounded-xl p-4 mb-4">
               <span className="text-4xl font-bold text-white">NX</span>
             </div>
-            <h1 className="text-3xl font-bold text-slate-800">Nexus CRM</h1>
-            <p className="text-slate-600 mt-2">Gestão Inteligente</p>
+            <h1 className="text-3xl font-bold" style={{ color: 'var(--code-text)' }}>Nexus CRM</h1>
+            <p className="mt-2" style={{ color: 'var(--code-muted)' }}>CODE Tecnologia Empresarial</p>
             {destinoLeadsMonitor && (
-              <div className="mt-4 text-left bg-orange-50 border border-orange-200 text-orange-800 text-sm rounded-lg px-3 py-2">
+              <div className="mt-4 text-left text-sm rounded-lg px-3 py-2" style={{ border: '1px solid var(--code-border)', background: 'var(--code-surface-muted)' }}>
                 Faça login para abrir o <strong>Nexus Leads Monitor</strong> e validar o fluxo completo.
               </div>
             )}
@@ -90,7 +90,7 @@ export default function Login() {
           {/* Formulário */}
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
+              <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--code-muted)' }}>
                 <Mail className="inline w-4 h-4 mr-2" />
                 E-mail
               </label>
@@ -105,7 +105,7 @@ export default function Login() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
+              <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--code-muted)' }}>
                 <Lock className="inline w-4 h-4 mr-2" />
                 Senha
               </label>

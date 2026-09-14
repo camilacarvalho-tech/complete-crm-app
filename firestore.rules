@@ -107,7 +107,14 @@ service cloud.firestore {
       // Demais subcoleções do tenant (CRM + Monitor config/jobs/etc.)
       match /{collection}/{docId} {
         allow read: if belongsToTenant(empresaId);
-        allow write: if belongsToTenant(empresaId)
+        allow create: if belongsToTenant(empresaId)
+                     && collection != 'leadsMonitorInbox'
+                     && collection != 'leadsMonitorAudit'
+                     && request.resource.data.empresaId == empresaId;
+        allow update: if belongsToTenant(empresaId)
+                     && collection != 'leadsMonitorInbox'
+                     && collection != 'leadsMonitorAudit';
+        allow delete: if belongsToTenant(empresaId)
                      && collection != 'leadsMonitorInbox'
                      && collection != 'leadsMonitorAudit';
 

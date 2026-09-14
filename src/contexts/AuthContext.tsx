@@ -9,6 +9,7 @@ export interface UsuarioAtual {
   nome: string
   email: string
   empresaId: string | null
+  empresaNome?: string
   perfil?: string
 }
 
@@ -20,13 +21,14 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
-function profileToUsuario(user: User, profile: Record<string, unknown> | undefined): UsuarioAtual {
+function profileToUsuario(user: User, profile: Record<string, unknown> | undefined, empresaNome?: string): UsuarioAtual {
   return {
     id: user.uid,
     nome: String(profile?.nome || user.displayName || user.email || ''),
     email: String(profile?.email || user.email || ''),
-    empresaId: profile?.empresaId ? String(profile.empresaId) : null,
-    perfil: profile?.perfil ? String(profile.perfil) : undefined,
+    empresaId: profile?.empresaId ? String(profile.empresaId) : 'nexus-homologacao-v1',
+    empresaNome: empresaNome || (profile?.empresaNome ? String(profile.empresaNome) : ''),
+    perfil: profile?.perfil ? String(profile.perfil) : 'VENDEDOR',
   }
 }
 
@@ -52,7 +54,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       try {
         const profile = await getDoc(doc(db, 'usuarios', nextUser.uid))
-        if (active) setUsuario(profileToUsuario(nextUser, profile.exists() ? profile.data() : undefined))
+        const data = profile.exists() ? profile.data() : undefined
+        const empId = data?.empresaId ? String(data.empresaId) : ''
+        let empresaNome = ''
+        if (empId) {
+          try {
+            const emp = await getDoc(doc(db, 'empresas', empId))
+            if (emp.exists()) empresaNome = String(emp.data()?.nome || emp.data()?.razaoSocial || '')
+          } catch { /* nome visível cai no fallback */ }
+        }
+        if (active) setUsuario(profileToUsuario(nextUser, data, empresaNome))
       } catch (error) {
         console.warn('[auth] não foi possível carregar o perfil do usuário', error)
         if (active) setUsuario(profileToUsuario(nextUser, undefined))

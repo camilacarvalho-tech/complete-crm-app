@@ -1,8 +1,22 @@
-﻿export default function Documentos() {
+﻿import { RecordsPage } from '../components/nexus/RecordsPage'
+import { DOCUMENT_CATEGORIES } from '../types/nexus'
+
+export default function Documentos() {
   return (
-    <div>
-      <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-4">Documentos</h1>
-      <p className="text-slate-600 dark:text-slate-400">Módulo em desenvolvimento</p>
-    </div>
+    <RecordsPage
+      storeKey="documentos"
+      title="Central de documentos"
+      subtitle="Documentos de clientes e internos permanecem vinculados ao cadastro de origem."
+      tabs={['todas', ...DOCUMENT_CATEGORIES]}
+      statusField="categoria"
+      fields={[
+        { key: 'clienteNome', label: 'Cliente' },
+        { key: 'categoria', label: 'Categoria', options: [...DOCUMENT_CATEGORIES] },
+        { key: 'origem', label: 'Origem' },
+        { key: 'funcionario', label: 'Responsável' },
+        { key: 'propostaId', label: 'Proposta' },
+        { key: 'produto', label: 'Produto' },
+      ]}
+    />
   )
 }

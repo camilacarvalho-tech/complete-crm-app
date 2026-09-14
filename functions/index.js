@@ -429,3 +429,60 @@ exports.leadsMonitorPlacesSearch = onRequest({
   timeoutSeconds: 120,
   invoker: 'public',
 }, placesSearchHandler)
+
+/**
+ * Webhook oficial Meta WhatsApp Cloud API.
+ * GET: verificação (META_WHATSAPP_VERIFY_TOKEN no env da Function).
+ * POST: persiste WAMID/wa_id/texto. Não envia mensagem e não inventa atendimento.
+ */
+exports.metaWhatsAppWebhook = onRequest({
+  cors: true,
+  region: 'southamerica-east1',
+}, async (req, res) => {
+  const verifyToken = process.env.META_WHATSAPP_VERIFY_TOKEN || ''
+  if (req.method === 'GET') {
+    const mode = String(req.query['hub.mode'] || '')
+    const token = String(req.query['hub.verify_token'] || '')
+    const challenge = String(req.query['hub.challenge'] || '')
+    if (mode === 'subscribe' && verifyToken && token === verifyToken) {
+      res.status(200).send(challenge)
+      return
+    }
+    res.status(403).json({ error: 'verify_token_mismatch_or_missing' })
+    return
+  }
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'method_not_allowed' })
+    return
+  }
+  const empresaId = String(req.query.empresaId || req.header('x-empresa-id') || '')
+  if (!empresaId) {
+    res.status(400).json({ error: 'empresaId_required' })
+    return
+  }
+  const body = req.body || {}
+  const msg = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
+  const contact = body?.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]
+  const wamid = msg?.id || null
+  const waId = contact?.wa_id || null
+  const text = msg?.text?.body || null
+  await db.collection(`empresas/${empresaId}/mensagens`).add({
+    empresaId,
+    canal: 'whatsapp',
+    wamid,
+    wa_id: waId,
+    texto: text,
+    status: 'recebida',
+    criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+  })
+  await db.collection(`empresas/${empresaId}/automacaoEventos`).add({
+    empresaId,
+    gatilho: 'nova_mensagem',
+    entidade: 'mensagens',
+    record: { wa_id: waId, wamid, texto: text, canal: 'whatsapp' },
+    status: 'pendente',
+    criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+  })
+  res.status(200).json({ ok: true, wamid, wa_id: waId })
+})
+

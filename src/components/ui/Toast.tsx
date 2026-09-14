@@ -10,9 +10,9 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | undefined>(undefined)
 const COLORS: Record<ToastKind, string> = {
-  success: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-  info: 'border-sky-200 bg-sky-50 text-sky-900',
-  error: 'border-red-200 bg-red-50 text-red-900',
+  success: 'nexus-toast nexus-toast-success',
+  info: 'nexus-toast nexus-toast-info',
+  error: 'nexus-toast nexus-toast-error',
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {

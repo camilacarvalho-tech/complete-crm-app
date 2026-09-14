@@ -1,51 +1,8 @@
-/**
- * CONFIGURAÇÃO DO MENU LATERAL DINÂMICO
- * Define quais itens aparecem para cada nicho de empresa
- */
-
 import {
-  LayoutDashboard,
-  Users,
-  GitBranch,
-  MessageCircle,
-  StickyNote,
-  BarChart3,
-  Building2,
-  DollarSign,
-  Target,
-  TrendingUp,
-  Megaphone,
-  Phone,
-  Settings,
-  Bot,
-  Radar,
-  Database,
-  // Correspondente Bancário
-  Landmark,
-  // Saúde
-  Calendar,
-  FileText,
-  Activity,
-  Stethoscope,
-  CreditCard,
-  Package,
-  UserCog,
-  // Odontologia
-  Smile,
-  Image,
-  // Psicologia
-  Clock,
-  Shield,
-  Receipt,
-  // Nutrição
-  Apple,
-  Book,
-  // Academia
-  Dumbbell,
-  UserCheck,
-  CheckSquare,
-  FileSignature,
-  Zap,
+  LayoutDashboard, Users, MessageCircle, FileText, Calendar, Phone,
+  Megaphone, Target, TrendingUp, Radar, Bot, BarChart3, FileSignature,
+  Landmark, Building2, DollarSign, Wallet, Receipt, Settings, Zap, Package,
+  Activity, ClipboardList,
 } from 'lucide-react'
 import { NichoEmpresa } from '../types/database.types'
 
@@ -53,465 +10,61 @@ export interface MenuItem {
   path: string
   icon: any
   label: string
-  labelOriginal?: string // Nome genérico (ex: "Clientes")
-  nichos?: NichoEmpresa[] // Se vazio, aparece para todos
+  labelOriginal?: string
+  nichos?: NichoEmpresa[]
   badge?: string
   featured?: boolean
 }
+export interface MenuSection { title: string; items: MenuItem[] }
 
-/**
- * MENU COMPLETO - TODOS OS ITENS POSSÍVEIS
- * O sistema filtra automaticamente baseado no nicho da empresa
- */
 export const MENU_ITEMS: MenuItem[] = [
-  // ============================================
-  // CORE (aparece para TODOS os nichos)
-  // ============================================
-  {
-    path: '/',
-    icon: LayoutDashboard,
-    label: 'Dashboard',
-    nichos: [] // Vazio = todos
-  },
-  
-  // ============================================
-  // CRM - Nome muda por nicho
-  // ============================================
-  {
-    path: '/clientes',
-    icon: Users,
-    label: 'Clientes', // Padrão para Correspondente
-    labelOriginal: 'Clientes',
-    nichos: [NichoEmpresa.CORRESPONDENTE_BANCARIO]
-  },
-  {
-    path: '/clientes',
-    icon: Users,
-    label: 'Pacientes', // Para área da saúde
-    labelOriginal: 'Clientes',
-    nichos: [
-      NichoEmpresa.CLINICA_MEDICA,
-      NichoEmpresa.ODONTOLOGIA,
-      NichoEmpresa.PSICOLOGIA,
-      NichoEmpresa.NUTRICAO
-    ]
-  },
-  {
-    path: '/clientes',
-    icon: Users,
-    label: 'Alunos', // Para academia
-    labelOriginal: 'Clientes',
-    nichos: [NichoEmpresa.ACADEMIA]
-  },
-  
-  // ============================================
-  // CORE (continuação)
-  // ============================================
-  {
-    path: '/pipeline',
-    icon: GitBranch,
-    label: 'Pipeline',
-    nichos: []
-  },
-  {
-    path: '/tarefas',
-    icon: CheckSquare,
-    label: 'Agenda Inteligente',
-    nichos: []
-  },
-  {
-    path: '/chat-center',
-    icon: MessageCircle,
-    label: 'Nexus Atendimento',
-    nichos: [],
-    badge: 'NOVO'
-  },
-  {
-    path: '/campanhas',
-    icon: Megaphone,
-    label: 'Campanhas',
-    nichos: [],
-    featured: true
-  },
-  {
-    path: '/nexus-ai',
-    icon: Bot,
-    label: 'Nexus AI',
-    nichos: [],
-    badge: 'AI',
-    featured: true
-  },
-  {
-    path: '/leads-monitor',
-    icon: Radar,
-    label: 'Leads Monitor',
-    nichos: [],
-    badge: 'NOVO',
-    featured: true
-  },
-  {
-    path: '/fontes-pesquisa',
-    icon: Database,
-    label: 'Fontes de Pesquisa',
-    nichos: [],
-    badge: 'V1.2'
-  },
-  {
-    path: '/ia-prospeccao',
-    icon: Bot,
-    label: 'IA Prospecção',
-    nichos: [], // Vazio = aparece para todos
-    badge: 'IA',
-    featured: true
-  },
-  {
-    path: '/discadora',
-    icon: Phone,
-    label: 'VOIP/Discadora',
-    nichos: [], // Aparece para todos
-    badge: 'NOVO'
-  },
-  {
-    path: '/marketing-roi',
-    icon: TrendingUp,
-    label: 'Marketing ROI',
-    nichos: []
-  },
-  {
-    path: '/documentos',
-    icon: FileText,
-    label: 'Documentos',
-    nichos: []
-  },
-  {
-    path: '/automacoes',
-    icon: Zap,
-    label: 'Automações',
-    nichos: [],
-    badge: 'NOVO'
-  },
-  // ============================================
-  // CORRESPONDENTE BANCÁRIO
-  // ============================================
-  {
-    path: '/propostas',
-    icon: FileSignature,
-    label: 'Propostas',
-    nichos: [NichoEmpresa.CORRESPONDENTE_BANCARIO]
-  },
-  {
-    path: '/digitacao',
-    icon: FileText,
-    label: 'Digitação',
-    nichos: [NichoEmpresa.CORRESPONDENTE_BANCARIO],
-    badge: 'NOVO'
-  },
-  {
-    path: '/bancos-convenios',
-    icon: Landmark,
-    label: 'Bancos/Convênios',
-    nichos: [NichoEmpresa.CORRESPONDENTE_BANCARIO]
-  },
-  
-  // ============================================
-  // SAÚDE (Clínica, Odonto, Psico, Nutri)
-  // ============================================
-  {
-    path: '/agenda',
-    icon: Calendar,
-    label: 'Agenda',
-    nichos: [
-      NichoEmpresa.CLINICA_MEDICA,
-      NichoEmpresa.ODONTOLOGIA,
-      NichoEmpresa.PSICOLOGIA,
-      NichoEmpresa.NUTRICAO
-    ]
-  },
-  {
-    path: '/convenios',
-    icon: CreditCard,
-    label: 'Convênios',
-    nichos: [
-      NichoEmpresa.CLINICA_MEDICA,
-      NichoEmpresa.ODONTOLOGIA,
-      NichoEmpresa.PSICOLOGIA,
-      NichoEmpresa.NUTRICAO
-    ]
-  },
-  {
-    path: '/profissionais',
-    icon: UserCog,
-    label: 'Profissionais',
-    nichos: [
-      NichoEmpresa.CLINICA_MEDICA,
-      NichoEmpresa.ODONTOLOGIA,
-      NichoEmpresa.PSICOLOGIA,
-      NichoEmpresa.NUTRICAO
-    ]
-  },
-  
-  // ============================================
-  // CLÍNICA MÉDICA
-  // ============================================
-  {
-    path: '/prontuario',
-    icon: FileText,
-    label: 'Prontuário',
-    nichos: [NichoEmpresa.CLINICA_MEDICA]
-  },
-  {
-    path: '/exames',
-    icon: Activity,
-    label: 'Exames',
-    nichos: [NichoEmpresa.CLINICA_MEDICA]
-  },
-  {
-    path: '/estoque',
-    icon: Package,
-    label: 'Estoque',
-    nichos: [NichoEmpresa.CLINICA_MEDICA, NichoEmpresa.ODONTOLOGIA]
-  },
-  
-  // ============================================
-  // ODONTOLOGIA
-  // ============================================
-  {
-    path: '/odontograma',
-    icon: Smile,
-    label: 'Odontograma',
-    nichos: [NichoEmpresa.ODONTOLOGIA]
-  },
-  {
-    path: '/tratamentos',
-    icon: Stethoscope,
-    label: 'Tratamentos',
-    nichos: [NichoEmpresa.ODONTOLOGIA]
-  },
-  {
-    path: '/radiografias',
-    icon: Image,
-    label: 'Radiografias',
-    nichos: [NichoEmpresa.ODONTOLOGIA]
-  },
-
-  // ============================================
-  // PSICOLOGIA
-  // ============================================
-  {
-    path: '/sessoes',
-    icon: Clock,
-    label: 'Sessões',
-    nichos: [NichoEmpresa.PSICOLOGIA]
-  },
-  {
-    path: '/prontuario-psicologico',
-    icon: Shield,
-    label: 'Prontuário Psicológico',
-    nichos: [NichoEmpresa.PSICOLOGIA]
-  },
-  {
-    path: '/recibos',
-    icon: Receipt,
-    label: 'Recibos',
-    nichos: [NichoEmpresa.PSICOLOGIA, NichoEmpresa.NUTRICAO]
-  },
-  
-  // ============================================
-  // NUTRIÇÃO
-  // ============================================
-  {
-    path: '/avaliacao-antropometrica',
-    icon: TrendingUp,
-    label: 'Avaliação Antropométrica',
-    nichos: [NichoEmpresa.NUTRICAO]
-  },
-  {
-    path: '/plano-alimentar',
-    icon: Apple,
-    label: 'Plano Alimentar',
-    nichos: [NichoEmpresa.NUTRICAO]
-  },
-  {
-    path: '/receitas',
-    icon: Book,
-    label: 'Receitas',
-    nichos: [NichoEmpresa.NUTRICAO]
-  },
-  
-  // ============================================
-  // ACADEMIA
-  // ============================================
-  {
-    path: '/planos-mensalidades',
-    icon: CreditCard,
-    label: 'Planos/Mensalidades',
-    nichos: [NichoEmpresa.ACADEMIA]
-  },
-  {
-    path: '/avaliacoes-fisicas',
-    icon: Activity,
-    label: 'Avaliações Físicas',
-    nichos: [NichoEmpresa.ACADEMIA]
-  },
-  {
-    path: '/treinos',
-    icon: Dumbbell,
-    label: 'Treinos',
-    nichos: [NichoEmpresa.ACADEMIA]
-  },
-  {
-    path: '/personal-trainers',
-    icon: UserCheck,
-    label: 'Personal Trainers',
-    nichos: [NichoEmpresa.ACADEMIA]
-  },
-  
-  // ============================================
-  // CORE (final - aparece para todos)
-  // ============================================
-  {
-    path: '/comunicacao-interna',
-    icon: MessageCircle,
-    label: 'Nexus Interno',
-    nichos: []
-  },
-  {
-    path: '/relatorios',
-    icon: BarChart3,
-    label: 'Relatórios',
-    nichos: []
-  },
-  {
-    path: '/remarketing',
-    icon: Target,
-    label: 'Remarketing',
-    nichos: []
-  },
-  {
-    path: '/empresas',
-    icon: Building2,
-    label: 'Empresas',
-    nichos: []
-  },
-  {
-    path: '/configuracoes',
-    icon: Settings,
-    label: 'Configurações',
-    nichos: []
-  }
+  { path: '/', icon: LayoutDashboard, label: 'Dashboard', nichos: [] },
+  { path: '/leads', icon: Users, label: 'Leads', nichos: [] },
+  { path: '/clientes', icon: Users, label: 'Clientes', nichos: [] },
+  { path: '/propostas', icon: FileSignature, label: 'Propostas', nichos: [] },
+  { path: '/tarefas', icon: ClipboardList, label: 'Tarefas', nichos: [] },
+  { path: '/agenda', icon: Calendar, label: 'Agenda', nichos: [] },
+  { path: '/documentos', icon: FileText, label: 'Documentos', nichos: [] },
+  { path: '/whatsapp', icon: MessageCircle, label: 'WhatsApp', nichos: [] },
+  { path: '/comunicacao-interna', icon: MessageCircle, label: 'Chat Interno', nichos: [] },
+  { path: '/campanhas', icon: Megaphone, label: 'Campanhas', featured: true, nichos: [] },
+  { path: '/remarketing', icon: Target, label: 'Remarketing', nichos: [] },
+  { path: '/marketing-roi', icon: TrendingUp, label: 'Marketing ROI', nichos: [] },
+  { path: '/leads-monitor', icon: Radar, label: 'Leads Monitor', featured: true, nichos: [] },
+  { path: '/nexus-ai', icon: Bot, label: 'Nexus AI', badge: 'IA', featured: true, nichos: [] },
+  { path: '/nexus-ai-financeiro', icon: Bot, label: 'Nexus AI Financeiro', badge: 'IA', nichos: [] },
+  { path: '/relatorios', icon: BarChart3, label: 'Relatórios', nichos: [] },
+  { path: '/digitacao', icon: FileText, label: 'Digitação', nichos: [] },
+  { path: '/bancos-convenios', icon: Landmark, label: 'Bancos / Convênios', nichos: [] },
+  { path: '/fila-atendimento', icon: Zap, label: 'Fila de Atendimento', nichos: [] },
+  { path: '/discadora', icon: Phone, label: 'Discadora', nichos: [] },
+  { path: '/financeiro', icon: DollarSign, label: 'Financeiro', nichos: [] },
+  { path: '/fluxo-caixa', icon: Wallet, label: 'Fluxo de Caixa', nichos: [] },
+  { path: '/contas-pagar', icon: Receipt, label: 'Contas a Pagar', nichos: [] },
+  { path: '/contas-receber', icon: Receipt, label: 'Contas a Receber', nichos: [] },
+  { path: '/faturamento', icon: Receipt, label: 'Faturamento', nichos: [] },
+  { path: '/notas-fiscais', icon: FileText, label: 'Notas Fiscais', nichos: [] },
+  { path: '/dre', icon: BarChart3, label: 'DRE', nichos: [] },
+  { path: '/produtos', icon: Package, label: 'Produtos', nichos: [] },
+  { path: '/empresas', icon: Building2, label: 'Empresas', nichos: [] },
+  { path: '/equipes', icon: Users, label: 'Equipes', nichos: [] },
+  { path: '/configuracoes', icon: Settings, label: 'Configurações', nichos: [] },
+  { path: '/diagnostico', icon: Activity, label: 'Diagnóstico', nichos: [] },
 ]
 
-/**
- * FUNÇÃO PARA FILTRAR MENU POR NICHO
- * Retorna apenas os itens que devem aparecer para a empresa logada
- */
-export const getMenuByNicho = (nicho: NichoEmpresa | null): MenuItem[] => {
-  if (!nicho) {
-    // Se não tiver nicho (Master vendo painel geral), mostra apenas CORE
-    return MENU_ITEMS.filter(item => item.nichos?.length === 0)
-  }
+const by = (...paths: string[]) => MENU_ITEMS.filter((i) => paths.includes(i.path))
 
-  return MENU_ITEMS.filter(item => {
-    // Sem restrição de nicho = aparece para todos
-    if (!item.nichos || item.nichos.length === 0) {
-      return true
-    }
-    
-    // Tem restrição = verifica se o nicho está na lista
-    return item.nichos.includes(nicho)
-  })
-}
+export const MENU_SECTIONS: MenuSection[] = [
+  { title: 'Início', items: by('/') },
+  { title: 'CRM', items: by('/leads', '/clientes', '/propostas', '/tarefas', '/agenda', '/documentos', '/whatsapp', '/comunicacao-interna') },
+  { title: 'Marketing', items: by('/campanhas', '/remarketing', '/marketing-roi', '/leads-monitor') },
+  { title: 'Inteligência', items: by('/nexus-ai', '/nexus-ai-financeiro', '/relatorios') },
+  { title: 'Operação', items: by('/digitacao', '/bancos-convenios', '/fila-atendimento', '/discadora') },
+  { title: 'ERP', items: by('/financeiro', '/fluxo-caixa', '/contas-pagar', '/contas-receber', '/faturamento', '/notas-fiscais', '/dre', '/produtos') },
+  { title: 'Administração', items: by('/empresas', '/equipes', '/configuracoes', '/diagnostico') },
+]
 
-/**
- * FUNÇÃO PARA AGRUPAR MENU POR SEÇÃO
- * Organiza os itens em categorias visuais
- */
-export interface MenuSection {
-  title: string
-  items: MenuItem[]
-}
-
-const uniqueByPath = (items: MenuItem[]): MenuItem[] =>
-  items.filter((item, index, list) => list.findIndex((other) => other.path === item.path) === index)
-
-const orderByPaths = (items: MenuItem[], paths: string[]): MenuItem[] => {
-  const byPath = new Map(uniqueByPath(items).map((item) => [item.path, item]))
-  return paths.map((path) => byPath.get(path)).filter((item): item is MenuItem => Boolean(item))
-}
-
-/** Fluxo comercial/prospecção visível no menu principal */
-export const SIDEBAR_PRINCIPAL_PATHS = [
-  '/',
-  '/clientes',
-  '/pipeline',
-  '/tarefas',
-  '/chat-center',
-  '/campanhas',
-  '/nexus-ai',
-  '/leads-monitor',
-  '/fontes-pesquisa',
-  '/ia-prospeccao',
-  '/discadora',
-  '/marketing-roi',
-  '/documentos',
-  '/automacoes',
-  '/propostas',
-  '/digitacao',
-  '/bancos-convenios',
-  '/agenda',
-  '/empresas',
-  '/configuracoes',
-] as const
-
-/** Módulos de outros segmentos — ordem de exibição em "Outros Nichos" */
-export const SIDEBAR_OUTROS_NICHOS_PATHS = [
-  '/profissionais',
-  '/prontuario',
-  '/exames',
-  '/estoque',
-  '/odontograma',
-  '/tratamentos',
-  '/radiografias',
-  '/sessoes',
-  '/prontuario-psicologico',
-  '/receitas',
-  '/plano-alimentar',
-  '/avaliacao-antropometrica',
-  '/avaliacoes-fisicas',
-  '/treinos',
-  '/personal-trainers',
-  '/convenios',
-  '/comunicacao-interna',
-  '/recibos',
-  '/planos-mensalidades',
-  '/relatorios',
-  '/remarketing',
-] as const
-
-export const getSidebarNav = (items: MenuItem[] = MENU_ITEMS): { principal: MenuItem[]; outrosNichos: MenuItem[] } => {
-  const unique = uniqueByPath(items)
-  const principal = orderByPaths(unique, [...SIDEBAR_PRINCIPAL_PATHS])
-  const orderedOutros = orderByPaths(unique, [...SIDEBAR_OUTROS_NICHOS_PATHS])
-  const known = new Set<string>([...SIDEBAR_PRINCIPAL_PATHS, ...SIDEBAR_OUTROS_NICHOS_PATHS])
-  const extras = unique.filter((item) => !known.has(item.path))
-  return { principal, outrosNichos: [...orderedOutros, ...extras] }
-}
-
-export const getMenuSections = (nicho: NichoEmpresa | null): MenuSection[] => {
-  const { principal, outrosNichos } = getSidebarNav(getMenuByNicho(nicho))
-
-  const sections: MenuSection[] = [
-    {
-      title: 'Principal',
-      items: principal
-    },
-    {
-      title: 'Outros Nichos',
-      items: outrosNichos
-    }
-  ]
-
-  return sections.filter(section => section.items.length > 0)
-}
-
+export const getMenuByNicho = (_nicho: NichoEmpresa | null): MenuItem[] => MENU_ITEMS
+export const getSidebarNav = () => ({ principal: MENU_ITEMS, outrosNichos: [] as MenuItem[] })
+export const getMenuSections = (_nicho?: NichoEmpresa | null): MenuSection[] => MENU_SECTIONS
 export default MENU_ITEMS
