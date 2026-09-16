@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useNexusStore } from '../../contexts/NexusStore'
 import { TextInput } from '../nexus/kit'
+import { useEscLayer } from '../../hooks/useEscLayer'
 
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const nav = useNavigate()
@@ -12,13 +13,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     if (!open) setQ('')
   }, [open])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && open) onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+  useEscLayer(open, onClose)
 
   const results = useMemo(() => {
     const term = q.trim().toLowerCase()

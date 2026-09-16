@@ -8,11 +8,13 @@ import { integracaoApiConnector } from './integracaoApi.connector'
 import { webhookConnector } from './webhook.connector'
 import { csvImportConnector } from './csvImport.connector'
 import { googlePlacesConnector } from './googlePlaces.connector'
+import { openStreetMapConnector } from './openStreetMap.connector'
 
 let bootstrapped = false
 
 export function bootstrapConnectors(): void {
   if (bootstrapped) return
+  registerConnector(openStreetMapConnector)
   registerConnector(integracaoApiConnector)
   registerConnector(webhookConnector)
   registerConnector(csvImportConnector)

@@ -17,6 +17,7 @@ export type TipoOportunidade = 'pessoa' | 'empresa'
 
 /** Tipos de fonte de pesquisa (cadastro + stubs / conectores reais). */
 export type FontePesquisaTipo =
+  | 'openstreetmap'
   | 'google_places'
   | 'google_maps'
   | 'gbp'
@@ -38,6 +39,9 @@ export type FonteHealthStatus =
   | 'error'
   | 'needs_credentials'
   | 'idle'
+  | 'optional_indisponivel'
+  | 'unavailable'
+  | 'skipped'
 
 export type SearchRunStatus =
   | 'queued'
@@ -47,12 +51,42 @@ export type SearchRunStatus =
   | 'succeeded'
   | 'failed'
 
+export type FaixaFuncionarios =
+  | 'qualquer'
+  | '1-10'
+  | '11-50'
+  | '51-100'
+  | '101-500'
+  | '501-1000'
+  | '1001-5000'
+  | '5001-10000'
+  | '10001-50000'
+  | '50000+'
+  | '100+'
+  | '100-499'
+  | '500-999'
+  | '1000-4999'
+  | '5000-9999'
+  | '10000-49999'
+
+export type BeneficiosConsignaveis = 'todos' | '1' | '2' | '3' | '4' | '5+'
+
+export type EmployeeCountStatus = 'nao_informada' | 'faixa_publica'
+
+export type AbrangenciaGeografica = 'CIDADE' | 'ESTADO' | 'BRASIL'
+
+export type OperacaoMonitor = 'INSS' | 'CREDITO_CLT' | 'FGTS' | 'EMPRESTIMOS' | 'SERVIDOR' | 'OUTROS' | ''
+
+export type TipoBeneficiarioInss = 'todos' | 'aposentado' | 'pensionista' | 'outro'
+
 /** Filtros do Buscador Inteligente (V1.2 estende V1.1). */
 export interface FiltrosPesquisa {
   cidade: string
+  cidadesSelecionadas?: string[]
   estado: string
   segmento: string
   palavraChave: string
+  cargos?: string[]
   bairro?: string
   cep?: string
   cnae?: string
@@ -64,6 +98,25 @@ export interface FiltrosPesquisa {
   scoreMinimo?: number
   temperaturaMinima?: LeadTemperatura | ''
   maxResultsPerCycle?: number
+  faixaFuncionarios?: FaixaFuncionarios
+  pais?: string
+  abrangenciaGeografica?: AbrangenciaGeografica
+  operacao?: OperacaoMonitor
+  campanha?: string
+  produtos?: string[]
+  banco?: string
+  cnpjConsulta?: string
+  tipoBeneficiario?: TipoBeneficiarioInss
+  idadeMinima?: number | null
+  idadeMaxima?: number | null
+  dataNascimentoInicial?: string
+  dataNascimentoFinal?: string
+  tipoBeneficio?: string
+  especieBeneficio?: string
+  situacaoBeneficio?: string
+  beneficiosConsignaveis?: BeneficiosConsignaveis
+  /** @deprecated substituído por beneficiosConsignaveis */
+  perfilTomador?: string
 }
 
 export interface PesquisaSalva extends FiltrosPesquisa {
@@ -176,6 +229,13 @@ export interface OportunidadeMonitor {
   cnpj?: string
   consentimentoLgpd: boolean
   baseLegal: string
+  origemDado?: string
+  fonteDado?: string
+  finalidadeTratamento?: string
+  coletadoEm?: unknown
+  retentionPolicy?: string
+  retentionUntil?: unknown
+  retentionStatus?: string
   observacoes?: string
   metadados?: Record<string, unknown>
   externalId?: string
@@ -197,10 +257,15 @@ export interface OportunidadeMonitor {
   motivosScore: string[]
   origemScore: LeadScoreResult['origemScore']
   sugestaoContato?: string
-  pesquisaId?: string
+  pesquisaId?: string | null
+  employeeCount?: number | null
+  employeeCountRange?: string | null
+  employeeCountFonte?: string | null
+  employeeCountStatus?: EmployeeCountStatus
   searchRunId?: string
   fonteId?: string
   crmClienteId?: string
+  envioCrmErro?: string | null
   rejeitadoMotivo?: string
   encontradoEm?: unknown
   atualizadoEm?: unknown

@@ -111,6 +111,21 @@ export interface NexusCliente extends Attribution {
   responsavelId?: string
   score?: number
   temperatura?: string
+  empresaNome?: string
+  empresaCnpj?: string
+  cargo?: string
+  relacaoEmpresa?: string
+  fontePesquisa?: string
+  fonteUrl?: string
+  linkedinUrl?: string
+  instagramUrl?: string
+  facebookUrl?: string
+  youtubeUrl?: string
+  tiktokUrl?: string
+  twitterUrl?: string
+  leadsMonitorPersonId?: string
+  leadsMonitorOpportunityId?: string
+  camposExtras?: Record<string, unknown>
   criadoEm?: unknown
   atualizadoEm?: unknown
   created_at?: unknown

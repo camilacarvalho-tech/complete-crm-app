@@ -19,8 +19,9 @@ import type { ConnectorFetchContext, NormalizedLead } from '../connectors/types'
 import type { FiltrosPesquisa, MonitorRunResult, OportunidadeMonitor } from '../types'
 import { getNexusAiQualifier } from '../ai/INexusAiQualifier'
 import { recordConnectorFailure, recordConnectorSuccess } from '../services/healthStore'
+import { omitUndefinedForFirestore } from '../services/jobQueue'
 import { writeLeadsMonitorLog } from '../services/opsLogs'
-import { PlacesConnectorError } from '../services/placesClient'
+import { mapPlacesSkipCode } from '../services/placesClient'
 import { normalizeFromConnector } from './normalize'
 import { collectDedupeKeys, buildDedupeKey, deduplicateLeads, matchExistingId } from './dedupe'
 import { enrichLead } from './enrich'
@@ -57,14 +58,27 @@ async function loadExisting(empresaId: string): Promise<ExistingOpp[]> {
       endereco: data.endereco,
       cidade: data.cidade,
       externalId: data.externalId,
+      metadados: data.metadados,
     })
     return { id: d.id, keys, data }
   })
 }
 
+type ConnectorSkip = {
+  connectorId: string
+  label: string
+  code: string
+  message: string
+}
+
 async function collectNormalized(
   ctx: ConnectorFetchContext
-): Promise<{ leads: NormalizedLead[]; fontes: string[]; rawCount: number; fatal?: string }> {
+): Promise<{
+  leads: NormalizedLead[]
+  fontes: string[]
+  rawCount: number
+  skipped: ConnectorSkip[]
+}> {
   const connectors = getRunnableConnectors()
   const batches = await Promise.all(
     connectors.map(async (connector) => {
@@ -82,31 +96,54 @@ async function collectNormalized(
           label: connector.meta.label,
           leads: normalized.leads,
           rawCount: raw.length,
+          skipped: undefined as ConnectorSkip | undefined,
         }
       } catch (e: any) {
         const message = e?.message || String(e)
-        console.warn(`[leads-monitor] conector ${connector.meta.id} falhou`, e)
+        const isGoogle = connector.meta.id === 'google-places'
+        const code = isGoogle
+          ? mapPlacesSkipCode(e?.code, e?.status, message)
+          : String(e?.code || 'skipped')
+        console.warn(`[leads-monitor] conector ${connector.meta.id} skipped`, e)
         await recordConnectorFailure({
           empresaId: ctx.empresaId,
           connectorId: connector.meta.id,
-          error: message,
+          error: `${code}: ${message}`,
           latencyMs: Date.now() - t0,
           connectorVersion: connector.meta.version,
         })
-        if (e instanceof PlacesConnectorError || e?.code === 'needs_credentials') {
-          return { label: connector.meta.label, leads: [] as NormalizedLead[], rawCount: 0, fatal: message }
+        await writeLeadsMonitorLog({
+          empresaId: ctx.empresaId,
+          level: 'warn',
+          message,
+          connectorId: connector.meta.id,
+          meta: {
+            source: connector.meta.id,
+            status: code,
+            optional: isGoogle,
+            skipped: true,
+          },
+        })
+        return {
+          label: connector.meta.label,
+          leads: [] as NormalizedLead[],
+          rawCount: 0,
+          skipped: {
+            connectorId: connector.meta.id,
+            label: connector.meta.label,
+            code,
+            message,
+          } satisfies ConnectorSkip,
         }
-        return { label: connector.meta.label, leads: [] as NormalizedLead[], rawCount: 0, fatal: undefined }
       }
     })
   )
 
-  const fatal = batches.find((b) => b.fatal)?.fatal
   return {
     leads: batches.flatMap((b) => b.leads),
     fontes: batches.filter((b) => b.leads.length > 0).map((b) => b.label),
     rawCount: batches.reduce((a, b) => a + b.rawCount, 0),
-    fatal,
+    skipped: batches.map((b) => b.skipped).filter((s): s is ConnectorSkip => Boolean(s)),
   }
 }
 
@@ -147,23 +184,8 @@ export async function runLeadPipeline(opts: PipelineRunOptions): Promise<Monitor
     limite: Math.min(MAX_RESULTS_PER_CYCLE, Math.max(1, limitePorConector)),
   }
 
-  const { leads, fontes, rawCount, fatal } = await collectNormalized(ctx)
-  if (fatal && rawCount === 0 && leads.length === 0) {
-    await writeLeadsMonitorLog({
-      empresaId,
-      level: 'error',
-      message: fatal,
-      connectorId: 'google-places',
-      meta: {
-        source: 'google_places',
-        query: [filtros.palavraChave, filtros.segmento, filtros.cidade, filtros.estado].filter(Boolean).join(' '),
-        cidade: filtros.cidade,
-        estado: filtros.estado,
-        status: 'needs_credentials',
-      },
-    })
-    throw new Error(fatal)
-  }
+  const { leads, fontes, rawCount, skipped } = await collectNormalized(ctx)
+  const skipNotes = skipped.map((s) => `${s.label}: ${s.code} — ${s.message}`)
 
   const existing = await loadExisting(empresaId)
   const existingKeys = new Set(existing.flatMap((row) => row.keys))
@@ -212,28 +234,39 @@ export async function runLeadPipeline(opts: PipelineRunOptions): Promise<Monitor
       continue
     }
 
-    await addDoc(collection(db, 'empresas', empresaId, COL_OPORTUNIDADES), {
-      ...lead,
-      origemFonte: lead.connectorId,
-      empresaId,
-      status: 'novo',
-      score: scored.score,
-      temperatura: scored.temperatura || temperaturaFromScore(scored.score),
-      classificacao: scored.classificacao,
-      categoriaClassificacao: scored.categoria || scored.classificacao,
-      motivosScore: scored.motivos,
-      origemScore: scored.origemScore,
-      pesquisaId: pesquisaId || null,
-      metadados: { ...(lead.metadados || {}), scoreMinimo: filtros.scoreMinimo || 70 },
-      vezesEncontrada: 1,
-      fontes: [lead.origemLabel || lead.connectorId],
-      primeiraDescoberta: serverTimestamp(),
-      ultimaDescoberta: serverTimestamp(),
-      encontradoEm: serverTimestamp(),
-      criadoEm: serverTimestamp(),
-      atualizadoEm: serverTimestamp(),
-      dadosEnriquecidos: lead.dadosEnriquecidos,
-    })
+    await addDoc(
+      collection(db, 'empresas', empresaId, COL_OPORTUNIDADES),
+      omitUndefinedForFirestore({
+        ...lead,
+        origemFonte: lead.connectorId,
+        empresaId,
+        status: 'novo',
+        score: scored.score,
+        temperatura: scored.temperatura || temperaturaFromScore(scored.score),
+        classificacao: scored.classificacao,
+        categoriaClassificacao: scored.categoria || scored.classificacao,
+        motivosScore: scored.motivos,
+        origemScore: scored.origemScore,
+        pesquisaId: pesquisaId && pesquisaId.trim() ? pesquisaId.trim() : null,
+        employeeCount: lead.employeeCount ?? null,
+        employeeCountRange: lead.employeeCountRange ?? null,
+        employeeCountFonte: lead.employeeCountFonte ?? null,
+        employeeCountStatus: lead.employeeCountStatus || 'nao_informada',
+        metadados: {
+          ...(lead.metadados || {}),
+          scoreMinimo: filtros.scoreMinimo || 70,
+          contextoProspeccao: filtros.palavraChave || null,
+        },
+        vezesEncontrada: 1,
+        fontes: [lead.origemLabel || lead.connectorId],
+        primeiraDescoberta: serverTimestamp(),
+        ultimaDescoberta: serverTimestamp(),
+        encontradoEm: serverTimestamp(),
+        criadoEm: serverTimestamp(),
+        atualizadoEm: serverTimestamp(),
+        dadosEnriquecidos: lead.dadosEnriquecidos ?? null,
+      })
+    )
     novos += 1
   }
 
@@ -260,21 +293,28 @@ export async function runLeadPipeline(opts: PipelineRunOptions): Promise<Monitor
     quentes,
     muitoQuentes,
     tempoMs,
-    erros: fatal ? [fatal] : [],
+    erros: skipNotes,
   }
 
+  const osmSkip = skipped.find((s) => s.connectorId === 'openstreetmap')
+  const googleSkip = skipped.find((s) => s.connectorId === 'google-places')
   await writeLeadsMonitorLog({
     empresaId,
     level: 'info',
     message: `Busca ${filtros.cidade || ''} ${filtros.estado || ''} · ${result.encontrados} retornados`,
-    connectorId: fontes.includes('Google Places') ? 'google-places' : undefined,
+    connectorId: fontes.includes('OpenStreetMap / Overpass')
+      ? 'openstreetmap'
+      : fontes.includes('Google Places')
+        ? 'google-places'
+        : osmSkip?.connectorId || googleSkip?.connectorId,
     meta: {
       source: fontes.join(',') || 'none',
       query: [filtros.palavraChave, filtros.segmento, filtros.cidade, filtros.estado].filter(Boolean).join(' '),
       cidade: filtros.cidade,
       estado: filtros.estado,
       timestamp: new Date().toISOString(),
-      status: 'ok',
+      status: osmSkip ? osmSkip.code : googleSkip ? 'optional_indisponivel' : 'ok',
+      skipped: skipped.map((s) => ({ connectorId: s.connectorId, code: s.code })),
       quantidadeRetornada: result.encontrados,
       quantidadeNova: result.novos,
       quantidadeDuplicada: result.duplicados,

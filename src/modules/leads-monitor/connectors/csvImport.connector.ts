@@ -25,10 +25,10 @@ export const csvImportConnector: IConnector = {
   },
 }
 
-export async function savePendingCsv(data: unknown) {
-  console.log('savePendingCsv:', data)
+export async function savePendingCsv(_data: unknown) {
+  console.info('[csv-import] pending csv recebido')
 }
 
 export async function saveFonteCsvText(fonteId: string, csvText: string) {
-  console.log('saveFonteCsvText:', fonteId, csvText.substring(0, 100))
+  console.info('[csv-import] fonte', fonteId, 'bytes', csvText.length)
 }

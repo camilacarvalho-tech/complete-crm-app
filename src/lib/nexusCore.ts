@@ -78,19 +78,29 @@ export function normalizeEmail(value?: string): string {
   return (value || '').trim().toLowerCase()
 }
 
-export function findSimilarClientes<T extends { id: string; cpf?: string; telefone?: string; whatsapp?: string; email?: string }>(
+export function findSimilarClientes<T extends { id: string; cpf?: string; telefone?: string; whatsapp?: string; email?: string; nome?: string; empresaNome?: string }>(
   list: T[],
-  candidate: { cpf?: string; telefone?: string; whatsapp?: string; email?: string },
+  candidate: { cpf?: string; telefone?: string; whatsapp?: string; email?: string; nome?: string; empresaNome?: string },
   excludeId?: string
 ): T[] {
   const cpf = digits(candidate.cpf)
   const tel = digits(candidate.telefone || candidate.whatsapp)
   const email = normalizeEmail(candidate.email)
+  const nome = String(candidate.nome || '').trim().toLowerCase()
+  const empresa = String(candidate.empresaNome || '').trim().toLowerCase()
   return list.filter((item) => {
     if (excludeId && item.id === excludeId) return false
     if (cpf && digits(item.cpf) === cpf && cpf.length >= 11) return true
     if (tel.length >= 10 && (digits(item.telefone) === tel || digits(item.whatsapp) === tel)) return true
     if (email && normalizeEmail(item.email) === email) return true
+    if (
+      nome &&
+      empresa &&
+      String(item.nome || '').trim().toLowerCase() === nome &&
+      String(item.empresaNome || '').trim().toLowerCase() === empresa
+    ) {
+      return true
+    }
     return false
   })
 }

@@ -42,6 +42,7 @@ export const LEAD_ORIGINS = [
   { code: 'google', label: 'GOOGLE' },
   { code: 'campanha', label: 'CAMPANHA' },
   { code: 'api', label: 'API' },
+  { code: 'importacao', label: 'IMPORTAÇÃO' },
   { code: 'manual', label: 'MANUAL' },
   { code: 'outros', label: 'OUTROS' },
 ] as const
@@ -128,6 +129,6 @@ export function originCode(value?: string): string {
   if (v.includes('monitor')) return 'leads_monitor'
   if (v.includes('facebook')) return 'facebook'
   if (v === 'campaign' || v.includes('campanha')) return 'campanha'
-  if (v === 'csv') return 'outros'
+  if (v === 'csv' || v.includes('import')) return 'importacao'
   return v || 'manual'
 }

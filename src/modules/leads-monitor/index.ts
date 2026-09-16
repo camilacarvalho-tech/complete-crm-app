@@ -45,12 +45,21 @@ export {
   COL_HEALTH,
   COL_FONTES,
   COL_SEARCH_RUNS,
+  COL_PEOPLE_RESEARCH,
+  COL_PEOPLE_RUNS,
+  COL_PROCESS_RUNS,
+  COL_PROCESS_RECORDS,
   ESTADOS_BR,
+  ESTADOS_BR_NOMES,
+  OPERACOES_MONITOR,
   FILTROS_VAZIOS,
   FONTES_TIPOS,
   FONTE_LIMITE_DIARIO_DEFAULT,
   LEADS_MONITOR_VERSION,
   SEGMENTOS,
+  SEGMENTOS_NICHOS,
+  FAIXAS_FUNCIONARIOS,
+  PALAVRAS_CHAVE_PROSPECCAO,
   JOB_MAX_ATTEMPTS,
   JOB_LEASE_MS,
   AUTO_SEARCH_ENABLED,
@@ -84,6 +93,22 @@ export {
 export { parseCsv, mapCsvRow } from './connectors/csvParse'
 export { savePendingCsv, saveFonteCsvText } from './connectors/csvImport.connector'
 export { enviarOportunidadeParaCrm } from './pipeline/sendToCrm'
+export { enviarPessoaParaCrm } from './pipeline/sendPersonToCrm'
+export {
+  downloadDelimited,
+  downloadSpreadsheetMl,
+  exportRowsFromClientes,
+  exportRowsFromOportunidades,
+  exportRowsFromPeople,
+} from './pipeline/exportMonitorRows'
+export {
+  downloadBaseCompleta,
+  downloadCsvNamed,
+  exportEmpresasRows,
+  exportPessoasSheetRows,
+} from './pipeline/exportWorkbook'
+export { formatMonitorDateTime, formatMonitorDate, formatMonitorTime, formatMonitorRelative } from './utils/datetime'
+export { PesquisarPessoasModal } from './components/PesquisarPessoasModal'
 export { aprovarOportunidade, rejeitarOportunidade } from './pipeline/approve'
 export { classifyLead } from './pipeline/classify'
 export { scoreLead } from './pipeline/score'

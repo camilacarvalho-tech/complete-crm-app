@@ -34,15 +34,41 @@ import {
 import {
   useLeadsMonitor,
   ESTADOS_BR,
+  SEGMENTOS_NICHOS,
   SEGMENTOS,
+  FAIXAS_FUNCIONARIOS,
+  PALAVRAS_CHAVE_PROSPECCAO,
+  OPERACOES_MONITOR,
   bootstrapConnectors,
   LEADS_MONITOR_VERSION,
   AUTO_REFRESH_MS,
   type OportunidadeMonitor,
 } from '../modules/leads-monitor'
 import { IntegrationsAdminPanel } from '../modules/leads-monitor/components/IntegrationsAdminPanel'
+import { PesquisarPessoasModal } from '../modules/leads-monitor/components/PesquisarPessoasModal'
+import { RobotPanel } from '../modules/leads-monitor/components/RobotPanel'
+import { ImportBasePanel } from '../modules/leads-monitor/components/ImportBasePanel'
+import { SavedProcessingsPanel } from '../modules/leads-monitor/components/SavedProcessingsPanel'
+import { MonitorGeoFilters } from '../modules/leads-monitor/components/MonitorGeoFilters'
+import { InssOperationPanel } from '../modules/leads-monitor/components/InssOperationPanel'
+import { CargosFuncoesPanel } from '../modules/leads-monitor/components/CargosFuncoesPanel'
+import {
+  downloadBaseCompleta,
+  downloadCsvNamed,
+  EMPRESA_EXPORT_COLUMNS,
+  exportEmpresasRows,
+  exportPessoasSheetRows,
+  PESSOA_EXPORT_COLUMNS,
+} from '../modules/leads-monitor/pipeline/exportWorkbook'
+import { formatMonitorDateTime } from '../modules/leads-monitor/utils/datetime'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
+import { consultarCep } from '../lib/viaCep'
+import { FontesPesquisaGovernanca } from '../modules/leads-monitor/components/FontesPesquisaGovernanca'
+import { LgpdOperacaoPanel } from '../modules/leads-monitor/components/LgpdOperacaoPanel'
+import { LgpdGovernancaBlock } from '../modules/leads-monitor/components/LgpdGovernancaBlock'
+import { NexusModal } from '../components/nexus/Modal'
+import type { FontePesquisa } from '../modules/leads-monitor'
 
 bootstrapConnectors()
 
@@ -83,17 +109,28 @@ function StatusBadge({ status }: { status: OportunidadeMonitor['status'] }) {
   )
 }
 
+type MonitorView = 'dashboard' | 'buscar' | 'importar' | 'processamentos' | 'resultados' | 'pessoas' | 'fontes' | 'lgpd'
+
 type FiltroLista =
   | 'todos'
   | 'novo'
+  | 'qualificado'
   | 'aprovado'
   | 'enviado_crm'
   | 'rejeitado'
+  | 'duplicado'
   | 'leads_quentes'
   | 'muito_quente'
   | 'quente'
   | 'morno'
   | 'frio'
+  | 'enriquecidos'
+  | 'com_cnpj'
+  | 'com_telefone'
+  | 'com_email'
+  | 'com_site'
+  | 'com_pessoas'
+  | 'sem_pessoas'
 
 export default function LeadsMonitor() {
   const toast = useToast()
@@ -123,9 +160,21 @@ export default function LeadsMonitor() {
     updatePesquisa,
     removePesquisa,
     aprovarEEnviar,
+    iniciarPesquisaPessoas,
+    ignorarPessoa,
+    adicionarPessoaAoCrm,
+    peopleItems,
+    peopleRuns,
+    processRuns,
+    activeProcessRun,
+    iniciarImportacao,
+    controlarProcesso,
+    retentarErros,
+    excluirProcessamento,
     rejeitar,
     removeOportunidade,
     empresaId,
+    fontesItems,
   } = useLeadsMonitor()
 
   const { usuario } = useAuth()
@@ -133,7 +182,11 @@ export default function LeadsMonitor() {
   const [nomePesquisa, setNomePesquisa] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<FiltroLista>('todos')
   const [enviandoId, setEnviandoId] = useState<string | null>(null)
+  const [peopleOp, setPeopleOp] = useState<OportunidadeMonitor | null>(null)
   const [segundosAuto, setSegundosAuto] = useState(Math.round(AUTO_REFRESH_MS / 1000))
+  const [view, setView] = useState<MonitorView>('dashboard')
+  const [cepMsg, setCepMsg] = useState('')
+  const [lgpdOp, setLgpdOp] = useState<OportunidadeMonitor | null>(null)
 
   const pesquisasAtivas = pesquisas.filter((p) => p.ativa).length
 
@@ -156,9 +209,16 @@ export default function LeadsMonitor() {
       if (filtroStatus === 'quente') return o.temperatura === 'Quente'
       if (filtroStatus === 'morno') return o.temperatura === 'Morno'
       if (filtroStatus === 'frio') return o.temperatura === 'Frio'
+      if (filtroStatus === 'enriquecidos') return Boolean(o.dadosEnriquecidos?.cnpjValidado || o.cnpj)
+      if (filtroStatus === 'com_cnpj') return Boolean(o.cnpj)
+      if (filtroStatus === 'com_telefone') return (o.telefone || '').replace(/\D/g, '').length >= 10
+      if (filtroStatus === 'com_email') return Boolean(o.email)
+      if (filtroStatus === 'com_site') return Boolean(o.website)
+      if (filtroStatus === 'com_pessoas') return peopleItems.some((p) => p.opportunityId === o.id)
+      if (filtroStatus === 'sem_pessoas') return !peopleItems.some((p) => p.opportunityId === o.id)
       return o.status === filtroStatus
     })
-  }, [oportunidades, filtroStatus])
+  }, [oportunidades, filtroStatus, peopleItems])
 
   const onBuscar = async () => {
     const r = await executarBusca()
@@ -206,6 +266,15 @@ export default function LeadsMonitor() {
     }
   }
 
+  const onPesquisarPessoas = async (op: OportunidadeMonitor) => {
+    try {
+      await iniciarPesquisaPessoas(op)
+      setPeopleOp(op)
+    } catch (e: any) {
+      toast.error('Não foi possível pesquisar pessoas', e?.message)
+    }
+  }
+
   const searchRunning =
     activeSearchRun?.status === 'running' || activeSearchRun?.status === 'queued'
   const progresso = activeSearchRun?.progresso
@@ -219,7 +288,7 @@ export default function LeadsMonitor() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="leads-monitor-shell space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
@@ -230,7 +299,7 @@ export default function LeadsMonitor() {
             </span>
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            Módulo independente · conectores autorizados (LGPD) · score Nexus AI · CRM só recebe aprovados
+            Módulo independente · governança de dados visível · score Nexus AI · CRM só recebe aprovados
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
@@ -262,9 +331,186 @@ export default function LeadsMonitor() {
             <Info className="w-4 h-4 shrink-0 text-code-info" />
             <span>Pessoas: consentimento LGPD. Empresas: bases públicas / APIs autorizadas.</span>
           </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                downloadCsvNamed('monitor-empresas.csv', EMPRESA_EXPORT_COLUMNS, exportEmpresasRows(lista))
+              }
+              className="text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+            >
+              Exportar empresas
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                downloadCsvNamed(
+                  'monitor-pessoas.csv',
+                  PESSOA_EXPORT_COLUMNS,
+                  exportPessoasSheetRows(peopleItems, oportunidades)
+                )
+              }
+              className="text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+            >
+              Exportar pessoas
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                downloadBaseCompleta({
+                  empresas: oportunidades,
+                  pessoas: peopleItems,
+                  processRuns: processRuns || [],
+                })
+              }
+              className="text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+            >
+              Exportar base completa
+            </button>
+          </div>
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            ['dashboard', 'Dashboard'],
+            ['buscar', 'Buscar empresas'],
+            ['importar', 'Importar base'],
+            ['processamentos', 'Processamentos'],
+            ['resultados', 'Resultados'],
+            ['pessoas', 'Pessoas'],
+            ['fontes', 'Fontes de Pesquisa'],
+            ['lgpd', 'LGPD'],
+          ] as Array<[MonitorView, string]>
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setView(id)}
+            className={`text-xs font-semibold px-3 py-2 rounded-xl border ${
+              view === id
+                ? 'bg-nexus-orange text-white border-nexus-orange'
+                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {(view === 'importar' || view === 'processamentos' || view === 'pessoas') && (
+        <RobotPanel
+          run={activeProcessRun}
+          logs={[...(auditItems || []), ...(logItems || [])] as Array<Record<string, unknown> & { id: string }>}
+          starting={buscando}
+          onStart={() => void onBuscar()}
+          onPause={() => activeProcessRun && void controlarProcesso(activeProcessRun, 'pausado')}
+          onResume={() => activeProcessRun && void controlarProcesso(activeProcessRun, 'processando')}
+          onCancel={() => activeProcessRun && void controlarProcesso(activeProcessRun, 'cancelado')}
+          onRetryErrors={() => activeProcessRun && void retentarErros(activeProcessRun)}
+        />
+      )}
+
+      {view === 'fontes' && <FontesPesquisaGovernanca fontes={(fontesItems || []) as FontePesquisa[]} />}
+      {view === 'lgpd' && <LgpdOperacaoPanel />}
+      {view === 'importar' && (
+        <ImportBasePanel
+          busy={buscando}
+          onStart={async (payload) => {
+            try {
+              await iniciarImportacao(payload)
+              setView('processamentos')
+              toast.success('Processamento iniciado', 'O robô está tratando a base em background.')
+            } catch (e: any) {
+              toast.error('Falha na importação', e?.message)
+            }
+          }}
+        />
+      )}
+
+      {view === 'processamentos' && (
+        <SavedProcessingsPanel
+          runs={processRuns || []}
+          onOpen={() => setView('resultados')}
+          onResume={(run) => void controlarProcesso(run, 'processando')}
+          onExport={() =>
+            downloadBaseCompleta({
+              empresas: oportunidades,
+              pessoas: peopleItems,
+              processRuns: processRuns || [],
+            })
+          }
+          onDelete={(run) => void excluirProcessamento(run)}
+        />
+      )}
+
+      {view === 'pessoas' && (
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-x-auto">
+          <table className="min-w-full text-xs">
+            <thead className="bg-slate-50 dark:bg-slate-900/40 text-slate-500">
+              <tr>
+                {['Nome', 'Empresa', 'CNPJ', 'Cargo', 'Relação', 'Telefone', 'WhatsApp', 'LinkedIn', 'Status', 'Ações'].map((h) => (
+                  <th key={h} className="text-left px-3 py-2">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {peopleItems.map((p) => {
+                const company = oportunidades.find((o) => o.id === p.opportunityId)
+                return (
+                  <tr key={p.id} className="border-t border-slate-100 dark:border-slate-700">
+                    <td className="px-3 py-2">{p.personName}</td>
+                    <td className="px-3 py-2">{p.companyName}</td>
+                    <td className="px-3 py-2">{p.companyCnpj}</td>
+                    <td className="px-3 py-2">{p.jobTitle}</td>
+                    <td className="px-3 py-2">{p.relationToCompany}</td>
+                    <td className="px-3 py-2">{p.phone}</td>
+                    <td className="px-3 py-2">{p.whatsapp}</td>
+                    <td className="px-3 py-2 truncate max-w-[140px]">{p.linkedinUrl}</td>
+                    <td className="px-3 py-2">{p.status}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex gap-2">
+                        {company && (
+                          <button type="button" className="underline" onClick={() => void onAprovar(company)}>
+                            Empresa→CRM
+                          </button>
+                        )}
+                        {company && (
+                          <button
+                            type="button"
+                            className="underline"
+                            onClick={async () => {
+                              try {
+                                const r = await adicionarPessoaAoCrm(p, company)
+                                toast.success(r.jaExistia ? 'Já existia no CRM' : 'Pessoa enviada ao CRM')
+                              } catch (e: any) {
+                                toast.error('Falha CRM', e?.message)
+                              }
+                            }}
+                          >
+                            CRM
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+              {!peopleItems.length && (
+                <tr>
+                  <td colSpan={10} className="px-3 py-6 text-center text-slate-400">
+                    Nenhuma pessoa publicamente associada foi encontrada nas fontes consultadas.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {view !== 'importar' && view !== 'processamentos' && view !== 'pessoas' && (
+      <>
       {/* Estatísticas da pesquisa */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {kpiCards.map(({ label, value, color, icon: Icon }) => (
@@ -371,6 +617,7 @@ export default function LeadsMonitor() {
             {(auditItems || []).slice(0, 8).map((a: any) => (
               <li key={a.id} className="border-b border-slate-100 dark:border-slate-700/60 pb-1 truncate">
                 {a.acao || a.action || a.evento || a.id}
+                {a.at || a.criadoEm ? ` · ${formatMonitorDateTime(a.at || a.criadoEm)}` : ''}
               </li>
             ))}
             {!(auditItems || []).length && <li className="text-slate-400">Sem eventos</li>}
@@ -386,30 +633,7 @@ export default function LeadsMonitor() {
               <Search className="w-4 h-4" /> Filtros de pesquisa
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div>
-                <label className="text-xs text-slate-500">Cidade</label>
-                <input
-                  value={filtros.cidade}
-                  onChange={(e) => setFiltros({ ...filtros, cidade: e.target.value })}
-                  placeholder="Ex: São Paulo"
-                  className="w-full mt-1 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 dark:text-white text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-500">Estado</label>
-                <select
-                  value={filtros.estado}
-                  onChange={(e) => setFiltros({ ...filtros, estado: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 dark:text-white text-sm"
-                >
-                  <option value="">Todos</option>
-                  {ESTADOS_BR.map((uf) => (
-                    <option key={uf} value={uf}>
-                      {uf}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <MonitorGeoFilters filtros={filtros} onChange={setFiltros} />
               <div>
                 <label className="text-xs text-slate-500">Bairro</label>
                 <input
@@ -423,10 +647,30 @@ export default function LeadsMonitor() {
                 <label className="text-xs text-slate-500">CEP</label>
                 <input
                   value={filtros.cep || ''}
-                  onChange={(e) => setFiltros({ ...filtros, cep: e.target.value })}
+                  onChange={(e) => {
+                    setCepMsg('')
+                    setFiltros({ ...filtros, cep: e.target.value })
+                  }}
+                  onBlur={async () => {
+                    const cep = (filtros.cep || '').replace(/\D/g, '')
+                    if (!cep) return
+                    const r = await consultarCep(filtros.cep || '')
+                    if (!r.ok) {
+                      setCepMsg(r.erro || 'CEP não localizado.')
+                      return
+                    }
+                    setCepMsg('')
+                    setFiltros({
+                      ...filtros,
+                      estado: r.uf || filtros.estado,
+                      cidade: r.cidade || filtros.cidade,
+                      bairro: r.bairro || filtros.bairro,
+                    })
+                  }}
                   placeholder="00000-000"
                   className="w-full mt-1 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 dark:text-white text-sm"
                 />
+                {cepMsg ? <p className="text-[10px] text-amber-500 mt-1">{cepMsg}</p> : null}
               </div>
               <div>
                 <label className="text-xs text-slate-500">Segmento</label>
@@ -436,12 +680,38 @@ export default function LeadsMonitor() {
                   className="w-full mt-1 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 dark:text-white text-sm"
                 >
                   <option value="">Todos</option>
-                  {SEGMENTOS.map((s) => (
+                  {SEGMENTOS_NICHOS.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.label}
                     </option>
                   ))}
                 </select>
+              </div>
+              <CargosFuncoesPanel
+                selected={filtros.cargos || []}
+                onChange={(cargos) => setFiltros({ ...filtros, cargos })}
+              />
+              <div>
+                <label className="text-xs text-slate-500">Operação</label>
+                <select
+                  value={filtros.operacao || ''}
+                  onChange={(e) => setFiltros({ ...filtros, operacao: e.target.value as typeof filtros.operacao })}
+                  className="w-full mt-1 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 dark:text-white text-sm"
+                >
+                  <option value="">—</option>
+                  {OPERACOES_MONITOR.map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500">CNPJ (enriquecimento)</label>
+                <input
+                  value={filtros.cnpjConsulta || ''}
+                  onChange={(e) => setFiltros({ ...filtros, cnpjConsulta: e.target.value })}
+                  placeholder="Não usado como palavra OSM"
+                  className="w-full mt-1 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 dark:text-white text-sm"
+                />
               </div>
               <div>
                 <label className="text-xs text-slate-500">CNAE</label>
@@ -462,13 +732,35 @@ export default function LeadsMonitor() {
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-500">Palavra-chave</label>
+                <label className="text-xs text-slate-500">Palavra-chave (contexto de prospecção)</label>
                 <input
                   value={filtros.palavraChave}
                   onChange={(e) => setFiltros({ ...filtros, palavraChave: e.target.value })}
-                  placeholder="INSS, CLT, consignado..."
+                  placeholder={PALAVRAS_CHAVE_PROSPECCAO.join(' · ')}
                   className="w-full mt-1 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 dark:text-white text-sm"
                 />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500">Quantidade de funcionários</label>
+                <select
+                  value={filtros.faixaFuncionarios || 'qualquer'}
+                  onChange={(e) =>
+                    setFiltros({
+                      ...filtros,
+                      faixaFuncionarios: e.target.value as (typeof FAIXAS_FUNCIONARIOS)[number]['id'],
+                    })
+                  }
+                  className="w-full mt-1 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 dark:text-white text-sm"
+                >
+                  {FAIXAS_FUNCIONARIOS.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Sem fonte pública o Monitor registra “não informada” — não inventa quantidade.
+                </p>
               </div>
               <div>
                 <label className="text-xs text-slate-500">Score mínimo</label>
@@ -498,6 +790,8 @@ export default function LeadsMonitor() {
                 />
               </div>
             </div>
+
+            <InssOperationPanel filtros={filtros} onChange={setFiltros} />
 
             {searchRunning && progresso && (
               <div className="rounded-xl border border-nexus-orange/30 bg-orange-50/50 dark:bg-orange-500/5 px-4 py-3 space-y-2">
@@ -537,7 +831,7 @@ export default function LeadsMonitor() {
                 className="px-4 py-2.5 bg-nexus-orange text-white rounded-lg flex items-center gap-2 text-sm font-semibold disabled:opacity-60 shadow-sm"
               >
                 {buscando ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                {buscando ? 'Enfileirando…' : searchRunning ? 'Buscar novamente' : 'Buscar Agora'}
+                {buscando ? 'Enfileirando…' : searchRunning ? 'Processar novamente' : 'Iniciar processamento'}
               </button>
               <input
                 value={nomePesquisa}
@@ -565,6 +859,17 @@ export default function LeadsMonitor() {
               </p>
             )}
           </div>
+
+          <RobotPanel
+            run={activeProcessRun}
+            logs={[...(auditItems || []), ...(logItems || [])] as Array<Record<string, unknown> & { id: string }>}
+            starting={buscando}
+            onStart={() => void onBuscar()}
+            onPause={() => activeProcessRun && void controlarProcesso(activeProcessRun, 'pausado')}
+            onResume={() => activeProcessRun && void controlarProcesso(activeProcessRun, 'processando')}
+            onCancel={() => activeProcessRun && void controlarProcesso(activeProcessRun, 'cancelado')}
+            onRetryErrors={() => activeProcessRun && void retentarErros(activeProcessRun)}
+          />
 
           {/* Lista de oportunidades */}
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -669,7 +974,18 @@ export default function LeadsMonitor() {
                         <div className="text-[10px] uppercase tracking-wide text-slate-400">
                           {op.origemScore === 'nexus_ai_llm' ? 'Nexus AI' : 'Score Nexus AI'}
                         </div>
-                        <div className="flex gap-1.5">
+                        <div className="flex gap-1.5 flex-wrap justify-end">
+                          {op.tipo === 'empresa' && (
+                            <button
+                              type="button"
+                              onClick={() => onPesquisarPessoas(op)}
+                              className="px-2.5 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-semibold flex items-center gap-1"
+                              title="Pesquisar pessoas vinculadas a esta empresa"
+                            >
+                              <Search className="w-3.5 h-3.5" />
+                              Pesquisar pessoas
+                            </button>
+                          )}
                           {op.status !== 'enviado_crm' && op.status !== 'rejeitado' && (
                             <>
                               <button
@@ -688,6 +1004,14 @@ export default function LeadsMonitor() {
                               </button>
                               <button
                                 type="button"
+                                onClick={() => setLgpdOp(op)}
+                                className="px-2 py-1.5 rounded-lg text-xs border"
+                                style={{ borderColor: 'var(--code-border)' }}
+                              >
+                                LGPD
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() =>
                                   rejeitar(op).then(() => toast.info('Oportunidade rejeitada'))
                                 }
@@ -699,9 +1023,19 @@ export default function LeadsMonitor() {
                             </>
                           )}
                           {op.status === 'enviado_crm' && (
-                            <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                              <CheckCircle2 className="w-3.5 h-3.5" /> No CRM
-                            </span>
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Enviado ao CRM
+                              </span>
+                              {op.crmClienteId ? (
+                                <Link
+                                  to={`/clientes?id=${op.crmClienteId}`}
+                                  className="px-2.5 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-semibold flex items-center gap-1"
+                                >
+                                  <User className="w-3.5 h-3.5" /> Abrir no CRM
+                                </Link>
+                              ) : null}
+                            </div>
                           )}
                           <button
                             type="button"
@@ -842,6 +1176,36 @@ export default function LeadsMonitor() {
           </div>
         </div>
       </div>
+      </>
+      )}
+      {peopleOp ? (
+        <PesquisarPessoasModal
+          company={peopleOp}
+          run={peopleRuns.find((r) => r.id === peopleOp.id || r.opportunityId === peopleOp.id) || null}
+          people={peopleItems.filter((p) => p.opportunityId === peopleOp.id)}
+          onClose={() => setPeopleOp(null)}
+          onIgnore={async (p) => {
+            await ignorarPessoa(p)
+            toast.info('Pessoa ignorada')
+          }}
+          onAddCrm={async (p) => {
+            try {
+              const r = await adicionarPessoaAoCrm(p, peopleOp)
+              toast.success(
+                r.jaExistia ? 'Já existia no CRM' : 'Pessoa adicionada ao CRM',
+                r.jaExistia ? 'Registro vinculado.' : 'Criada em Clientes · Pipeline Novo Lead.'
+              )
+            } catch (e: any) {
+              toast.error('Falha ao enviar pessoa', e?.message)
+            }
+          }}
+        />
+      ) : null}
+      {lgpdOp ? (
+        <NexusModal title="LGPD — Governança de Dados" onClose={() => setLgpdOp(null)} cancelLabel="Fechar">
+          <LgpdGovernancaBlock record={lgpdOp as unknown as Record<string, unknown>} />
+        </NexusModal>
+      ) : null}
     </div>
   )
 }

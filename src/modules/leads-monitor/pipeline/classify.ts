@@ -32,9 +32,6 @@ function classifyHeuristic(lead: NormalizedLead, filtros: FiltrosPesquisa): Lead
   if (lead.connectorId === 'formularios_autorizados') {
     pontos += 3
     motivos.push('formulário autorizado')
-  } else if (lead.connectorId === 'google-places') {
-    pontos += 2
-    motivos.push('Google Places')
   }
 
   const seg = (filtros.segmento || '').toLowerCase()

@@ -88,6 +88,10 @@ export interface NormalizedLead {
   placeId?: string
   dominio?: string
   cnpjValidado?: boolean
+  employeeCount?: number | null
+  employeeCountRange?: string | null
+  employeeCountFonte?: string | null
+  employeeCountStatus?: 'nao_informada' | 'faixa_publica'
   dadosEnriquecidos?: {
     telefoneFormatado?: string
     razaoSocial?: string

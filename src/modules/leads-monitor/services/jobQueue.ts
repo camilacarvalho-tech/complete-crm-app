@@ -25,6 +25,8 @@ export type JobType =
   | 'search_inteligente'
   | 'search_cancel'
   | 'import_csv'
+  | 'people_search'
+  | 'base_process'
 export type JobStatus = 'queued' | 'leased' | 'running' | 'succeeded' | 'failed' | 'dead'
 
 export interface LeadsMonitorJob {
@@ -44,7 +46,9 @@ export interface LeadsMonitorJob {
     fontesIds?: string[]
     searchRunId?: string
     dlqId?: string
-    pesquisaId?: string
+    pesquisaId?: string | null
+    opportunityId?: string
+    processRunId?: string
   }
   lastError?: string | null
   createdAt?: unknown
@@ -54,6 +58,24 @@ export interface LeadsMonitorJob {
 function workerId(): string {
   return `worker-${Math.random().toString(36).slice(2, 10)}`
 }
+
+function omitUndefined<T>(value: T): T {
+  if (value === undefined) return value
+  if (value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map((item) => omitUndefined(item)) as T
+  if (value instanceof Date) return value
+  const ctor = (value as object).constructor?.name
+  // FieldValue, Timestamp, GeoPoint, DocumentReference — Object.entries() esvazia o sentinel.
+  if (ctor && ctor !== 'Object') return value
+  const out: Record<string, unknown> = {}
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (item === undefined) continue
+    out[key] = omitUndefined(item)
+  }
+  return out as T
+}
+
+export { omitUndefined as omitUndefinedForFirestore }
 
 export async function enqueueJob(opts: {
   empresaId: string
@@ -66,6 +88,12 @@ export async function enqueueJob(opts: {
   const idempotencyKey =
     opts.idempotencyKey || `${type}:${empresaId}:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`
 
+  const payloadSemUndefined = omitUndefined(payload)
+  const pesquisaId =
+    typeof payloadSemUndefined.pesquisaId === 'string' && payloadSemUndefined.pesquisaId.trim()
+      ? payloadSemUndefined.pesquisaId.trim()
+      : null
+
   const ref = await addDoc(collection(db, 'empresas', empresaId, COL_JOBS), {
     empresaId,
     type,
@@ -76,7 +104,10 @@ export async function enqueueJob(opts: {
     leaseOwner: null,
     leaseUntil: null,
     idempotencyKey,
-    payload,
+    payload: {
+      ...payloadSemUndefined,
+      pesquisaId,
+    },
     lastError: null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-
-const cache = new Map<string, string[]>()
+import { fetchMunicipiosUf, municipiosCacheGet } from '../lib/municipiosIbge'
 
 export function useMunicipios(uf?: string, search = '') {
   const [cidades, setCidades] = useState<string[]>([])
@@ -14,20 +13,15 @@ export function useMunicipios(uf?: string, search = '') {
     }
     let alive = true
     const key = uf.toUpperCase()
-    if (cache.has(key)) {
-      setCidades(cache.get(key) || [])
+    const cached = municipiosCacheGet(key)
+    if (cached) {
+      setCidades(cached)
       return
     }
     setLoading(true)
     setError(null)
-    fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${key}/municipios`)
-      .then((r) => {
-        if (!r.ok) throw new Error('IBGE indisponível')
-        return r.json()
-      })
-      .then((data: { nome: string }[]) => {
-        const names = (data || []).map((d) => d.nome).sort((a, b) => a.localeCompare(b, 'pt-BR'))
-        cache.set(key, names)
+    fetchMunicipiosUf(key)
+      .then((names) => {
         if (alive) setCidades(names)
       })
       .catch((e) => {
@@ -42,6 +36,6 @@ export function useMunicipios(uf?: string, search = '') {
   }, [uf])
 
   const q = search.trim().toLowerCase()
-  const filtered = q ? cidades.filter((c) => c.toLowerCase().includes(q)).slice(0, 80) : cidades.slice(0, 80)
-  return { cidades: filtered, total: cidades.length, loading, error }
+  const filtered = q ? cidades.filter((c) => c.toLowerCase().includes(q)).slice(0, 80) : cidades
+  return { cidades: filtered, all: cidades, total: cidades.length, loading, error }
 }

@@ -95,8 +95,7 @@ export const basesPublicasConnector: LeadConnector = {
       segmento: String(p.segmento || ''),
       palavraChaveMatch: p.palavraChave ? String(p.palavraChave) : undefined,
       consentimentoLgpd: true,
-      baseLegal:
-        'Dados empresariais de acesso público / cadastro aberto (sem dados pessoais sensíveis).',
+      baseLegal: '',
       observacoes: 'Potencial parceiro ou lead B2B',
       externalId: raw.externalId,
       metadados: { porte: p.porte, versaoConector: '1.0.0' },

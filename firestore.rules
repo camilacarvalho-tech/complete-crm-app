@@ -104,7 +104,8 @@ service cloud.firestore {
         allow delete: if isMaster();
       }
 
-      // Demais subcoleções do tenant (CRM + Monitor config/jobs/etc.)
+      // Demais subcoleções do tenant (CRM + Monitor config/jobs/processRuns/records/people/lgpd).
+      // Leitura e escrita exigem belongsToTenant(empresaId); create exige request.resource.data.empresaId == empresaId.
       match /{collection}/{docId} {
         allow read: if belongsToTenant(empresaId);
         allow create: if belongsToTenant(empresaId)

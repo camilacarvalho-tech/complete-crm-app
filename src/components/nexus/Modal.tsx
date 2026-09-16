@@ -1,6 +1,7 @@
-import { useEffect, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { GhostButton, PrimaryButton } from './kit'
+import { useEscLayer } from '../../hooks/useEscLayer'
 
 export function NexusModal({
   title,
@@ -21,13 +22,7 @@ export function NexusModal({
   saving?: boolean
   closeOnBackdrop?: boolean
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !saving) onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, saving])
+  useEscLayer(!saving, onClose)
 
   return (
     <div

@@ -14,6 +14,9 @@ import {
   COL_OPORTUNIDADES,
   COL_PESQUISAS,
   COL_SEARCH_RUNS,
+  COL_PEOPLE_RESEARCH,
+  COL_PEOPLE_RUNS,
+  COL_PROCESS_RUNS,
   COL_DLQ,
   FILTROS_VAZIOS,
   AUTO_SEARCH_ENABLED,
@@ -22,8 +25,10 @@ import {
 import { bootstrapConnectors } from '../connectors'
 import { aprovarOportunidade, rejeitarOportunidade } from '../pipeline/approve'
 import { enviarOportunidadeParaCrm } from '../pipeline/sendToCrm'
+import { enviarPessoaParaCrm } from '../pipeline/sendPersonToCrm'
 import { enqueueJob } from '../services/jobQueue'
 import { processOneJob, startJobWorkerLoop } from '../services/jobWorker'
+import { writeLeadsMonitorAudit } from '../services/auditTrail'
 import { startIntelligentSearch, requestSearchCancel } from '../search/startSearch'
 import { normalizeFiltros } from '../search/filters'
 import type {
@@ -33,6 +38,18 @@ import type {
   PesquisaSalva,
   SearchRun,
 } from '../types'
+import type { CompanyPeopleResearch, PeopleRun } from '../types/peopleResearch'
+import type { ProcessRun } from '../types/processRun'
+import { seedGeoQueue } from '../search/geoAdvance'
+import { needsGeoQueue, resolveAbrangencia } from '../search/geoCoverage'
+import {
+  createProcessRun,
+  deleteProcessRun,
+  ingestMappedRows,
+  patchProcessRun,
+  retryErrorRecords,
+  setProcessControl,
+} from '../services/processRunStore'
 
 bootstrapConnectors()
 
@@ -93,6 +110,15 @@ export function useLeadsMonitor() {
   const { items: fontesItems } = useTenantCollection(COL_FONTES, [], {
     tela: 'leads-monitor-fontes-hook',
   })
+  const { items: peopleItems } = useTenantCollection<CompanyPeopleResearch>(COL_PEOPLE_RESEARCH, [], {
+    tela: 'leads-monitor-people',
+  })
+  const { items: peopleRuns } = useTenantCollection<PeopleRun>(COL_PEOPLE_RUNS, [], {
+    tela: 'leads-monitor-people-runs',
+  })
+  const { items: processRunsRaw } = useTenantCollection<ProcessRun>(COL_PROCESS_RUNS, [], {
+    tela: 'leads-monitor-process-runs',
+  })
 
   const oportunidades = useMemo(() => {
     return [...oportunidadesRaw].sort((a, b) => {
@@ -125,6 +151,22 @@ export function useLeadsMonitor() {
       ) || null
     )
   }, [searchRuns, activeSearchRunId])
+
+  const processRuns = useMemo(() => {
+    return [...processRunsRaw].sort((a, b) => {
+      const ta = (a.criadoEm as any)?.toMillis?.() || (a.startedAt as any)?.toMillis?.() || 0
+      const tb = (b.criadoEm as any)?.toMillis?.() || (b.startedAt as any)?.toMillis?.() || 0
+      return tb - ta
+    })
+  }, [processRunsRaw])
+
+  const activeProcessRun = useMemo(() => {
+    return (
+      processRuns.find((r) => r.status === 'processando' || r.status === 'aguardando' || r.status === 'pausado') ||
+      processRuns[0] ||
+      null
+    )
+  }, [processRuns])
 
   const stats = useMemo(() => {
     const encontrados = oportunidades.length
@@ -176,8 +218,18 @@ export function useLeadsMonitor() {
       total: encontrados,
       empresasHoje,
       fontesAtivas: fontesItems.filter((f: any) => f.status === 'ativa').length,
+      empresas: oportunidades.filter((o) => o.tipo !== 'pessoa').length,
+      pessoas: peopleItems.length,
+      enriquecidos: oportunidades.filter((o) => o.dadosEnriquecidos?.cnpjValidado || o.cnpj).length,
+      comTelefone: oportunidades.filter((o) => (o.telefone || '').replace(/\D/g, '').length >= 10).length,
+      comWhatsapp: oportunidades.filter((o) => (o.telefone || '').replace(/\D/g, '').length >= 10).length,
+      comEmail: oportunidades.filter((o) => Boolean(o.email)).length,
+      comSite: oportunidades.filter((o) => Boolean(o.website)).length,
+      duplicados: oportunidades.filter((o) => o.status === 'duplicado').length,
+      pendentes: oportunidades.filter((o) => o.status === 'novo').length,
+      erros: processRuns.reduce((a, r) => a + (r.erros || 0), 0),
     }
-  }, [oportunidades, fontesItems])
+  }, [oportunidades, fontesItems, peopleItems, processRuns])
 
   /** Busca inteligente V1.2 — enfileira e retorna imediatamente (UI livre). */
   const executarBusca = useCallback(
@@ -189,13 +241,39 @@ export function useLeadsMonitor() {
       setBuscando(true)
       setErro(null)
       try {
-        const f = normalizeFiltros({ ...filtros, ...overrides })
+        const f0 = normalizeFiltros({ ...filtros, ...overrides })
+        const abrangencia = resolveAbrangencia(f0)
+        f0.abrangenciaGeografica = abrangencia
+        const pesquisaIdNormalizado =
+          typeof pesquisaId === 'string' && pesquisaId.trim() ? pesquisaId.trim() : null
+        const processRunId = await createProcessRun({
+          empresaId,
+          nome: `Busca ${abrangencia} ${f0.estado || ''} ${f0.segmento || f0.operacao || ''}`.trim(),
+          tipo: 'busca',
+          origem: 'buscar_empresas',
+          actor: { usuarioId: usuario?.id, usuarioNome: usuario?.nome },
+        })
+        await patchProcessRun(empresaId, processRunId, { status: 'processando', startedAt: serverTimestamp() })
+        let f = f0
+        const cnpj = (f0.cnpjConsulta || '').replace(/\D/g, '')
+        if (needsGeoQueue(f0) && cnpj.length !== 14) {
+          const seed = await seedGeoQueue({ empresaId, processRunId, filtros: f0 })
+          f = {
+            ...f0,
+            cidade: seed.cidade,
+            estado: seed.estado,
+            abrangenciaGeografica: abrangencia,
+            cidadesSelecionadas: f0.cidadesSelecionadas,
+          }
+        }
         const { searchRunId, jobId, fontesIds } = await startIntelligentSearch({
           empresaId,
           filtros: f,
-          pesquisaId,
+          pesquisaId: pesquisaIdNormalizado,
+          processRunId,
           actor: { usuarioId: usuario?.id, usuarioNome: usuario?.nome },
         })
+        await patchProcessRun(empresaId, processRunId, { searchRunId, filtrosSnapshot: f0 })
         setActiveSearchRunId(searchRunId)
         setUltimoJobId(jobId)
         void processOneJob(empresaId).catch((e) => setErro(e?.message || 'Falha no worker'))
@@ -231,8 +309,16 @@ export function useLeadsMonitor() {
       payload: { searchRunId: activeSearchRun.id },
       actor: { usuarioId: usuario?.id, usuarioNome: usuario?.nome },
     })
+    if (activeProcessRun?.id) {
+      await setProcessControl({
+        empresaId,
+        runId: activeProcessRun.id,
+        status: 'cancelado',
+        actor: { usuarioId: usuario?.id, usuarioNome: usuario?.nome },
+      })
+    }
     void processOneJob(empresaId)
-  }, [empresaId, activeSearchRun?.id, usuario?.id, usuario?.nome])
+  }, [empresaId, activeSearchRun?.id, activeProcessRun?.id, usuario?.id, usuario?.nome])
 
   const salvarPesquisa = useCallback(
     async (nome: string) => {
@@ -284,12 +370,171 @@ export function useLeadsMonitor() {
       await aprovarOportunidade(empresaId, op, actor)
       return enviarOportunidadeParaCrm(
         empresaId,
-        { ...op, status: 'aprovado', metadados: { ...op.metadados, scoreMinimo: filtros.scoreMinimo || DEFAULT_SCORE_MINIMO } },
+        { ...op, status: 'aprovado' },
         usuario?.nome,
         actor
       )
     },
-    [empresaId, usuario?.id, usuario?.nome, filtros.scoreMinimo]
+    [empresaId, usuario?.id, usuario?.nome]
+  )
+
+  const iniciarPesquisaPessoas = useCallback(
+    async (op: OportunidadeMonitor) => {
+      if (!empresaId) throw new Error('Empresa não identificada')
+      const jobId = await enqueueJob({
+        empresaId,
+        type: 'people_search',
+        payload: { opportunityId: op.id },
+        idempotencyKey: `people:${empresaId}:${op.id}:${Date.now()}`,
+        actor: { usuarioId: usuario?.id, usuarioNome: usuario?.nome },
+      })
+      void processOneJob(empresaId)
+      return jobId
+    },
+    [empresaId, usuario?.id, usuario?.nome]
+  )
+
+  const ignorarPessoa = useCallback(
+    async (person: CompanyPeopleResearch) => {
+      if (!empresaId) throw new Error('Empresa não identificada')
+      await updateDoc(doc(db, 'empresas', empresaId, COL_PEOPLE_RESEARCH, person.id), {
+        status: 'ignorado',
+        atualizadoEm: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+      await writeLeadsMonitorAudit({
+        empresaId,
+        action: 'people.ignored',
+        origem: 'ui',
+        usuarioId: usuario?.id,
+        usuarioNome: usuario?.nome,
+        entidade: 'pessoa',
+        entidadeId: person.id,
+        after: { status: 'ignorado' },
+      })
+    },
+    [empresaId, usuario?.id, usuario?.nome]
+  )
+
+  const adicionarPessoaAoCrm = useCallback(
+    async (person: CompanyPeopleResearch, company: OportunidadeMonitor) => {
+      if (!empresaId) throw new Error('Empresa não identificada')
+      await writeLeadsMonitorAudit({
+        empresaId,
+        action: 'people.approved',
+        origem: 'ui',
+        usuarioId: usuario?.id,
+        usuarioNome: usuario?.nome,
+        entidade: 'pessoa',
+        entidadeId: person.id,
+        after: { status: 'aprovado' },
+      })
+      return enviarPessoaParaCrm(empresaId, person, company, {
+        usuarioId: usuario?.id,
+        usuarioNome: usuario?.nome,
+      })
+    },
+    [empresaId, usuario?.id, usuario?.nome]
+  )
+
+  const iniciarImportacao = useCallback(
+    async (payload: {
+      nome: string
+      arquivoNome: string
+      mapping: Record<string, string>
+      rows: Record<string, string>[]
+    }) => {
+      if (!empresaId) throw new Error('Empresa não identificada')
+      const actor = { usuarioId: usuario?.id, usuarioNome: usuario?.nome }
+      const processRunId = await createProcessRun({
+        empresaId,
+        nome: payload.nome,
+        tipo: 'importacao',
+        origem: 'importar_planilha',
+        total: payload.rows.length,
+        arquivoNome: payload.arquivoNome,
+        mapping: payload.mapping,
+        actor,
+      })
+      await ingestMappedRows({ empresaId, processRunId, rows: payload.rows })
+      await setProcessControl({ empresaId, runId: processRunId, status: 'processando', actor })
+      const jobId = await enqueueJob({
+        empresaId,
+        type: 'base_process',
+        payload: { processRunId },
+        idempotencyKey: `base:${empresaId}:${processRunId}`,
+        actor,
+      })
+      setUltimoJobId(jobId)
+      void processOneJob(empresaId)
+      return processRunId
+    },
+    [empresaId, usuario?.id, usuario?.nome]
+  )
+
+  const controlarProcesso = useCallback(
+    async (run: ProcessRun, status: 'pausado' | 'processando' | 'cancelado') => {
+      if (!empresaId) return
+      const actor = { usuarioId: usuario?.id, usuarioNome: usuario?.nome }
+      await setProcessControl({ empresaId, runId: run.id, status, actor })
+      if (status === 'processando' && run.tipo === 'importacao') {
+        await enqueueJob({
+          empresaId,
+          type: 'base_process',
+          payload: { processRunId: run.id },
+          idempotencyKey: `base:${empresaId}:${run.id}:${Date.now()}`,
+          actor,
+        })
+        void processOneJob(empresaId)
+      }
+      if (status === 'processando' && run.tipo === 'busca') {
+        const snap = (run as ProcessRun & { filtrosSnapshot?: FiltrosPesquisa }).filtrosSnapshot
+        const cidade = run.cidadeAtual || (run.geoCities || [])[run.geoCityIndex || 0] || snap?.cidade || ''
+        const estado = (run.geoUfs || [])[run.geoUfIndex || 0] || snap?.estado || ''
+        await enqueueJob({
+          empresaId,
+          type: 'search_inteligente',
+          payload: {
+            filtros: {
+              ...(snap || FILTROS_VAZIOS),
+              cidade,
+              estado,
+              abrangenciaGeografica: (run.abrangenciaGeografica as FiltrosPesquisa['abrangenciaGeografica']) || snap?.abrangenciaGeografica,
+              cidadesSelecionadas: run.geoCities && run.abrangenciaGeografica === 'CIDADE' ? run.geoCities : snap?.cidadesSelecionadas,
+            },
+            searchRunId: run.searchRunId || undefined,
+            processRunId: run.id,
+          },
+          idempotencyKey: `geo-resume:${empresaId}:${run.id}:${estado}:${cidade}:${Date.now()}`,
+          actor,
+        })
+        void processOneJob(empresaId)
+      }
+    },
+    [empresaId, usuario?.id, usuario?.nome]
+  )
+
+  const retentarErros = useCallback(
+    async (run: ProcessRun) => {
+      if (!empresaId) return
+      await retryErrorRecords(empresaId, run.id)
+      await enqueueJob({
+        empresaId,
+        type: 'base_process',
+        payload: { processRunId: run.id },
+        idempotencyKey: `base:${empresaId}:${run.id}:retry:${Date.now()}`,
+      })
+      void processOneJob(empresaId)
+    },
+    [empresaId]
+  )
+
+  const excluirProcessamento = useCallback(
+    async (run: ProcessRun) => {
+      if (!empresaId) return
+      await deleteProcessRun(empresaId, run.id)
+    },
+    [empresaId]
   )
 
   const rejeitar = useCallback(
@@ -323,6 +568,36 @@ export function useLeadsMonitor() {
       }
     }
   }, [activeSearchRun])
+
+  useEffect(() => {
+    if (!empresaId || !activeSearchRun) return
+    const linked = processRuns.find((p) => p.searchRunId === activeSearchRun.id && p.tipo === 'busca')
+    if (!linked) return
+    const prog = activeSearchRun.progresso
+    const statusMap: Record<string, ProcessRun['status']> = {
+      queued: 'aguardando',
+      running: 'processando',
+      paused: 'pausado',
+      cancelled: 'cancelado',
+      succeeded: 'concluido',
+      failed: 'erro',
+    }
+    const geoOpen = (linked.cidadesTotal || 0) > 1 && (linked.cidadesProcessadas || 0) < (linked.cidadesTotal || 0)
+    if (geoOpen && (activeSearchRun.status === 'succeeded' || activeSearchRun.status === 'failed')) {
+      return
+    }
+    const nextStatus = statusMap[activeSearchRun.status] || linked.status
+    const nextProg = prog?.percent ?? linked.progresso
+    if (linked.status === nextStatus && linked.progresso === nextProg) return
+    void patchProcessRun(empresaId, linked.id, {
+      status: nextStatus,
+      progresso: prog?.percent || linked.progresso,
+      processados: prog?.encontrados || linked.processados,
+      total: Math.max(linked.total || 0, prog?.encontrados || 0),
+      duplicados: prog?.duplicados || linked.duplicados,
+      etapaAtual: prog?.etapa || linked.etapaAtual,
+    }).catch(() => {})
+  }, [empresaId, activeSearchRun, processRuns])
 
   useEffect(() => {
     if (!empresaId) return
@@ -402,6 +677,8 @@ export function useLeadsMonitor() {
     auditItems,
     searchRuns,
     activeSearchRun,
+    processRuns,
+    activeProcessRun,
     fontesItems,
     loading,
     buscando,
@@ -422,6 +699,15 @@ export function useLeadsMonitor() {
     updatePesquisa,
     removePesquisa,
     aprovarEEnviar,
+    iniciarPesquisaPessoas,
+    ignorarPessoa,
+    adicionarPessoaAoCrm,
+    peopleItems,
+    peopleRuns,
+    iniciarImportacao,
+    controlarProcesso,
+    retentarErros,
+    excluirProcessamento,
     rejeitar,
     removeOportunidade: remove,
     update,

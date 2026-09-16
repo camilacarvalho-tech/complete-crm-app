@@ -9,7 +9,7 @@ export function collectDedupeKeys(
   lead: Pick<
     NormalizedLead,
     'dedupeKey' | 'cnpj' | 'placeId' | 'dominio' | 'website' | 'telefone' | 'nome' | 'endereco' | 'cidade' | 'externalId'
-  >
+  > & { metadados?: Record<string, unknown> }
 ): string[] {
   const keys: string[] = []
   const cnpj = digitsOnly(lead.cnpj)
@@ -20,9 +20,22 @@ export function collectDedupeKeys(
   if (dominio) keys.push(`dom:${dominio}`)
   const tel = digitsOnly(lead.telefone)
   if (tel.length >= 10) keys.push(`tel:${tel}`)
+  const email = String(lead.email || '').trim().toLowerCase()
+  if (email.includes('@')) keys.push(`email:${email}`)
+  const cpf = digitsOnly(String(lead.metadados?.cpf || ''))
+  if (cpf.length === 11) keys.push(`cpf:${cpf}`)
+  const personId = String(lead.metadados?.personId || '').trim()
+  if (personId) keys.push(`person:${personId.toLowerCase()}`)
   const nome = normalizeCompanyName(lead.nome).toLowerCase()
+  const empresaNome = normalizeCompanyName(String(lead.empresaNome || '')).toLowerCase()
+  if (nome && empresaNome && nome !== empresaNome) keys.push(`pessoaemp:${nome}|${empresaNome}`)
   const endereco = normalizeAddress(lead.endereco || lead.cidade).toLowerCase()
   if (nome && endereco) keys.push(`nomeaddr:${nome}|${endereco}`)
+  const lat = Number(lead.metadados?.lat)
+  const lng = Number(lead.metadados?.lng)
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    keys.push(`geo:${lat.toFixed(4)},${lng.toFixed(4)}`)
+  }
   if (lead.dedupeKey) keys.push(lead.dedupeKey.toLowerCase())
   return Array.from(new Set(keys.filter(Boolean)))
 }

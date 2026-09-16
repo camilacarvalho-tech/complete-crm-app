@@ -35,6 +35,23 @@ export function formatPhoneBr(telefone?: string): string {
   return telefone?.trim() || ''
 }
 
+/** Padrão de exibição internacional BR: +55 14 3322-4214. Não inventa dígitos. */
+export function formatPhoneBrIntl(telefone?: string): string {
+  let n = digitsOnly(telefone)
+  if (n.startsWith('55') && (n.length === 12 || n.length === 13)) n = n.slice(2)
+  if (n.length === 11) return `+55 ${n.slice(0, 2)} ${n.slice(2, 7)}-${n.slice(7)}`
+  if (n.length === 10) return `+55 ${n.slice(0, 2)} ${n.slice(2, 6)}-${n.slice(6)}`
+  return ''
+}
+
+export function whatsappMeUrl(telefone?: string): string {
+  let n = digitsOnly(telefone)
+  if (!n) return ''
+  if (!n.startsWith('55') && (n.length === 10 || n.length === 11)) n = `55${n}`
+  if (n.length < 12) return ''
+  return `https://wa.me/${n}`
+}
+
 export function hostnameFromUrl(website?: string): string {
   if (!website) return ''
   try {

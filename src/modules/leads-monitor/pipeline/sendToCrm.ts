@@ -1,29 +1,52 @@
 /**
  * Etapa 7 — Envio ao Nexus CRM (somente oportunidades aprovadas).
- * O CRM não lê a coleção do Monitor; apenas recebe o lead criado.
+ * Clique manual "Aprovar → CRM" não é bloqueado por score mínimo.
  */
-import {
-  addDoc,
-  collection,
-  doc,
-  getDocs,
-  query,
-  serverTimestamp,
-  updateDoc,
-  where,
-} from 'firebase/firestore'
+import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { db } from '../../../firebase'
+import { writeAudit } from '../../../lib/audit'
 import { COL_OPORTUNIDADES } from '../constants'
 import { writeLeadsMonitorAudit } from '../services/auditTrail'
 import type { OportunidadeMonitor } from '../types'
+import {
+  applyClienteMerge,
+  asText,
+  findExistingCliente,
+  payloadEmpresaCliente,
+} from './crmClientePayload'
 
 export interface EnviarCrmResult {
   clienteId: string
   jaExistia: boolean
 }
 
-function phoneDigits(t?: string) {
-  return (t || '').replace(/\D/g, '')
+function asScore(value: unknown): number {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : 0
+}
+
+async function registrarFalhaEnvioCrm(
+  empresaId: string,
+  oportunidade: OportunidadeMonitor,
+  message: string,
+  actor?: { usuarioId?: string; usuarioNome?: string }
+): Promise<void> {
+  await updateDoc(doc(db, 'empresas', empresaId, COL_OPORTUNIDADES, oportunidade.id), {
+    status: 'aprovado',
+    envioCrmErro: message.slice(0, 500),
+    atualizadoEm: serverTimestamp(),
+  })
+  await writeLeadsMonitorAudit({
+    empresaId,
+    action: 'opportunity.send_crm_fail',
+    origem: 'ui',
+    connectorId: oportunidade.connectorId,
+    usuarioId: actor?.usuarioId,
+    usuarioNome: actor?.usuarioNome,
+    entidade: 'oportunidade',
+    entidadeId: oportunidade.id,
+    after: { status: 'aprovado', envioCrmErro: message.slice(0, 200) },
+  })
 }
 
 export async function enviarOportunidadeParaCrm(
@@ -38,105 +61,72 @@ export async function enviarOportunidadeParaCrm(
   if (oportunidade.status !== 'aprovado' && oportunidade.status !== 'enviado_crm') {
     throw new Error('Aprove a oportunidade no Monitor antes de enviar ao CRM.')
   }
-  const scoreMinimo = Number(oportunidade.metadados?.scoreMinimo || 70)
-  if ((oportunidade.score || 0) < scoreMinimo) {
-    throw new Error(
-      `Score ${oportunidade.score} abaixo do mínimo ${scoreMinimo}. O CRM só recebe leads aprovados e no corte configurado.`
-    )
-  }
 
-  const tel = phoneDigits(oportunidade.telefone)
-  const origemLabel = oportunidade.origemLabel || oportunidade.connectorId || 'Leads Monitor'
   const auditActor = {
     usuarioId: actor?.usuarioId,
     usuarioNome: actor?.usuarioNome || usuarioNome,
   }
+  const score = asScore(oportunidade.score)
+  const connectorId = asText(oportunidade.connectorId) || 'monitor'
 
-  if (tel.length >= 10) {
-    const qTel = query(
-      collection(db, 'empresas', empresaId, 'clientes'),
-      where('telefone', '==', tel)
-    )
-    const snap = await getDocs(qTel)
-    if (!snap.empty) {
-      const existingId = snap.docs[0].id
-      await updateDoc(doc(db, 'empresas', empresaId, COL_OPORTUNIDADES, oportunidade.id), {
-        status: 'enviado_crm',
-        crmClienteId: existingId,
-        atualizadoEm: serverTimestamp(),
-      })
-      await writeLeadsMonitorAudit({
-        empresaId,
-        action: 'opportunity.send_crm',
-        origem: 'ui',
-        connectorId: oportunidade.connectorId,
-        ...auditActor,
-        entidade: 'oportunidade',
-        entidadeId: oportunidade.id,
-        after: { status: 'enviado_crm', crmClienteId: existingId, jaExistia: true },
-      })
-      return { clienteId: existingId, jaExistia: true }
+  try {
+    const incoming = payloadEmpresaCliente(empresaId, oportunidade, asText(auditActor.usuarioNome))
+    const existing = await findExistingCliente({
+      empresaId,
+      kind: oportunidade.tipo === 'pessoa' ? 'pessoa' : 'empresa',
+      telefone: oportunidade.telefone,
+      whatsapp: oportunidade.telefone,
+      email: oportunidade.email,
+      nome: oportunidade.nome,
+      empresaCnpj: oportunidade.cnpj,
+      leadsMonitorOpportunityId: oportunidade.id,
+    })
+
+    let clienteId: string
+    let jaExistia = false
+    if (existing) {
+      await applyClienteMerge(empresaId, existing.id, existing.data, incoming)
+      clienteId = existing.id
+      jaExistia = true
+    } else {
+      const ref = await addDoc(collection(db, 'empresas', empresaId, 'clientes'), incoming)
+      clienteId = ref.id
     }
+
+    await updateDoc(doc(db, 'empresas', empresaId, COL_OPORTUNIDADES, oportunidade.id), {
+      status: 'enviado_crm',
+      crmClienteId: clienteId,
+      envioCrmErro: null,
+      atualizadoEm: serverTimestamp(),
+    })
+
+    await writeAudit({
+      empresaId,
+      usuarioId: auditActor.usuarioId,
+      usuarioNome: auditActor.usuarioNome,
+      modulo: 'clientes',
+      acao: jaExistia ? 'atualizar' : 'criar',
+      entidade: 'cliente',
+      entidadeId: clienteId,
+      depois: { origem: 'leads_monitor', leadsMonitorOpportunityId: oportunidade.id, score },
+    })
+
+    await writeLeadsMonitorAudit({
+      empresaId,
+      action: 'opportunity.send_crm',
+      origem: 'ui',
+      connectorId,
+      ...auditActor,
+      entidade: 'oportunidade',
+      entidadeId: oportunidade.id,
+      after: { status: 'enviado_crm', crmClienteId: clienteId, jaExistia, score },
+      meta: { event: 'data.sent_to_crm' },
+    })
+
+    return { clienteId, jaExistia }
+  } catch (e: any) {
+    const message = e?.message || String(e)
+    await registrarFalhaEnvioCrm(empresaId, oportunidade, message, actor)
+    throw e
   }
-
-  const ref = await addDoc(collection(db, 'empresas', empresaId, 'clientes'), {
-    tenant_id: empresaId,
-    nome: oportunidade.nome,
-    telefone: tel || oportunidade.telefone || '',
-    whatsapp: tel || '',
-    email: oportunidade.email || '',
-    cidade: oportunidade.cidade,
-    estado: oportunidade.estado,
-    modalidade: oportunidade.segmento,
-    modalidades: oportunidade.segmento ? [oportunidade.segmento] : [],
-    origem: `Leads Monitor · ${origemLabel}`,
-    source: 'leads_monitor',
-    campaign_id: oportunidade.metadados?.campaign_id || '',
-    utm_source: 'leads_monitor',
-    utm_medium: oportunidade.connectorId || 'monitor',
-    utm_campaign: origemLabel,
-    status: 'Lead',
-    pipeline: 'Novo Lead',
-    pipelineStage: 'novo_lead',
-    score: oportunidade.score,
-    temperatura: oportunidade.temperatura,
-    classificacao: oportunidade.classificacao,
-    observacoes: [
-      oportunidade.observacoes,
-      `Score Nexus AI: ${oportunidade.score}`,
-      `Base legal: ${oportunidade.baseLegal}`,
-      oportunidade.cnpj ? `CNPJ: ${oportunidade.cnpj}` : null,
-    ]
-      .filter(Boolean)
-      .join('\n'),
-    camposExtras: {
-      leadsMonitorId: oportunidade.id,
-      tipoOportunidade: oportunidade.tipo,
-      connectorId: oportunidade.connectorId,
-      motivosScore: oportunidade.motivosScore,
-    },
-    atendente: usuarioNome || '',
-    criadoPor: usuarioNome || 'leads-monitor',
-    criadoEm: serverTimestamp(),
-    atualizadoEm: serverTimestamp(),
-  })
-
-  await updateDoc(doc(db, 'empresas', empresaId, COL_OPORTUNIDADES, oportunidade.id), {
-    status: 'enviado_crm',
-    crmClienteId: ref.id,
-    atualizadoEm: serverTimestamp(),
-  })
-
-  await writeLeadsMonitorAudit({
-    empresaId,
-    action: 'opportunity.send_crm',
-    origem: 'ui',
-    connectorId: oportunidade.connectorId,
-    ...auditActor,
-    entidade: 'oportunidade',
-    entidadeId: oportunidade.id,
-    after: { status: 'enviado_crm', crmClienteId: ref.id, jaExistia: false },
-  })
-
-  return { clienteId: ref.id, jaExistia: false }
 }

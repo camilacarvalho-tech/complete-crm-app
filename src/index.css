@@ -323,3 +323,22 @@ html.dark .text-red-800 {
 .nexus-toast-success { border-color: var(--code-success); }
 .nexus-toast-info { border-color: var(--code-blue); }
 .nexus-toast-error { border-color: var(--code-danger); }
+
+.leads-monitor-shell {
+  color: var(--code-text);
+}
+.leads-monitor-shell .bg-white {
+  background-color: var(--code-surface) !important;
+  color: var(--code-text);
+}
+.leads-monitor-shell .bg-slate-50,
+.leads-monitor-shell .bg-slate-100 {
+  background-color: var(--code-surface-muted) !important;
+}
+.leads-monitor-shell input:not([type='checkbox']):not([type='radio']),
+.leads-monitor-shell select,
+.leads-monitor-shell textarea {
+  background-color: var(--code-input-bg);
+  color: var(--code-text);
+  border-color: var(--code-input-border);
+}

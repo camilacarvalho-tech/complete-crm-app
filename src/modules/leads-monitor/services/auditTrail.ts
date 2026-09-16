@@ -5,6 +5,7 @@
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
 import { db } from '../../../firebase'
 import { COL_AUDIT } from '../constants'
+import { auditDateUtc, auditTimeSaoPaulo } from '../utils/datetime'
 
 export type AuditOrigem = 'ui' | 'webhook' | 'worker' | 'system'
 
@@ -28,7 +29,13 @@ export type AuditAction =
   | 'search.start'
   | 'search.complete'
   | 'search.cancel'
-  | 'connector.health'
+  | 'people.search_started'
+  | 'people.search_source'
+  | 'people.search_result'
+  | 'people.approved'
+  | 'people.ignored'
+  | 'people.send_crm'
+  | 'people.search_error'
   | string
 
 export interface LeadsMonitorAuditEntry {
@@ -48,7 +55,14 @@ export interface LeadsMonitorAuditEntry {
   meta?: Record<string, unknown>
 }
 
-const SECRET_KEYS = /token|secret|password|senha|authorization|apikey|api_key|hmac|cipher/i
+const SECRET_KEYS = /token|secret|password|senha|authorization|apikey|api_key|hmac|cipher|bearer/i
+const PERSONAL_KEYS = /cpf|telefonepessoal|whatsapppessoal|emailpessoal/i
+
+function redactCpfValue(value: string): string {
+  const d = value.replace(/\D/g, '')
+  if (d.length < 2) return '***.***.***-**'
+  return `***.***.***-${d.slice(-2)}`
+}
 
 /** Remove chaves sensíveis de objetos de audit. */
 export function sanitizeAuditPayload(
@@ -59,6 +73,10 @@ export function sanitizeAuditPayload(
   for (const [k, v] of Object.entries(input)) {
     if (SECRET_KEYS.test(k)) {
       out[k] = '[REDACTED]'
+      continue
+    }
+    if (PERSONAL_KEYS.test(k) && typeof v === 'string') {
+      out[k] = /cpf/i.test(k) ? redactCpfValue(v) : '[DADO PESSOAL OMITIDO]'
       continue
     }
     if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)) {
@@ -91,8 +109,8 @@ export async function writeLeadsMonitorAudit(entry: LeadsMonitorAuditEntry): Pro
       meta: sanitizeAuditPayload(entry.meta) || null,
       empresaId: entry.empresaId,
       at: serverTimestamp(),
-      data: new Date().toISOString().slice(0, 10),
-      hora: new Date().toTimeString().slice(0, 8),
+      data: auditDateUtc(),
+      hora: auditTimeSaoPaulo(),
     })
     return ref.id
   } catch (e) {

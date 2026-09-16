@@ -34,13 +34,15 @@ export function scoreLead(
   const business = String(lead.metadados?.businessStatus || '').toUpperCase()
 
   const segmentoHit =
-    (segFiltro && (segLead.includes(segFiltro) || nome.includes(segFiltro) || tipos.includes(segFiltro))) ||
-    (kw && (nome.includes(kw) || segLead.includes(kw) || tipos.includes(kw)))
+    segFiltro && (segLead.includes(segFiltro) || nome.includes(segFiltro) || tipos.includes(segFiltro))
   if (segmentoHit) {
     score += 22
     motivos.push('segmento altamente aderente')
-  } else if (segFiltro || kw) {
+  } else if (segFiltro) {
     motivos.push('segmento parcialmente relacionado ou não confirmado')
+  }
+  if (kw) {
+    motivos.push(`contexto de prospecção: ${filtros.palavraChave}`)
   }
 
   if (cnaeFiltro && cnaeLead.includes(cnaeFiltro)) {
@@ -49,7 +51,13 @@ export function scoreLead(
   }
 
   const cidade = (lead.cidade || '').toLowerCase()
-  if (filtros.cidade && cidade.includes(filtros.cidade.toLowerCase())) {
+  const cidadesFiltro = (filtros.cidadesSelecionadas || []).map((c) => c.toLowerCase()).filter(Boolean)
+  if (cidadesFiltro.length) {
+    if (cidadesFiltro.some((c) => cidade.includes(c) || (cidade && c.includes(cidade)))) {
+      score += 10
+      motivos.push('localização prioritária')
+    }
+  } else if (filtros.cidade && cidade.includes(filtros.cidade.toLowerCase())) {
     score += 10
     motivos.push('localização prioritária')
   } else if (filtros.estado && (lead.estado || '').toUpperCase() === filtros.estado.toUpperCase()) {
@@ -91,13 +99,35 @@ export function scoreLead(
     motivos.push('porte/estrutura compatível')
   }
 
+  if (filtros.operacao === 'INSS') {
+    const inssMeta = lead.metadados || {}
+    if (inssMeta.tipoBeneficiario) {
+      score += 8
+      motivos.push('benefício compatível informado pela fonte')
+    }
+    if (inssMeta.idade != null) {
+      score += 6
+      motivos.push('idade dentro do filtro')
+    }
+    if (inssMeta.banco || filtros.banco) {
+      motivos.push(inssMeta.banco ? 'banco compatível' : 'banco não informado na fonte')
+    }
+    if ((filtros.produtos || []).length) {
+      score += 6
+      motivos.push('produto selecionado — possível enquadramento')
+    }
+    motivos.push('Oportunidade identificada')
+  }
+
   if (lead.cnpjValidado || lead.dadosEnriquecidos?.cnpjValidado) {
     score += 8
     motivos.push('CNPJ validado em base pública')
   }
 
-  if (lead.connectorId === 'google-places') {
-    motivos.push('alta compatibilidade com o Nexus CRM')
+  if (lead.employeeCountStatus === 'faixa_publica' && (lead.employeeCountRange || lead.employeeCount != null)) {
+    motivos.push(`faixa de funcionários (fonte pública): ${lead.employeeCountRange || lead.employeeCount}`)
+  } else {
+    motivos.push('quantidade de funcionários não informada')
   }
 
   if (classification.origem === 'nexus_ai_llm') {

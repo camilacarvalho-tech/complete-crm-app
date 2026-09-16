@@ -58,7 +58,7 @@ export const DEFAULT_API_CONFIG: ApiConnectorConfig = {
   itemsPath: '',
   mapping: { nome: 'nome', telefone: 'telefone', email: 'email', cidade: 'cidade', estado: 'estado', segmento: 'segmento' },
   tipoPadrao: 'pessoa',
-  baseLegalPadrao: 'Consentimento / base legal declarada pela fonte autorizada.',
+  baseLegalPadrao: '',
   connectorApiVersion: 1,
 }
 

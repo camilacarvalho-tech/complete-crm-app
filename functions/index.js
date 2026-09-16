@@ -4,6 +4,7 @@ const { onSchedule } = require('firebase-functions/v2/scheduler')
 const admin = require('firebase-admin')
 const { logger } = require('firebase-functions')
 const { handler: placesSearchHandler } = require('./placesSearch')
+const { handler: overpassSearchHandler } = require('./overpassSearch')
 
 admin.initializeApp()
 
@@ -429,6 +430,18 @@ exports.leadsMonitorPlacesSearch = onRequest({
   timeoutSeconds: 120,
   invoker: 'public',
 }, placesSearchHandler)
+
+/**
+ * Descoberta OpenStreetMap / Overpass (padrão, sem Google Billing).
+ * POST { empresaId, filtros, limite }  Authorization: Bearer <Firebase ID token>
+ * action=health para checagem da fonte.
+ */
+exports.leadsMonitorOverpassSearch = onRequest({
+  cors: true,
+  region: 'southamerica-east1',
+  timeoutSeconds: 60,
+  invoker: 'public',
+}, overpassSearchHandler)
 
 /**
  * Webhook oficial Meta WhatsApp Cloud API.

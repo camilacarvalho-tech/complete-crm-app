@@ -8,11 +8,13 @@ import { runSearchEngine } from '../search/SearchEngine'
 import { requestSearchCancel } from '../search/SearchProgress'
 import {
   claimNextJob,
+  enqueueJob,
   markJobFailed,
   markJobRunning,
   markJobSucceeded,
   type LeadsMonitorJob,
 } from './jobQueue'
+import { runPeopleSearch, markPeopleRunFailed } from './peopleSearch/orchestrator'
 import { writeLeadsMonitorLog, moveToDlq } from './opsLogs'
 import { FILTROS_VAZIOS } from '../constants'
 
@@ -51,8 +53,9 @@ export async function processOneJob(empresaId: string): Promise<boolean> {
         jobId: job.id,
         filtros: job.payload.filtros || { ...FILTROS_VAZIOS },
         fontesIds: job.payload.fontesIds,
-        pesquisaId: job.payload.pesquisaId,
+        pesquisaId: job.payload.pesquisaId || undefined,
         llmBudget: 3,
+        processRunId: job.payload.processRunId,
       })
       await markJobSucceeded(empresaId, job.id, result)
       await writeLeadsMonitorLog({
@@ -62,6 +65,34 @@ export async function processOneJob(empresaId: string): Promise<boolean> {
         jobId: job.id,
         meta: { ...result, searchRunId } as unknown as Record<string, unknown>,
       })
+      return true
+    }
+
+    if (job.type === 'people_search') {
+      const opportunityId = job.payload.opportunityId
+      if (!opportunityId) throw new Error('people_search sem opportunityId')
+      try {
+        const result = await runPeopleSearch({
+          empresaId,
+          opportunityId,
+          jobId: job.id,
+        })
+        await markJobSucceeded(empresaId, job.id, result)
+        await writeLeadsMonitorLog({
+          empresaId,
+          level: 'info',
+          message: `Pesquisa de pessoas ok: ${result.pessoas} encontradas`,
+          jobId: job.id,
+          meta: { ...result, opportunityId },
+        })
+      } catch (e: any) {
+        await markPeopleRunFailed({
+          empresaId,
+          opportunityId,
+          error: e?.message || String(e),
+        })
+        throw e
+      }
       return true
     }
 
@@ -84,12 +115,42 @@ export async function processOneJob(empresaId: string): Promise<boolean> {
       throw new Error('import_csv sem searchRunId')
     }
 
+    if (job.type === 'base_process') {
+      const processRunId = job.payload.processRunId
+      if (!processRunId) throw new Error('base_process sem processRunId')
+      const { processBaseBatch } = await import('./processRobot')
+      const result = await processBaseBatch({
+        empresaId,
+        processRunId,
+        jobId: job.id,
+      })
+      await markJobSucceeded(empresaId, job.id, result)
+      await writeLeadsMonitorLog({
+        empresaId,
+        level: 'info',
+        message: result.done
+          ? `Robô concluiu processamento ${processRunId}`
+          : `Checkpoint ${processRunId}: restam ${result.remaining}`,
+        jobId: job.id,
+        meta: { ...result, processRunId },
+      })
+      if (!result.done) {
+        await enqueueJob({
+          empresaId,
+          type: 'base_process',
+          payload: { processRunId },
+          idempotencyKey: `base:${empresaId}:${processRunId}:${Date.now()}`,
+        })
+      }
+      return true
+    }
+
     if (job.type === 'search' || job.type === 'drain_inbox' || job.type === 'reprocess_dlq') {
       const filtros = job.payload.filtros || { ...FILTROS_VAZIOS }
       const result = await runLeadPipeline({
         empresaId,
         filtros,
-        pesquisaId: job.payload.pesquisaId,
+        pesquisaId: job.payload.pesquisaId || undefined,
         llmBudget: job.type === 'search' ? 3 : 0,
       })
 

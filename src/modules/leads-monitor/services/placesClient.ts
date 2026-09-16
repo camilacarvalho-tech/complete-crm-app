@@ -1,8 +1,25 @@
 /**
  * Cliente da Function leadsMonitorPlacesSearch.
  * Nunca envia nem recebe API key.
+ * Google Places é opcional: falhas de billing/quota/credencial não derrubam o Monitor.
  */
 import { auth } from '../../../firebase'
+
+export const PLACES_OPTIONAL_SKIP = 'optional_indisponivel' as const
+export const PLACES_SKIPPED = 'skipped' as const
+
+const OPTIONAL_UNAVAILABLE_CODES = new Set([
+  'needs_credentials',
+  'api_key_invalid',
+  'billing_ausente',
+  'api_nao_habilitada',
+  'quota',
+  'permissao',
+  'timeout',
+  'places_error',
+  PLACES_OPTIONAL_SKIP,
+  PLACES_SKIPPED,
+])
 
 function placesSearchUrl(): string | null {
   const fromEnv =
@@ -34,6 +51,56 @@ export class PlacesConnectorError extends Error {
   }
 }
 
+export function isPlacesOptionalUnavailable(code?: string, status?: number, message?: string): boolean {
+  const blob = `${code || ''} ${message || ''}`.toLowerCase()
+  if (status === 401 || status === 403 || status === 429 || status === 503) return true
+  if (code && OPTIONAL_UNAVAILABLE_CODES.has(code)) return true
+  if (/billing|quota|api.?key|not been (used|enabled)|permission|forbidden|resource_exhausted/i.test(blob)) {
+    return true
+  }
+  return false
+}
+
+export function mapPlacesSkipCode(code?: string, status?: number, message?: string): string {
+  if (isPlacesOptionalUnavailable(code, status, message)) return PLACES_OPTIONAL_SKIP
+  return PLACES_SKIPPED
+}
+
+function classifyClientPlacesFailure(data: Record<string, unknown>, httpStatus: number): {
+  code: string
+  message: string
+} {
+  const errorCode = String(data.errorCode || data.error || '')
+  const details = (data.details && typeof data.details === 'object' ? data.details : {}) as {
+    googleStatus?: string | null
+    message?: string | null
+  }
+  const message = String(
+    data.message || details.message || data.error || `Places HTTP ${httpStatus}`
+  )
+  const blob = `${errorCode} ${details.googleStatus || ''} ${message}`.toLowerCase()
+
+  let code = errorCode || 'places_error'
+  if (httpStatus === 503 || errorCode === 'needs_credentials' || /needs_credentials/.test(blob)) {
+    code = 'needs_credentials'
+  } else if (httpStatus === 429 || /quota|resource_exhausted/.test(blob)) {
+    code = 'quota'
+  } else if (/billing/.test(blob)) {
+    code = 'billing_ausente'
+  } else if (/has not been used|not been enabled|service_disabled/.test(blob)) {
+    code = 'api_nao_habilitada'
+  } else if (httpStatus === 401 || /api.?key.*(invalid|not valid)|api_key_invalid/.test(blob)) {
+    code = 'api_key_invalid'
+  } else if (httpStatus === 403 || /permission|forbidden/.test(blob)) {
+    code = 'permissao'
+  }
+
+  return {
+    code: mapPlacesSkipCode(code, httpStatus, message),
+    message,
+  }
+}
+
 async function authHeaders(): Promise<HeadersInit> {
   const user = auth.currentUser
   if (!user) throw new PlacesConnectorError('Sessão expirada — faça login novamente.', 'missing_auth', 401)
@@ -50,6 +117,7 @@ export async function placesHealth(empresaId: string): Promise<{
   message: string
   errorCode?: string
   api?: string
+  optional?: boolean
 }> {
   try {
     const url = `${getPlacesSearchUrl()}?action=health`
@@ -59,20 +127,42 @@ export async function placesHealth(empresaId: string): Promise<{
       body: JSON.stringify({ empresaId, action: 'health' }),
     })
     const data = await res.json().catch(() => ({}))
-    return {
-      ok: Boolean(data.ok),
-      status: String(data.status || (data.ok ? 'ONLINE' : 'OFFLINE')),
-      message: String(data.message || data.error || ''),
-      errorCode: data.errorCode,
-      api: data.api || 'Places API (New)',
+    if (data.ok) {
+      return {
+        ok: true,
+        status: String(data.status || 'ONLINE'),
+        message: String(data.message || 'Google Places STATUS: ONLINE'),
+        api: data.api || 'Places API (New)',
+        optional: true,
+      }
     }
-  } catch (e: any) {
+    const classified = classifyClientPlacesFailure(data, res.status)
     return {
       ok: false,
-      status: 'OFFLINE',
+      status: classified.code,
+      message: classified.message || String(data.message || data.error || ''),
+      errorCode: classified.code,
+      api: data.api || 'Places API (New)',
+      optional: true,
+    }
+  } catch (e: any) {
+    if (e instanceof PlacesConnectorError && e.code === 'missing_auth') {
+      return {
+        ok: false,
+        status: PLACES_SKIPPED,
+        errorCode: e.code,
+        message: e.message,
+        api: 'Places API (New)',
+        optional: true,
+      }
+    }
+    return {
+      ok: false,
+      status: PLACES_OPTIONAL_SKIP,
       errorCode: 'endpoint_incorreto',
-      message: e?.message || 'Endpoint da Function inacessível (emulador/URL).',
+      message: e?.message || 'Endpoint da Function inacessível (emulador/URL). Google Places permanece opcional.',
       api: 'Places API (New)',
+      optional: true,
     }
   }
 }
@@ -111,18 +201,12 @@ export async function placesSearch(opts: {
     }),
   })
   const data = await res.json().catch(() => ({}))
-  if (res.status === 503 || data.error === 'needs_credentials') {
+  if (!res.ok || data.error) {
+    const classified = classifyClientPlacesFailure(data, res.status)
     throw new PlacesConnectorError(
-      data.message ||
-        'Google Places ainda não está configurado. Defina GOOGLE_MAPS_API_KEY no backend (Functions).',
-      'needs_credentials',
-      503
-    )
-  }
-  if (!res.ok) {
-    throw new PlacesConnectorError(
-      data.message || data.error || `Places HTTP ${res.status}`,
-      String(data.error || 'places_error'),
+      classified.message ||
+        'Google Places indisponível (opcional). O Monitor continua com as demais fontes.',
+      classified.code,
       res.status
     )
   }

@@ -27,6 +27,13 @@ export function normalizeCompanyName(value?: string): string {
   return (value || '').trim()
 }
 
+export function redactCpf(value?: string): string {
+  const d = digits(value)
+  if (!d) return ''
+  if (d.length < 2) return '***.***.***-**'
+  return `***.***.***-${d.slice(-2)}`
+}
+
 export function maskCpf(value?: string): string {
   const d = digits(value).slice(0, 11)
   return d.replace(/(\d{3})(\d{3})(\d{3})(\d{0,2})/, (_, a, b, c, e) => (e ? `${a}.${b}.${c}-${e}` : `${a}.${b}.${c}`))

@@ -12,7 +12,11 @@ import { StateCityFields } from '../components/nexus/StateCityFields'
 import { FilterSearch, FilterSelect } from '../components/nexus/Filters'
 import { useToast } from '../components/ui/Toast'
 import { labelPt } from '../lib/uiPt'
-import { normalizeEmail, normalizePersonName } from '../lib/format'
+import { normalizeEmail, normalizePersonName, redactCpf } from '../lib/format'
+import { formatMonitorDateTime } from '../modules/leads-monitor/utils/datetime'
+import { downloadDelimited, exportRowsFromClientes } from '../modules/leads-monitor/pipeline/exportMonitorRows'
+import { useEscLayer } from '../hooks/useEscLayer'
+import { LgpdGovernancaBlock } from '../modules/leads-monitor/components/LgpdGovernancaBlock'
 
 const EMPTY: Omit<NexusCliente, 'id'> = {
   nome: '',
@@ -63,6 +67,15 @@ export default function Clientes() {
   const [origem, setOrigem] = useState(() => params.get('origem') || '')
   const [etapa, setEtapa] = useState(() => params.get('etapa') || '')
   const [produtoFiltro, setProdutoFiltro] = useState(() => params.get('produto') || '')
+  const [cidadeFiltro, setCidadeFiltro] = useState('')
+  const [ufFiltro, setUfFiltro] = useState('')
+  const [segmentoFiltro, setSegmentoFiltro] = useState('')
+  const [scoreMin, setScoreMin] = useState('')
+  const [comTelefone, setComTelefone] = useState(false)
+  const [comWhatsapp, setComWhatsapp] = useState(false)
+  const [comEmail, setComEmail] = useState(false)
+  const [comLinkedin, setComLinkedin] = useState(false)
+  const [comInstagram, setComInstagram] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<NexusCliente | null>(null)
   const [form, setForm] = useState(EMPTY)
@@ -99,9 +112,18 @@ export default function Clientes() {
       if (origem && originCode(String(c.source || c.origem)) !== origem) return false
       if (etapa && normalizeStage(String(c.pipelineStage || stageIdFromLegacy(c.status, c.pipeline))) !== etapa) return false
       if (produtoFiltro && String(c.modalidade || c.produto || '') !== produtoFiltro && !(c.modalidades || []).includes(produtoFiltro) && String(c.subproduto || '') !== produtoFiltro) return false
+      if (cidadeFiltro && String(c.cidade || '').toLowerCase() !== cidadeFiltro.toLowerCase()) return false
+      if (ufFiltro && String(c.estado || '').toUpperCase() !== ufFiltro.toUpperCase()) return false
+      if (segmentoFiltro && String(c.modalidade || '').toLowerCase() !== segmentoFiltro.toLowerCase()) return false
+      if (scoreMin && Number(c.score || 0) < Number(scoreMin)) return false
+      if (comTelefone && digits(c.telefone).length < 10) return false
+      if (comWhatsapp && digits(c.whatsapp).length < 10) return false
+      if (comEmail && !String(c.email || '').includes('@')) return false
+      if (comLinkedin && !c.linkedinUrl) return false
+      if (comInstagram && !c.instagramUrl) return false
       return true
     })
-  }, [clientes.items, busca, status, origem, etapa, produtoFiltro])
+  }, [clientes.items, busca, status, origem, etapa, produtoFiltro, cidadeFiltro, ufFiltro, segmentoFiltro, scoreMin, comTelefone, comWhatsapp, comEmail, comLinkedin, comInstagram])
 
   const selected = clientes.items.find((c) => c.id === selectedId) || null
 
@@ -202,7 +224,13 @@ export default function Clientes() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Clientes" subtitle="Cadastro único da empresa. Origem do lead e origem geográfica são campos distintos." actions={writable ? <PrimaryButton onClick={openNew}>Novo cliente</PrimaryButton> : null} />
+      <PageHeader title="Clientes" subtitle="Cadastro único da empresa. Origem do lead e origem geográfica são campos distintos." actions={
+        <div className="flex gap-2">
+          <GhostButton onClick={() => downloadDelimited('clientes-nexus.csv', exportRowsFromClientes(lista), 'csv')}>Exportar CSV</GhostButton>
+          <GhostButton onClick={() => downloadDelimited('clientes-nexus.xls', exportRowsFromClientes(lista), 'xlsx')}>Exportar XLSX</GhostButton>
+          {writable ? <PrimaryButton onClick={openNew}>Novo cliente</PrimaryButton> : null}
+        </div>
+      } />
       <ErrorBanner message={clientes.error} />
 
       <div className="flex flex-wrap gap-2 items-end">
@@ -219,6 +247,29 @@ export default function Clientes() {
           <option value="">TODAS</option>
           {PIPELINE_STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
         </FilterSelect>
+        <FilterSelect label="Cidade" value={cidadeFiltro} onChange={(e) => setCidadeFiltro(e.target.value)}>
+          <option value="">TODAS</option>
+          {[...new Set(clientes.items.map((c) => c.cidade).filter(Boolean))].map((s) => <option key={String(s)}>{String(s)}</option>)}
+        </FilterSelect>
+        <FilterSelect label="UF" value={ufFiltro} onChange={(e) => setUfFiltro(e.target.value)}>
+          <option value="">TODAS</option>
+          {[...new Set(clientes.items.map((c) => c.estado).filter(Boolean))].map((s) => <option key={String(s)}>{String(s)}</option>)}
+        </FilterSelect>
+        <FilterSelect label="Segmento" value={segmentoFiltro} onChange={(e) => setSegmentoFiltro(e.target.value)}>
+          <option value="">TODOS</option>
+          {[...new Set(clientes.items.map((c) => c.modalidade).filter(Boolean))].map((s) => <option key={String(s)}>{String(s)}</option>)}
+        </FilterSelect>
+        <FilterSelect label="Score mínimo" value={scoreMin} onChange={(e) => setScoreMin(e.target.value)}>
+          <option value="">TODOS</option>
+          <option value="40">40+</option>
+          <option value="60">60+</option>
+          <option value="80">80+</option>
+        </FilterSelect>
+        <label className="text-xs flex items-center gap-1"><input type="checkbox" checked={comTelefone} onChange={(e) => setComTelefone(e.target.checked)} /> Com telefone</label>
+        <label className="text-xs flex items-center gap-1"><input type="checkbox" checked={comWhatsapp} onChange={(e) => setComWhatsapp(e.target.checked)} /> Com WhatsApp</label>
+        <label className="text-xs flex items-center gap-1"><input type="checkbox" checked={comEmail} onChange={(e) => setComEmail(e.target.checked)} /> Com e-mail</label>
+        <label className="text-xs flex items-center gap-1"><input type="checkbox" checked={comLinkedin} onChange={(e) => setComLinkedin(e.target.checked)} /> Com LinkedIn</label>
+        <label className="text-xs flex items-center gap-1"><input type="checkbox" checked={comInstagram} onChange={(e) => setComInstagram(e.target.checked)} /> Com Instagram</label>
       </div>
 
       {selectedIds.length > 0 && writable && (
@@ -243,11 +294,19 @@ export default function Clientes() {
                 <tr>
                   <th className="p-3"><input type="checkbox" aria-label="Selecionar todos" onChange={(e) => setSelectedIds(e.target.checked ? lista.map((c) => c.id) : [])} /></th>
                   <th className="p-3">Nome</th>
-                  <th className="p-3">Contato</th>
-                  <th className="p-3">Origem do lead</th>
-                  <th className="p-3">Origem geográfica</th>
-                  <th className="p-3">Etapa</th>
-                  <th className="p-3">Responsável</th>
+                  <th className="p-3">Empresa</th>
+                  <th className="p-3">Cargo</th>
+                  <th className="p-3">Relação</th>
+                  <th className="p-3">Telefone</th>
+                  <th className="p-3">WhatsApp</th>
+                  <th className="p-3">E-mail</th>
+                  <th className="p-3">Cidade/UF</th>
+                  <th className="p-3">Origem</th>
+                  <th className="p-3">Fonte</th>
+                  <th className="p-3">Score</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3">Inclusão</th>
+                  <th className="p-3" title="Ver detalhes"> </th>
                 </tr>
               </thead>
               <tbody>
@@ -255,11 +314,33 @@ export default function Clientes() {
                   <tr key={c.id} onClick={() => setParams({ id: c.id })} className={`cursor-pointer border-b ${selectedId === c.id ? 'bg-[color:var(--code-surface-muted)]' : ''}`} style={{ borderColor: 'var(--code-border)' }}>
                     <td className="p-3" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedIds.includes(c.id)} onChange={(e) => setSelectedIds((ids) => e.target.checked ? [...ids, c.id] : ids.filter((x) => x !== c.id))} /></td>
                     <td className="p-3 font-medium">{c.nome}</td>
-                    <td className="p-3">{c.whatsapp || c.telefone || c.email || '—'}</td>
+                    <td className="p-3">{c.empresaNome || '—'}</td>
+                    <td className="p-3">{c.cargo || c.profissao || '—'}</td>
+                    <td className="p-3">{c.relacaoEmpresa || '—'}</td>
+                    <td className="p-3">{c.telefone || '—'}</td>
+                    <td className="p-3">{c.whatsapp || '—'}</td>
+                    <td className="p-3">{c.email || '—'}</td>
+                    <td className="p-3">{c.cidade || c.cidadeOrigem ? `${c.cidade || c.cidadeOrigem} - ${c.estado || c.estadoOrigem || ''}` : '—'}</td>
                     <td className="p-3">{originLabel(originCode(String(c.source || c.origem)))}</td>
-                    <td className="p-3">{c.cidadeOrigem || c.cidade ? `${c.cidadeOrigem || c.cidade} - ${c.estadoOrigem || c.estado || ''}` : '—'}</td>
+                    <td className="p-3">{c.fontePesquisa || '—'}</td>
+                    <td className="p-3">{c.score ?? '—'}</td>
                     <td className="p-3">{stageLabel(String(c.pipelineStage || stageIdFromLegacy(c.status, c.pipeline)))}</td>
-                    <td className="p-3">{c.responsavel || '—'}</td>
+                    <td className="p-3">{formatMonitorDateTime(c.criadoEm)}</td>
+                    <td className="p-3" onClick={(e) => {
+                      e.stopPropagation()
+                      setParams({ id: c.id })
+                      void writeAudit({
+                        empresaId: clientes.empresaId,
+                        usuarioId: usuario?.id,
+                        usuarioNome: usuario?.nome,
+                        modulo: 'clientes',
+                        acao: 'client.details.opened',
+                        entidade: 'cliente',
+                        entidadeId: c.id,
+                      })
+                    }}>
+                      <button type="button" title="Ver detalhes" className="px-2 py-1 rounded border text-sm font-bold">{'>'}</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -284,6 +365,20 @@ export default function Clientes() {
               mensagensCount={conversas.items.filter((d) => d.clienteId === selected.id).length}
               onEdit={() => openEdit(selected)}
               onDelete={() => setConfirmId(selected.id)}
+              onClose={() => {
+                const next = new URLSearchParams(params)
+                next.delete('id')
+                setParams(next)
+                void writeAudit({
+                  empresaId: clientes.empresaId,
+                  usuarioId: usuario?.id,
+                  usuarioNome: usuario?.nome,
+                  modulo: 'clientes',
+                  acao: 'client.details.closed',
+                  entidade: 'cliente',
+                  entidadeId: selected.id,
+                })
+              }}
               writable={writable}
             />
           ) : (
@@ -393,7 +488,7 @@ export default function Clientes() {
 }
 
 function ClientWorkspace({
-  cliente, tab, setTab, propostas, digitacoes, documentos, conversas, mensagens, ligacoes, agenda, campanhas, transacoes, contratos, onEdit, onDelete, writable,
+  cliente, tab, setTab, propostas, digitacoes, documentos, conversas, mensagens, ligacoes, agenda, campanhas, transacoes, contratos, onEdit, onDelete, onClose, writable,
 }: {
   cliente: NexusCliente
   tab: string
@@ -411,6 +506,7 @@ function ClientWorkspace({
   mensagensCount?: number
   onEdit: () => void
   onDelete: () => void
+  onClose: () => void
   writable: boolean
 }) {
   const produtoNome = productLabel(cliente.modalidade || cliente.produto)
@@ -426,19 +522,39 @@ function ClientWorkspace({
     ['historico', 'Histórico'],
     ['observacoes', 'Observações'],
   ]
+  const extras = (cliente.camposExtras || {}) as Record<string, unknown>
+  const telDigits = digits(cliente.telefone)
+  const waDigits = digits(cliente.whatsapp || cliente.telefone)
+  const hasWa = waDigits.length >= 10
+  const hasTel = telDigits.length >= 10
+  const hasEmail = String(cliente.email || '').includes('@')
+  const socials: Array<[string, string | undefined]> = [
+    ['LinkedIn', cliente.linkedinUrl],
+    ['Instagram', cliente.instagramUrl],
+    ['Facebook', cliente.facebookUrl],
+    ['YouTube', cliente.youtubeUrl],
+    ['TikTok', cliente.tiktokUrl],
+    ['X/Twitter', cliente.twitterUrl],
+  ]
   const timeline = [
-    cliente.criadoEm && { t: cliente.criadoEm, label: 'Lead recebido' },
-    ...conversas.map((c) => ({ t: c.criadoEm, label: `Atendimento · ${labelPt(String(c.status || ''))}` })),
-    ...mensagens.slice(0, 40).map((m) => ({ t: m.criadoEm, label: String(m.texto || m.tipo || 'Mensagem') })),
+    cliente.leadsMonitorOpportunityId && { t: cliente.criadoEm, label: '🔎 Pesquisa realizada' },
+    cliente.leadsMonitorPersonId && { t: cliente.criadoEm, label: '✓ Pessoa encontrada' },
+    cliente.fonteUrl && { t: cliente.criadoEm, label: '✓ Perfil validado' },
+    (hasTel || hasWa || hasEmail) && { t: cliente.criadoEm, label: '✓ Contato encontrado' },
+    originCode(String(cliente.source || cliente.origem)) === 'leads_monitor' && { t: cliente.criadoEm, label: '✓ Lead aprovado' },
+    cliente.criadoEm && { t: cliente.criadoEm, label: originCode(String(cliente.source || cliente.origem)) === 'leads_monitor' ? '✓ Adicionado ao CRM' : 'Lead recebido' },
+    ...conversas.map((c) => ({ t: c.criadoEm, label: `💬 Conversa · ${labelPt(String(c.status || ''))}` })),
+    ...mensagens.slice(0, 40).map((m) => ({ t: m.criadoEm, label: `💬 ${String(m.texto || m.tipo || 'Mensagem')}` })),
     ...documentos.map((d) => ({ t: d.criadoEm, label: `Documento recebido · ${d.nome || d.categoria || ''}` })),
-    ...propostas.map((p) => ({ t: p.criadoEm, label: `Proposta ${labelPt(String(p.status || '').replace('recusada', 'reprovada'))}` })),
+    ...propostas.map((p) => ({ t: p.criadoEm, label: `📋 Proposta ${labelPt(String(p.status || '').replace('recusada', 'reprovada'))}` })),
     ...digitacoes.map((d) => ({ t: d.criadoEm, label: `Digitação ${labelPt(String(d.status || ''))}` })),
-    ...agenda.map((a) => ({ t: a.criadoEm || a.data, label: String(a.titulo || 'Follow-up') })),
-    ...ligacoes.map((l) => ({ t: l.criadoEm, label: `Ligação ${l.resultado || ''}` })),
+    ...agenda.map((a) => ({ t: a.criadoEm || a.data, label: String(a.tipo) === 'tarefa' ? `📝 ${a.titulo || 'Tarefa'}` : String(a.titulo || 'Follow-up') })),
+    ...ligacoes.map((l) => ({ t: l.criadoEm, label: `📞 Ligação ${l.resultado || ''}` })),
   ].filter((x): x is { t: unknown; label: string } => Boolean(x && x.t))
     .sort((a, b) => String(a.t).localeCompare(String(b.t)))
 
   const proximo = cliente.proximoFollowUp || agenda.find((a) => String(a.data || '') >= new Date().toISOString().slice(0, 10))?.titulo
+  useEscLayer(true, onClose)
 
   return (
     <div className="nexus-card p-4 space-y-3">
@@ -446,7 +562,9 @@ function ClientWorkspace({
         <div>
           <h2 className="font-bold">{cliente.nome}</h2>
           <p className="text-xs" style={{ color: 'var(--code-muted)' }}>
-            CPF {cliente.cpf || '—'} · {cliente.whatsapp || cliente.telefone || '—'} · {cliente.email || '—'}
+            {cliente.empresaNome ? `${cliente.empresaNome}${cliente.cargo ? ` · ${cliente.cargo}` : ''}` : cliente.cpf ? `CPF ${redactCpf(cliente.cpf)}` : 'Cadastro CRM'}
+            {' · '}{cliente.whatsapp || cliente.telefone || '—'}
+            {cliente.email ? ` · ${cliente.email}` : ''}
           </p>
           <p className="text-xs" style={{ color: 'var(--code-muted)' }}>
             {stageLabel(String(cliente.pipelineStage))} · {cliente.responsavel || 'sem responsável'} · {produtoNome}
@@ -455,12 +573,12 @@ function ClientWorkspace({
           </p>
           <p className="text-xs font-semibold mt-1">Próximo passo: {String(proximo || 'Definir retorno')}</p>
         </div>
-        {writable && (
-          <div className="flex gap-2">
-            <GhostButton onClick={onEdit}>Editar</GhostButton>
-            <GhostButton onClick={onDelete}>Excluir</GhostButton>
-          </div>
-        )}
+        <div className="flex gap-2">
+          <GhostButton onClick={onClose}>Fechar</GhostButton>
+          <GhostButton onClick={onClose}>Abrir CRM</GhostButton>
+          {writable ? <GhostButton onClick={onEdit}>Editar</GhostButton> : null}
+          {writable ? <GhostButton onClick={onDelete}>Excluir</GhostButton> : null}
+        </div>
       </div>
       <div className="flex flex-wrap gap-1">
         {tabs.map(([id, label]) => (
@@ -468,15 +586,79 @@ function ClientWorkspace({
         ))}
       </div>
       {tab === 'resumo' && (
-        <div className="text-sm space-y-1">
-          <p>Produto: {produtoNome}</p>
-          {cliente.subproduto && <p>Operação: {cliente.subproduto}</p>}
-          <p>Convênio: {String(cliente.convenio || '—').toUpperCase()}</p>
-          <p>Origem: {originLabel(originCode(String(cliente.source || cliente.origem)))}</p>
+        <div className="text-sm space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {hasWa ? <a className="px-2 py-1 rounded text-xs font-semibold nexus-cta text-white" href={`/whatsapp?cliente=${cliente.id}`}>💬 WhatsApp</a> : null}
+            {hasTel ? <a className="px-2 py-1 rounded text-xs font-semibold" style={{ background: 'var(--code-surface-muted)' }} href={`tel:+${telDigits.startsWith('55') ? telDigits : telDigits}`}>📞 Telefone</a> : null}
+            {hasEmail ? <a className="px-2 py-1 rounded text-xs font-semibold" style={{ background: 'var(--code-surface-muted)' }} href={`mailto:${cliente.email}`}>✉️ E-mail</a> : null}
+          </div>
+          {hasWa ? <p className="text-xs font-semibold">💬 WhatsApp disponível · <a href={`/whatsapp?cliente=${cliente.id}`} style={{ color: 'var(--code-orange)' }}>Conversar</a></p> : null}
+          <section>
+            <p className="text-xs font-semibold">👤 Dados da pessoa</p>
+            <p>Pessoa: {cliente.nome || 'Não informado'}</p>
+            <p>Nome: {cliente.nome || 'Não informado'}</p>
+            <p>CPF: {cliente.cpf ? redactCpf(cliente.cpf) : 'Não informado'}</p>
+            <p>Data de nascimento: {cliente.dataNascimento || 'Não informado'}</p>
+            <p>Cargo: {cliente.cargo || cliente.profissao || 'Não informado'}</p>
+            <p>Relação com empresa: {cliente.relacaoEmpresa || String(extras.relationToCompany || 'Não informado')}</p>
+          </section>
+          <section>
+            <p className="text-xs font-semibold">🏢 Empresa</p>
+            <p>Razão social: {String(extras.razaoSocial || cliente.empresaNome || '—')}</p>
+            <p>Nome fantasia: {String(extras.nomeFantasia || '—')}</p>
+            <p>CNPJ: {cliente.empresaCnpj || '—'}</p>
+            <p>Segmento: {cliente.modalidade || '—'}</p>
+            <p>CNAE: {String(extras.cnaePrincipal || '—')}</p>
+            <p>Cidade: {cliente.cidade || 'Não informado'}</p>
+            <p>Estado: {cliente.estado || 'Não informado'}</p>
+            <p>UF: {cliente.estado || 'Não informado'}</p>
+            <p>Endereço: {cliente.endereco || '—'}</p>
+          </section>
+          <section>
+            <p className="text-xs font-semibold">📞 Contatos</p>
+            <p>Telefone profissional: {cliente.telefone || 'Não informado'}</p>
+            <p>WhatsApp profissional: {cliente.whatsapp || 'Não informado'}</p>
+            <p>E-mail profissional: {cliente.email || 'Não informado'}</p>
+          </section>
+          <LgpdGovernancaBlock
+            record={{
+              origemDado: cliente.source || cliente.origem,
+              fonteDado: cliente.fontePesquisa,
+              origemLabel: cliente.fontePesquisa,
+              finalidadeTratamento: extras.finalidadeTratamento,
+              baseLegal: extras.baseLegal,
+              coletadoEm: extras.coletadoEm || cliente.criadoEm,
+              atualizadoEm: cliente.atualizadoEm,
+              criadoEm: cliente.criadoEm,
+              retentionStatus: extras.retentionStatus,
+            }}
+          />
+          <section>
+            <p className="text-xs font-semibold">🌐 Redes públicas</p>
+            {socials.some(([, url]) => url) ? socials.filter(([, url]) => url).map(([label, url]) => (
+              <p key={label}><a href={url} target="_blank" rel="noreferrer" style={{ color: 'var(--code-orange)' }}>{label}</a></p>
+            )) : <p>Não informado</p>}
+          </section>
+          <section>
+            <p className="text-xs font-semibold">📌 Origem</p>
+            <p>{originLabel(originCode(String(cliente.source || cliente.origem)))}</p>
+          </section>
+          <section>
+            <p className="text-xs font-semibold">🔎 Fonte da pesquisa</p>
+            <p>Fonte: {cliente.fontePesquisa || '—'}</p>
+            <p>URL: {cliente.fonteUrl ? <a href={cliente.fonteUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--code-orange)' }}>{cliente.fonteUrl}</a> : '—'}</p>
+            <p>Data/hora: {formatMonitorDateTime(cliente.criadoEm)}</p>
+            <p>Evidência: {String(extras.evidência || extras.evidencia || cliente.fontePesquisa || '—')}</p>
+          </section>
+          <p>Produto: {produtoNome || 'Não informado'}</p>
+          <p>Operação: {cliente.subproduto || cliente.convenio || 'Não informado'}</p>
+          <p>Campanha: {String(extras.campanha || cliente.campanha || 'Não informado')}</p>
+          <p>Banco: {cliente.banco || 'Não informado'}</p>
+          <p>Convênio: {String(cliente.convenio || 'Não informado').toUpperCase()}</p>
+          <p>Score: {cliente.score ?? '—'}</p>
           <p>Responsável: {cliente.responsavel || '—'}</p>
           <p>Etapa: {stageLabel(String(cliente.pipelineStage))}</p>
           <p>Última interação: {cliente.ultimaInteracao || '—'}</p>
-          <a className="text-sm font-semibold" style={{ color: 'var(--code-orange)' }} href={`/whatsapp?cliente=${cliente.id}`}>Abrir WhatsApp</a>
         </div>
       )}
       {tab === 'atendimento' && <ListOrEmpty items={conversas} render={(p) => `${labelPt(String(p.status || ''))} · ${p.lastMessage || ''}`} empty="Nenhum atendimento registrado." />}

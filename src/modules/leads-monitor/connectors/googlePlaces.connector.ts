@@ -3,14 +3,19 @@
  * A API KEY fica só no backend.
  */
 import type { IConnector, ConnectorFetchContext, ConnectorRawRecord, NormalizedLead } from './types'
-import { placesSearch, PlacesConnectorError } from '../services/placesClient'
+import {
+  mapPlacesSkipCode,
+  placesSearch,
+  PlacesConnectorError,
+} from '../services/placesClient'
 import { digitsOnly, formatPhoneBr, hostnameFromUrl, normalizeCep, normalizeCompanyName } from '../pipeline/normalizeFields'
 
 export const googlePlacesConnector: IConnector = {
   meta: {
     id: 'google-places',
     label: 'Google Places',
-    descricao: 'Busca estabelecimentos via Google Places API (oficial, backend).',
+    descricao:
+      'Busca estabelecimentos via Google Places API (oficial, backend). Fonte opcional: billing/quota/credencial ausente não interrompe o Monitor.',
     autorizado: true,
     enabled: true,
     version: '1.1.0',
@@ -33,8 +38,14 @@ export const googlePlacesConnector: IConnector = {
         payload: { ...place, _query: result.query, _tempoMs: result.tempoMs },
       }))
     } catch (e: any) {
-      if (e instanceof PlacesConnectorError) throw e
-      throw new PlacesConnectorError(e?.message || String(e), e?.code || 'places_error', e?.status)
+      const message =
+        e?.message ||
+        'Google Places indisponível (opcional). O Monitor continua com as demais fontes.'
+      const code = mapPlacesSkipCode(e?.code, e?.status, message)
+      if (e instanceof PlacesConnectorError) {
+        throw new PlacesConnectorError(message, code, e.status)
+      }
+      throw new PlacesConnectorError(message, code, e?.status)
     }
   },
 
