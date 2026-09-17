@@ -9,6 +9,7 @@ import { COL_PEOPLE_RESEARCH } from '../constants'
 import { writeLeadsMonitorAudit } from '../services/auditTrail'
 import type { CompanyPeopleResearch } from '../types/peopleResearch'
 import type { OportunidadeMonitor } from '../types'
+import { garantirConversaFila } from '../../../lib/garantirConversaFila'
 import {
   applyClienteMerge,
   asText,
@@ -61,12 +62,34 @@ export async function enviarPessoaParaCrm(
     updatedAt: serverTimestamp(),
   })
 
+  await garantirConversaFila({
+    empresaId,
+    clienteId,
+    titulo: nome,
+    telefone: asText(incoming.telefone || incoming.whatsapp),
+    origemLead: 'leads_monitor',
+    origemDetalhe: asText(incoming.origemDetalhe),
+    fonte: asText(incoming.fonte || incoming.fontePesquisa),
+    fonteId: asText(incoming.fonteId),
+    campanhaId: asText(incoming.campanhaId),
+    campanhaNome: asText(incoming.campanhaNome || company.nome),
+    segmento: asText(incoming.modalidade),
+    estado: asText(incoming.estado),
+    cidade: asText(incoming.cidade),
+    bairro: asText(incoming.bairro),
+    cep: asText(incoming.cep),
+    pais: 'Brasil',
+    responsavel: asText(incoming.responsavel),
+    usuarioId: actor?.usuarioId,
+    usuarioNome: actor?.usuarioNome,
+  })
+
   await writeAudit({
     empresaId,
     usuarioId: actor?.usuarioId,
     usuarioNome: actor?.usuarioNome,
     modulo: 'clientes',
-    acao: jaExistia ? 'atualizar' : 'criar',
+    acao: jaExistia ? 'client.updated' : 'client.created',
     entidade: 'cliente',
     entidadeId: clienteId,
     depois: { origem: 'leads_monitor', leadsMonitorPersonId: person.id, empresa: company.nome },

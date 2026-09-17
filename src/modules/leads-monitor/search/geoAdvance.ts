@@ -37,6 +37,8 @@ export async function seedGeoQueue(opts: {
       cidadesProcessadas: 0,
       cidadesErro: 0,
       cidadeAtual: cities[0] || null,
+      geoBairro: opts.filtros.bairro || null,
+      geoCep: opts.filtros.cep || null,
       etapaAtual: 'Buscando empresas',
       updatedAt: serverTimestamp(),
     })

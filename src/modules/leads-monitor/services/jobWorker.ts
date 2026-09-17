@@ -53,6 +53,7 @@ export async function processOneJob(empresaId: string): Promise<boolean> {
         jobId: job.id,
         filtros: job.payload.filtros || { ...FILTROS_VAZIOS },
         fontesIds: job.payload.fontesIds,
+        fontesHabilitadas: job.payload.fontesHabilitadas || job.payload.filtros?.fontesHabilitadas,
         pesquisaId: job.payload.pesquisaId || undefined,
         llmBudget: 3,
         processRunId: job.payload.processRunId,
@@ -107,6 +108,7 @@ export async function processOneJob(empresaId: string): Promise<boolean> {
           jobId: job.id,
           filtros: job.payload.filtros || { ...FILTROS_VAZIOS },
           fontesIds: job.payload.fontesIds,
+          fontesHabilitadas: job.payload.fontesHabilitadas || job.payload.filtros?.fontesHabilitadas,
           llmBudget: 0,
         })
         await markJobSucceeded(empresaId, job.id, result)
@@ -152,6 +154,7 @@ export async function processOneJob(empresaId: string): Promise<boolean> {
         filtros,
         pesquisaId: job.payload.pesquisaId || undefined,
         llmBudget: job.type === 'search' ? 3 : 0,
+        fontesHabilitadas: job.payload.fontesHabilitadas || filtros.fontesHabilitadas,
       })
 
       await markJobSucceeded(empresaId, job.id, result)

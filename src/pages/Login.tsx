@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { signInWithEmailAndPassword } from 'firebase/auth'
+import { sendPasswordResetEmail, signInWithEmailAndPassword } from 'firebase/auth'
 import { doc, setDoc, getDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase'
-import { LogIn, Mail, Lock, UserPlus } from 'lucide-react'
+import { LogIn, Mail, Lock } from 'lucide-react'
 
 export default function Login() {
   const location = useLocation()
@@ -13,6 +13,8 @@ export default function Login() {
   const [erro, setErro] = useState('')
   const [loading, setLoading] = useState(false)
   const [sucesso, setSucesso] = useState('')
+  const [recuperar, setRecuperar] = useState(false)
+  const [enviandoReset, setEnviandoReset] = useState(false)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -69,6 +71,26 @@ export default function Login() {
     }
   }
 
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setErro('')
+    setSucesso('')
+    if (!email.trim()) {
+      setErro('Informe o e-mail da conta')
+      return
+    }
+    setEnviandoReset(true)
+    try {
+      await sendPasswordResetEmail(auth, email.trim())
+      setSucesso('Se este e-mail estiver cadastrado, o Firebase envia o link de redefinição. Verifique a caixa de entrada.')
+    } catch (error: any) {
+      setErro('Não foi possível solicitar a recuperação. Confira o e-mail e tente novamente.')
+      console.error(error)
+    } finally {
+      setEnviandoReset(false)
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       <div className="w-full max-w-md p-8">
@@ -87,7 +109,48 @@ export default function Login() {
             )}
           </div>
 
-          {/* Formulário */}
+          {recuperar ? (
+          <form onSubmit={handleReset} className="space-y-6">
+            <p className="text-sm" style={{ color: 'var(--code-muted)' }}>
+              Recuperação via Firebase Authentication. Informe o e-mail da conta para receber o link.
+            </p>
+            <div>
+              <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--code-muted)' }}>
+                <Mail className="inline w-4 h-4 mr-2" />
+                E-mail
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition"
+                placeholder="seu@email.com"
+              />
+            </div>
+            {erro && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{erro}</div>
+            )}
+            {sucesso && (
+              <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">{sucesso}</div>
+            )}
+            <button
+              type="submit"
+              disabled={enviandoReset}
+              className="w-full bg-gradient-to-r from-orange-500 to-blue-600 text-white py-3 rounded-lg font-semibold hover:from-orange-600 hover:to-blue-700 transition-all shadow-lg disabled:opacity-50"
+            >
+              {enviandoReset ? 'Enviando...' : 'Solicitar recuperação'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setRecuperar(false); setErro(''); setSucesso('') }}
+              className="w-full text-sm font-semibold"
+              style={{ color: 'var(--code-muted)' }}
+            >
+              Voltar ao login
+            </button>
+          </form>
+          ) : (
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
               <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--code-muted)' }}>
@@ -132,6 +195,14 @@ export default function Login() {
             )}
 
             <button
+              type="button"
+              onClick={() => { setRecuperar(true); setErro(''); setSucesso('') }}
+              className="text-sm font-semibold"
+              style={{ color: 'var(--code-orange)' }}
+            >
+              Esqueci minha senha
+            </button>
+            <button
               type="submit"
               disabled={loading}
               className="w-full bg-gradient-to-r from-orange-500 to-blue-600 text-white py-3 rounded-lg font-semibold hover:from-orange-600 hover:to-blue-700 transition-all shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
@@ -152,10 +223,11 @@ export default function Login() {
               Preencher e-mail Master
             </button>
           </form>
+          )}
 
           {/* Footer */}
           <div className="mt-8 text-center text-xs text-slate-500">
-            <p>Desenvolvido por <span className="font-semibold text-orange-600">CodeFlow Tecnologia</span></p>
+            <p>Desenvolvido por <span className="font-semibold text-orange-600">CODE Tecnologia Empresarial</span></p>
             <p className="mt-1">© 2026 Todos os direitos reservados</p>
           </div>
         </div>

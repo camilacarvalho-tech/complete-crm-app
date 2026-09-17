@@ -1,10 +1,12 @@
 ﻿import { useState } from 'react'
+import { EmailAuthProvider, reauthenticateWithCredential, sendPasswordResetEmail, updatePassword } from 'firebase/auth'
 import { useAuth } from '../contexts/AuthContext'
 import { useNexusStore } from '../contexts/NexusStore'
 import { useAppearance } from '../contexts/ThemeContext'
+import { auth } from '../firebase'
 import { PIPELINE_STAGES, USER_ROLES } from '../types/nexus'
 import { CONVENIOS_PADRAO } from '../catalog/crmCatalog'
-import { PageHeader, PrimaryButton, SelectInput, TextInput } from '../components/nexus/kit'
+import { GhostButton, PageHeader, PrimaryButton, SelectInput, TextInput } from '../components/nexus/kit'
 import { useToast } from '../components/ui/Toast'
 
 const TABS = ['Aparência', 'Perfil', 'Usuários', 'Origens e etapas', 'Convênios', 'Tags', 'WhatsApp', 'Meta', 'VoIP', 'Bancos', 'IA', 'White Label', 'Auditoria', 'Segurança']
@@ -18,6 +20,9 @@ export default function Configuracoes() {
   const [u, setU] = useState({ nome: '', email: '', telefone: '', cargo: '', perfil: 'VENDEDOR' })
   const [conv, setConv] = useState({ codigo: '', nome: '' })
   const [tag, setTag] = useState({ nome: '', cor: '#06b6d4' })
+  const [senhaAtual, setSenhaAtual] = useState('')
+  const [senhaNova, setSenhaNova] = useState('')
+  const [senhaConfirma, setSenhaConfirma] = useState('')
 
   async function addUser() {
     await usuariosEmpresa.create(u as any)
@@ -133,12 +138,42 @@ export default function Configuracoes() {
         </ul>
       )}
       {tab === 'Segurança' && (
-        <ul className="text-sm list-disc pl-5 space-y-1">
-          <li>Rotas protegidas por autenticação Firebase.</li>
-          <li>Dados isolados em empresas/{'{tenant}'}/coleção.</li>
-          <li>RBAC no menu e nas mutações (perfil CONSULTA).</li>
-          <li>Uploads do chat viram metadados no cadastro; Storage continua no serviço existente.</li>
-        </ul>
+        <div className="space-y-4">
+          <ul className="text-sm list-disc pl-5 space-y-1">
+            <li>Rotas protegidas por autenticação Firebase.</li>
+            <li>Dados isolados em empresas/{'{tenant}'}/coleção.</li>
+            <li>RBAC no menu e nas mutações (perfil CONSULTA).</li>
+            <li>Arquivos do Chat Clientes usam Firebase Storage do mesmo projeto.</li>
+          </ul>
+          <div className="nexus-card p-4 space-y-2 text-sm max-w-md">
+            <p className="font-semibold">Alterar senha</p>
+            <TextInput type="password" placeholder="Senha atual" value={senhaAtual} onChange={(e) => setSenhaAtual(e.target.value)} />
+            <TextInput type="password" placeholder="Nova senha" value={senhaNova} onChange={(e) => setSenhaNova(e.target.value)} />
+            <TextInput type="password" placeholder="Confirmar nova senha" value={senhaConfirma} onChange={(e) => setSenhaConfirma(e.target.value)} />
+            <PrimaryButton onClick={async () => {
+              const user = auth.currentUser
+              const mail = user?.email || usuario?.email
+              if (!user || !mail) return toast.error('Sessão sem e-mail para reautenticar.')
+              if (senhaNova.length < 6) return toast.error('A nova senha precisa ter ao menos 6 caracteres.')
+              if (senhaNova !== senhaConfirma) return toast.error('A confirmação não confere.')
+              try {
+                const cred = EmailAuthProvider.credential(mail, senhaAtual)
+                await reauthenticateWithCredential(user, cred)
+                await updatePassword(user, senhaNova)
+                toast.success('Senha atualizada')
+                setSenhaAtual(''); setSenhaNova(''); setSenhaConfirma('')
+              } catch {
+                toast.error('Não foi possível alterar a senha. Confira a senha atual.')
+              }
+            }}>Salvar nova senha</PrimaryButton>
+            <GhostButton onClick={async () => {
+              const mail = usuario?.email || auth.currentUser?.email
+              if (!mail) return toast.error('E-mail da conta não encontrado.')
+              await sendPasswordResetEmail(auth, mail)
+              toast.success('Link de recuperação enviado ao e-mail da conta.')
+            }}>Enviar e-mail de recuperação</GhostButton>
+          </div>
+        </div>
       )}
     </div>
   )

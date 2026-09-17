@@ -502,7 +502,7 @@ function ClientWorkspace({
   agenda: { id: string; titulo?: unknown; data?: unknown; tipo?: unknown; criadoEm?: unknown }[]
   campanhas: { id: string; nome?: unknown }[]
   transacoes: { id: string; tipo?: unknown; valor?: unknown }[]
-  contratos: { id: string; numero?: unknown; status?: unknown }[]
+  contratos: { id: string; numero?: unknown; status?: unknown; produto?: unknown; criadoEm?: unknown }[]
   mensagensCount?: number
   onEdit: () => void
   onDelete: () => void
@@ -515,6 +515,7 @@ function ClientWorkspace({
     ['atendimento', 'Atendimento'],
     ['conversas', 'Conversas'],
     ['propostas', 'Propostas'],
+    ['contratos', 'Contratos'],
     ['documentos', 'Documentos'],
     ['tarefas', 'Tarefas'],
     ['agenda', 'Agenda'],
@@ -541,12 +542,13 @@ function ClientWorkspace({
     cliente.leadsMonitorPersonId && { t: cliente.criadoEm, label: '✓ Pessoa encontrada' },
     cliente.fonteUrl && { t: cliente.criadoEm, label: '✓ Perfil validado' },
     (hasTel || hasWa || hasEmail) && { t: cliente.criadoEm, label: '✓ Contato encontrado' },
-    originCode(String(cliente.source || cliente.origem)) === 'leads_monitor' && { t: cliente.criadoEm, label: '✓ Lead aprovado' },
-    cliente.criadoEm && { t: cliente.criadoEm, label: originCode(String(cliente.source || cliente.origem)) === 'leads_monitor' ? '✓ Adicionado ao CRM' : 'Lead recebido' },
+    originCode(String(cliente.origemLead || cliente.source || cliente.origem)) === 'leads_monitor' && { t: cliente.criadoEm, label: '✓ Lead aprovado' },
+    cliente.criadoEm && { t: cliente.criadoEm, label: originCode(String(cliente.origemLead || cliente.source || cliente.origem)) === 'leads_monitor' ? '✓ Adicionado ao CRM' : 'Lead recebido' },
     ...conversas.map((c) => ({ t: c.criadoEm, label: `💬 Conversa · ${labelPt(String(c.status || ''))}` })),
     ...mensagens.slice(0, 40).map((m) => ({ t: m.criadoEm, label: `💬 ${String(m.texto || m.tipo || 'Mensagem')}` })),
     ...documentos.map((d) => ({ t: d.criadoEm, label: `Documento recebido · ${d.nome || d.categoria || ''}` })),
     ...propostas.map((p) => ({ t: p.criadoEm, label: `📋 Proposta ${labelPt(String(p.status || '').replace('recusada', 'reprovada'))}` })),
+    ...contratos.map((c) => ({ t: c.criadoEm, label: `📝 Contrato ${c.numero || c.status || ''}` })),
     ...digitacoes.map((d) => ({ t: d.criadoEm, label: `Digitação ${labelPt(String(d.status || ''))}` })),
     ...agenda.map((a) => ({ t: a.criadoEm || a.data, label: String(a.tipo) === 'tarefa' ? `📝 ${a.titulo || 'Tarefa'}` : String(a.titulo || 'Follow-up') })),
     ...ligacoes.map((l) => ({ t: l.criadoEm, label: `📞 Ligação ${l.resultado || ''}` })),
@@ -569,7 +571,7 @@ function ClientWorkspace({
           <p className="text-xs" style={{ color: 'var(--code-muted)' }}>
             {stageLabel(String(cliente.pipelineStage))} · {cliente.responsavel || 'sem responsável'} · {produtoNome}
             {cliente.subproduto ? ` · ${cliente.subproduto}` : ''}
-            {' · '}{originLabel(originCode(String(cliente.source || cliente.origem)))}
+            {' · '}{originLabel(originCode(String(cliente.origemLead || cliente.source || cliente.origem)))}
           </p>
           <p className="text-xs font-semibold mt-1">Próximo passo: {String(proximo || 'Definir retorno')}</p>
         </div>
@@ -588,11 +590,11 @@ function ClientWorkspace({
       {tab === 'resumo' && (
         <div className="text-sm space-y-3">
           <div className="flex flex-wrap gap-2">
-            {hasWa ? <a className="px-2 py-1 rounded text-xs font-semibold nexus-cta text-white" href={`/whatsapp?cliente=${cliente.id}`}>💬 WhatsApp</a> : null}
+            {hasWa ? <a className="px-2 py-1 rounded text-xs font-semibold nexus-cta text-white" href={`/whatsapp?cliente=${cliente.id}`}>💬 Chat Clientes</a> : null}
             {hasTel ? <a className="px-2 py-1 rounded text-xs font-semibold" style={{ background: 'var(--code-surface-muted)' }} href={`tel:+${telDigits.startsWith('55') ? telDigits : telDigits}`}>📞 Telefone</a> : null}
             {hasEmail ? <a className="px-2 py-1 rounded text-xs font-semibold" style={{ background: 'var(--code-surface-muted)' }} href={`mailto:${cliente.email}`}>✉️ E-mail</a> : null}
           </div>
-          {hasWa ? <p className="text-xs font-semibold">💬 WhatsApp disponível · <a href={`/whatsapp?cliente=${cliente.id}`} style={{ color: 'var(--code-orange)' }}>Conversar</a></p> : null}
+          {hasWa ? <p className="text-xs font-semibold">💬 Chat Clientes · <a href={`/whatsapp?cliente=${cliente.id}`} style={{ color: 'var(--code-orange)' }}>Conversar</a></p> : null}
           <section>
             <p className="text-xs font-semibold">👤 Dados da pessoa</p>
             <p>Pessoa: {cliente.nome || 'Não informado'}</p>
@@ -609,8 +611,11 @@ function ClientWorkspace({
             <p>CNPJ: {cliente.empresaCnpj || '—'}</p>
             <p>Segmento: {cliente.modalidade || '—'}</p>
             <p>CNAE: {String(extras.cnaePrincipal || '—')}</p>
+            <p>País: {cliente.pais || 'Brasil'}</p>
             <p>Cidade: {cliente.cidade || 'Não informado'}</p>
             <p>Estado: {cliente.estado || 'Não informado'}</p>
+            <p>Bairro: {cliente.bairro || 'Não informado'}</p>
+            <p>CEP: {cliente.cep || 'Não informado'}</p>
             <p>UF: {cliente.estado || 'Não informado'}</p>
             <p>Endereço: {cliente.endereco || '—'}</p>
           </section>
@@ -641,7 +646,19 @@ function ClientWorkspace({
           </section>
           <section>
             <p className="text-xs font-semibold">📌 Origem</p>
-            <p>{originLabel(originCode(String(cliente.source || cliente.origem)))}</p>
+            <p>{originLabel(originCode(String(cliente.origemLead || cliente.source || cliente.origem)))}</p>
+            <p>Canal de entrada: {String(cliente.canalEntrada || '—')}</p>
+            <p>Detalhe: {String(cliente.origemDetalhe || '—')}</p>
+            <p>Campanha: {String(cliente.campanhaNome || cliente.campanha || extras.campanha || 'Não informado')}</p>
+            <p>Fonte: {String(cliente.fonte || cliente.fontePesquisa || '—')}</p>
+            <p>Entrada: {[cliente.dataEntrada, cliente.horaEntrada].filter(Boolean).join(' · ') || '—'}</p>
+            {Array.isArray(cliente.historicoOrigens) && cliente.historicoOrigens.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {cliente.historicoOrigens.map((h, i) => (
+                  <li key={i}>{originLabel(originCode(String(h.origem)))} · {String(h.campanha || h.fonte || h.origemDetalhe || '')} · {String(h.em || '')}</li>
+                ))}
+              </ul>
+            )}
           </section>
           <section>
             <p className="text-xs font-semibold">🔎 Fonte da pesquisa</p>
@@ -664,7 +681,20 @@ function ClientWorkspace({
       {tab === 'atendimento' && <ListOrEmpty items={conversas} render={(p) => `${labelPt(String(p.status || ''))} · ${p.lastMessage || ''}`} empty="Nenhum atendimento registrado." />}
       {tab === 'conversas' && <ListOrEmpty items={mensagens} render={(p) => String(p.texto || p.tipo || p.id)} empty="Sem histórico de mensagens." />}
       {tab === 'propostas' && <ListOrEmpty items={propostas} render={(p) => `${p.produto || 'Proposta'} · ${labelPt(String(p.status || '').replace('recusada', 'reprovada'))}`} empty="Nenhuma proposta" />}
-      {tab === 'documentos' && <ListOrEmpty items={documentos} render={(p) => `${p.categoria || DOCUMENT_CATEGORIES[10]} · ${p.nome || p.id}`} empty="Nenhum documento" />}
+      {tab === 'contratos' && <ListOrEmpty items={contratos} render={(p) => `${p.numero || p.produto || p.id} · ${labelPt(String(p.status || ''))}`} empty="Nenhum contrato" />}
+      {tab === 'documentos' && (
+        <div className="text-sm space-y-2">
+          {DOCUMENT_CATEGORIES.map((cat) => {
+            const items = documentos.filter((d) => String(d.categoria || '') === cat)
+            return (
+              <div key={cat}>
+                <p className="text-xs font-semibold">{cat}</p>
+                {items.length ? items.map((d) => <p key={d.id}>{String(d.nome || d.id)}</p>) : <p style={{ color: 'var(--code-muted)' }}>—</p>}
+              </div>
+            )
+          })}
+        </div>
+      )}
       {tab === 'financeiro' && <ListOrEmpty items={transacoes} render={(p) => `${p.tipo || ''} · ${p.valor || ''}`} empty="Sem lançamentos vinculados." />}
       {tab === 'tarefas' && <ListOrEmpty items={agenda.filter((a) => String(a.tipo || '') === 'tarefa')} render={(p) => String(p.titulo || p.id)} empty="Nenhuma tarefa" />}
       {tab === 'agenda' && <ListOrEmpty items={agenda} render={(p) => `${p.titulo || 'Compromisso'} · ${p.data || ''}`} empty="Nada na agenda" />}

@@ -81,8 +81,10 @@ function AppRoutes() {
             <Route path="panorama" element={<Navigate to="/propostas" replace />} />
             <Route path="pipeline" element={<Navigate to="/propostas" replace />} />
             <Route path="whatsapp" element={<ChatCenter />} />
+            <Route path="chat-clientes" element={<ChatCenter />} />
             <Route path="chat-center" element={<Navigate to="/whatsapp" replace />} />
             <Route path="nexus-atendimento" element={<Navigate to="/whatsapp" replace />} />
+            <Route path="chat-interno" element={<Navigate to="/comunicacao-interna" replace />} />
             <Route path="campanhas" element={<Campanhas />} />
             <Route path="ia-prospeccao" element={<IAProspeccao />} />
             <Route
@@ -101,8 +103,8 @@ function AppRoutes() {
             <Route path="tarefas" element={<Tarefas />} />
             <Route path="agenda" element={<Agenda />} />
             <Route path="documentos" element={<Documentos />} />
-            <Route path="fila-atendimento" element={<Automacoes />} />
-            <Route path="automacoes" element={<Navigate to="/fila-atendimento" replace />} />
+            <Route path="fila-atendimento" element={<Navigate to="/whatsapp?fila=novos" replace />} />
+            <Route path="automacoes" element={<Automacoes />} />
             <Route path="relatorios" element={<Relatorios />} />
             <Route path="empresas" element={<Empresas />} />
             <Route path="financeiro" element={<Financeiro />} />

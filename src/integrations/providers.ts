@@ -119,8 +119,15 @@ export function getEmailProvider(): ChannelProvider {
   return unconfiguredChannel('EmailProvider')
 }
 
+export function getMetaAdsProvider(): ChannelProvider {
+  return unconfiguredChannel('Meta Ads')
+}
+export function getGoogleAdsProvider(): ChannelProvider {
+  return unconfiguredChannel('Google Ads')
+}
+
 export async function collectProviderHealth() {
-  const [bank, fiscal, wa, voip, ig, msg, sms, email] = await Promise.all([
+  const [bank, fiscal, wa, voip, ig, msg, sms, email, meta, gads] = await Promise.all([
     getBankProvider().healthCheck(),
     getFiscalProvider().healthCheck(),
     getWhatsAppProvider().healthCheck(),
@@ -129,6 +136,8 @@ export async function collectProviderHealth() {
     getMessengerProvider().healthCheck(),
     getSmsProvider().healthCheck(),
     getEmailProvider().healthCheck(),
+    getMetaAdsProvider().healthCheck(),
+    getGoogleAdsProvider().healthCheck(),
   ])
-  return { bank, fiscal, whatsapp: wa, voip, instagram: ig, messenger: msg, sms, email }
+  return { bank, fiscal, whatsapp: wa, voip, instagram: ig, messenger: msg, sms, email, metaAds: meta, googleAds: gads }
 }

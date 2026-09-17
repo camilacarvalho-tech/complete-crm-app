@@ -45,6 +45,14 @@ export function normalizeFiltros(input?: Partial<FiltrosPesquisa>): FiltrosPesqu
     especieBeneficio: clean(input?.especieBeneficio),
     situacaoBeneficio: clean(input?.situacaoBeneficio),
     beneficiosConsignaveis: input?.beneficiosConsignaveis || 'todos',
+    fontesHabilitadas: Array.isArray(input?.fontesHabilitadas)
+      ? input.fontesHabilitadas.map((id) => String(id).trim()).filter(Boolean)
+      : [],
+    contextosSegmento: Array.isArray(input?.contextosSegmento)
+      ? input.contextosSegmento.map((id) => String(id).trim()).filter(Boolean)
+      : [],
+    segmentoCustomNome: clean(input?.segmentoCustomNome),
+    segmentoCustomCategoria: clean(input?.segmentoCustomCategoria),
   }
 }
 

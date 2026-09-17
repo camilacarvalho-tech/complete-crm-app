@@ -1,5 +1,5 @@
 ﻿import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useNexusStore } from '../contexts/NexusStore'
 import { EmptyState, ErrorBanner, LoadingBlock, PageHeader, PrimaryButton, SelectInput, TextInput } from '../components/nexus/kit'
 import { NexusModal } from '../components/nexus/Modal'
@@ -8,17 +8,19 @@ import { labelPt } from '../lib/uiPt'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../components/ui/Toast'
 
-const STATUS = ['rascunho', 'enviada', 'em_analise', 'aprovada', 'reprovada', 'finalizada', 'cancelada']
+const STATUS = ['rascunho', 'em_analise', 'enviada', 'aguardando_cliente', 'aprovada', 'reprovada', 'cancelada', 'concluida', 'finalizada']
 
 export default function Propostas() {
   const nav = useNavigate()
+  const [params] = useSearchParams()
+  const clientePref = params.get('cliente') || ''
   const { usuario } = useAuth()
   const toast = useToast()
   const { propostas, clientes } = useNexusStore()
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('')
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState({ clienteId: '', produto: '', banco: '', valor: '', status: 'rascunho', responsavel: usuario?.nome || '' })
+  const [form, setForm] = useState({ clienteId: clientePref, produto: '', banco: '', valor: '', status: 'rascunho', responsavel: usuario?.nome || '' })
   const [saving, setSaving] = useState(false)
 
   const lista = useMemo(() => propostas.items.filter((p) => {
@@ -37,6 +39,9 @@ export default function Propostas() {
         ...form,
         clienteNome: cli?.nome || '',
         cpf: cli?.cpf || '',
+        origemLead: cli?.origemLead || cli?.origem || cli?.source,
+        campanha: cli?.campanhaNome || cli?.campanha,
+        clienteId: form.clienteId,
         status: form.status === 'recusada' ? 'reprovada' : form.status,
       } as any)
       toast.success('Proposta registrada')

@@ -75,6 +75,7 @@ export async function runSearchEngine(opts: {
   jobId?: string
   filtros: FiltrosPesquisa
   fontesIds?: string[]
+  fontesHabilitadas?: string[]
   pesquisaId?: string
   llmBudget?: number
   processRunId?: string
@@ -109,6 +110,7 @@ export async function runSearchEngine(opts: {
         pesquisaId: opts.pesquisaId,
         llmBudget: opts.llmBudget,
         limitePorConector: opts.filtros.maxResultsPerCycle,
+        fontesHabilitadas: opts.fontesHabilitadas || opts.filtros.fontesHabilitadas,
       })
     }
     const tempoMs = Date.now() - startedAt

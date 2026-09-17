@@ -11,11 +11,11 @@ export default function Documentos() {
       statusField="categoria"
       fields={[
         { key: 'clienteNome', label: 'Cliente' },
+        { key: 'nome', label: 'Documento' },
         { key: 'categoria', label: 'Categoria', options: [...DOCUMENT_CATEGORIES] },
         { key: 'origem', label: 'Origem' },
+        { key: 'status', label: 'Status', options: ['recebido', 'em_analise', 'validado', 'recusado'] },
         { key: 'funcionario', label: 'Responsável' },
-        { key: 'propostaId', label: 'Proposta' },
-        { key: 'produto', label: 'Produto' },
       ]}
     />
   )

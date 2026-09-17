@@ -117,11 +117,23 @@ export interface FiltrosPesquisa {
   beneficiosConsignaveis?: BeneficiosConsignaveis
   /** @deprecated substituído por beneficiosConsignaveis */
   perfilTomador?: string
+  /**
+   * Fontes de captura da campanha/busca.
+   * Vazio = todas as fontes runnable (compatibilidade).
+   * Ids de UI: openstreetmap | google_places | csv | webhook | api_externa
+   */
+  fontesHabilitadas?: string[]
+  /** Subcategorias/produtos do card de segmento (não apaga mercados/empresas históricos). */
+  contextosSegmento?: string[]
+  segmentoCustomNome?: string
+  segmentoCustomCategoria?: string
 }
 
 export interface PesquisaSalva extends FiltrosPesquisa {
   id: string
   nome: string
+  descricao?: string
+  objetivo?: string
   /** Auto ON/OFF — nesta etapa o padrão é OFF. */
   ativa: boolean
   intervaloMinutos: number
@@ -241,6 +253,7 @@ export interface OportunidadeMonitor {
   externalId?: string
   website?: string
   endereco?: string
+  bairro?: string
   cep?: string
   placeId?: string
   dominio?: string

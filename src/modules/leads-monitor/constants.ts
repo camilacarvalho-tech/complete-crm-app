@@ -173,6 +173,10 @@ export const FILTROS_VAZIOS: FiltrosPesquisa = {
   especieBeneficio: '',
   situacaoBeneficio: '',
   beneficiosConsignaveis: 'todos',
+  fontesHabilitadas: [],
+  contextosSegmento: [],
+  segmentoCustomNome: '',
+  segmentoCustomCategoria: '',
 }
 
 /** Intervalo padrão de auto-atualização (ms) para pesquisas ativas */

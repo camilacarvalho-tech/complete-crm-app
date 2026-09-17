@@ -94,6 +94,16 @@ export interface NexusCliente extends Attribution {
   pipeline?: string
   pipelineStage?: PipelineStageId | string
   origem?: string
+  origemLead?: string
+  origemDetalhe?: string
+  fonte?: string
+  fonteId?: string
+  dataEntrada?: string
+  horaEntrada?: string
+  canalEntrada?: string
+  historicoOrigens?: Array<Record<string, unknown>>
+  campanhaId?: string
+  campanhaNome?: string
   estadoOrigem?: string
   cidadeOrigem?: string
   convenio?: string

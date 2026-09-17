@@ -14,6 +14,7 @@ import {
   type QueryDocumentSnapshot,
 } from 'firebase/firestore'
 import { db } from '../../../firebase'
+import { agoraEntrada, eventoOrigem, preservarOrigemPrincipal } from '../../../lib/origemLead'
 import { digitsOnly, normalizeCompanyName } from './normalizeFields'
 import type { CompanyPeopleResearch } from '../types/peopleResearch'
 import type { OportunidadeMonitor } from '../types'
@@ -135,6 +136,16 @@ export function mergeClientePermitido(
     'email',
     'cidade',
     'estado',
+    'bairro',
+    'cep',
+    'pais',
+    'origemDetalhe',
+    'fonte',
+    'fonteId',
+    'campanhaId',
+    'campanhaNome',
+    'dataEntrada',
+    'horaEntrada',
     'endereco',
     'profissao',
     'cargo',
@@ -156,10 +167,7 @@ export function mergeClientePermitido(
     next[key] = fillIfEmpty(existing[key], asText(incoming[key]))
   }
   if (incoming.score != null && existing.score == null) next.score = incoming.score
-  if (!asText(existing.source || existing.origem)) {
-    next.source = 'leads_monitor'
-    next.origem = 'leads_monitor'
-  }
+  Object.assign(next, preservarOrigemPrincipal(existing, incoming))
   next.camposExtras = {
     ...((existing.camposExtras as Record<string, unknown>) || {}),
     ...((incoming.camposExtras as Record<string, unknown>) || {}),
@@ -184,10 +192,30 @@ export function payloadEmpresaCliente(
     email: asText(oportunidade.email),
     cidade: asText(oportunidade.cidade),
     estado: asText(oportunidade.estado),
+    bairro: asText(oportunidade.bairro),
+    pais: 'Brasil',
     cidadeOrigem: asText(oportunidade.cidade),
     estadoOrigem: asText(oportunidade.estado),
     endereco: asText(oportunidade.endereco),
     cep: asText(oportunidade.cep),
+    origemLead: 'leads_monitor',
+    origemDetalhe: asText(oportunidade.metadados?.campanha) || asText(oportunidade.origemLabel) || 'Busca do Leads Monitor',
+    fonte: asText(oportunidade.origemLabel || oportunidade.connectorId),
+    fonteId: asText(oportunidade.connectorId),
+    campanhaId: asText(oportunidade.pesquisaId),
+    campanhaNome: asText(oportunidade.metadados?.campanha),
+    ...agoraEntrada(),
+    timestampEntrada: serverTimestamp(),
+    historicoOrigens: [
+      eventoOrigem({
+        origem: 'leads_monitor',
+        origemDetalhe: asText(oportunidade.metadados?.campanha) || asText(oportunidade.origemLabel),
+        campanha: asText(oportunidade.metadados?.campanha),
+        campanhaId: asText(oportunidade.pesquisaId),
+        fonte: asText(oportunidade.origemLabel || oportunidade.connectorId),
+        fonteId: asText(oportunidade.connectorId),
+      }),
+    ],
     empresaNome: asText(oportunidade.empresaNome || oportunidade.nome),
     empresaCnpj: cnpj,
     profissao: '',
@@ -204,7 +232,7 @@ export function payloadEmpresaCliente(
     leadsMonitorOpportunityId: asText(oportunidade.id),
     leadsMonitorPersonId: '',
     modalidade: asText(oportunidade.segmento),
-    campanha: asText(oportunidade.metadados?.campanha),
+    campanha: asText(oportunidade.metadados?.campanha) || asText(oportunidade.pesquisaId),
     produto: asText(oportunidade.metadados?.produto || oportunidade.segmento),
     banco: asText(oportunidade.metadados?.banco),
     convenio: asText(oportunidade.metadados?.operacao) === 'INSS' ? 'inss' : asText(oportunidade.segmento),
@@ -260,6 +288,27 @@ export function payloadPessoaCliente(
     email: asText((person as { email?: string }).email),
     cidade: asText(company.cidade),
     estado: asText(company.estado),
+    bairro: asText(company.bairro),
+    cep: asText(company.cep),
+    pais: 'Brasil',
+    origemLead: 'leads_monitor',
+    origemDetalhe: asText(person.sourceName || company.metadados?.campanha) || 'Pessoa — Leads Monitor',
+    fonte: asText(person.sourceName || person.source),
+    fonteId: asText(person.source),
+    campanhaId: asText(company.pesquisaId),
+    campanhaNome: asText(company.metadados?.campanha),
+    ...agoraEntrada(),
+    timestampEntrada: serverTimestamp(),
+    historicoOrigens: [
+      eventoOrigem({
+        origem: 'leads_monitor',
+        origemDetalhe: asText(person.sourceName),
+        campanha: asText(company.metadados?.campanha),
+        campanhaId: asText(company.pesquisaId),
+        fonte: asText(person.sourceName || person.source),
+        fonteId: asText(person.source),
+      }),
+    ],
     cidadeOrigem: asText(company.cidade),
     estadoOrigem: asText(company.estado),
     endereco: asText(company.endereco),

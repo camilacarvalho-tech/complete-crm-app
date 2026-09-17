@@ -45,6 +45,7 @@ export async function startIntelligentSearch(opts: {
     payload: {
       filtros,
       fontesIds,
+      fontesHabilitadas: filtros.fontesHabilitadas || [],
       searchRunId: runRef.id,
       pesquisaId,
       processRunId: opts.processRunId || undefined,
@@ -60,7 +61,12 @@ export async function startIntelligentSearch(opts: {
     usuarioNome: opts.actor?.usuarioNome,
     entidade: 'search_run',
     entidadeId: runRef.id,
-    after: { jobId, fontesIds, filtros: { estado: filtros.estado, cidade: filtros.cidade, abrangencia: filtros.abrangenciaGeografica } },
+    after: {
+      jobId,
+      fontesIds,
+      fontesHabilitadas: filtros.fontesHabilitadas || [],
+      filtros: { estado: filtros.estado, cidade: filtros.cidade, abrangencia: filtros.abrangenciaGeografica },
+    },
   })
   return { searchRunId: runRef.id, jobId, fontesIds }
 }

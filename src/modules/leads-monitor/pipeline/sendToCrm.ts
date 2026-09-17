@@ -8,6 +8,7 @@ import { writeAudit } from '../../../lib/audit'
 import { COL_OPORTUNIDADES } from '../constants'
 import { writeLeadsMonitorAudit } from '../services/auditTrail'
 import type { OportunidadeMonitor } from '../types'
+import { garantirConversaFila } from '../../../lib/garantirConversaFila'
 import {
   applyClienteMerge,
   asText,
@@ -100,15 +101,39 @@ export async function enviarOportunidadeParaCrm(
       atualizadoEm: serverTimestamp(),
     })
 
+    await garantirConversaFila({
+      empresaId,
+      clienteId,
+      titulo: asText(incoming.nome),
+      telefone: asText(incoming.telefone || incoming.whatsapp),
+      origemLead: 'leads_monitor',
+      origemDetalhe: asText(incoming.origemDetalhe),
+      fonte: asText(incoming.fonte || incoming.fontePesquisa),
+      fonteId: asText(incoming.fonteId),
+      campanhaId: asText(incoming.campanhaId),
+      campanhaNome: asText(incoming.campanhaNome || incoming.campanha),
+      segmento: asText(incoming.modalidade),
+      produto: asText(incoming.produto),
+      operacao: asText(oportunidade.metadados?.operacao),
+      estado: asText(incoming.estado),
+      cidade: asText(incoming.cidade),
+      bairro: asText(incoming.bairro),
+      cep: asText(incoming.cep),
+      pais: 'Brasil',
+      responsavel: asText(incoming.responsavel),
+      usuarioId: auditActor.usuarioId,
+      usuarioNome: auditActor.usuarioNome,
+    })
+
     await writeAudit({
       empresaId,
       usuarioId: auditActor.usuarioId,
       usuarioNome: auditActor.usuarioNome,
       modulo: 'clientes',
-      acao: jaExistia ? 'atualizar' : 'criar',
+      acao: jaExistia ? 'client.updated' : 'client.created',
       entidade: 'cliente',
       entidadeId: clienteId,
-      depois: { origem: 'leads_monitor', leadsMonitorOpportunityId: oportunidade.id, score },
+      depois: { origem: 'leads_monitor', origemLead: 'leads_monitor', leadsMonitorOpportunityId: oportunidade.id, score },
     })
 
     await writeLeadsMonitorAudit({

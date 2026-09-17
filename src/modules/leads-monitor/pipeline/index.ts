@@ -15,13 +15,14 @@ import {
 import { db } from '../../../firebase'
 import { COL_OPORTUNIDADES, COL_PESQUISAS, MAX_RESULTS_PER_CYCLE } from '../constants'
 import { bootstrapConnectors, getRunnableConnectors } from '../connectors'
-import type { ConnectorFetchContext, NormalizedLead } from '../connectors/types'
+import type { ConnectorFetchContext, IConnector, NormalizedLead } from '../connectors/types'
 import type { FiltrosPesquisa, MonitorRunResult, OportunidadeMonitor } from '../types'
 import { getNexusAiQualifier } from '../ai/INexusAiQualifier'
 import { recordConnectorFailure, recordConnectorSuccess } from '../services/healthStore'
 import { omitUndefinedForFirestore } from '../services/jobQueue'
 import { writeLeadsMonitorLog } from '../services/opsLogs'
 import { mapPlacesSkipCode } from '../services/placesClient'
+import { filterConnectorsByCampanha } from '../services/fontesCampanha'
 import { normalizeFromConnector } from './normalize'
 import { collectDedupeKeys, buildDedupeKey, deduplicateLeads, matchExistingId } from './dedupe'
 import { enrichLead } from './enrich'
@@ -34,6 +35,7 @@ export interface PipelineRunOptions {
   llmBudget?: number
   limitePorConector?: number
   enableEnrichment?: boolean
+  fontesHabilitadas?: string[]
 }
 
 interface ExistingOpp {
@@ -72,14 +74,16 @@ type ConnectorSkip = {
 }
 
 async function collectNormalized(
-  ctx: ConnectorFetchContext
+  ctx: ConnectorFetchContext,
+  fontesHabilitadas?: string[]
 ): Promise<{
   leads: NormalizedLead[]
   fontes: string[]
   rawCount: number
   skipped: ConnectorSkip[]
+  connectorsUsados: IConnector[]
 }> {
-  const connectors = getRunnableConnectors()
+  const connectors = filterConnectorsByCampanha(getRunnableConnectors(), fontesHabilitadas)
   const batches = await Promise.all(
     connectors.map(async (connector) => {
       const t0 = Date.now()
@@ -144,6 +148,7 @@ async function collectNormalized(
     fontes: batches.filter((b) => b.leads.length > 0).map((b) => b.label),
     rawCount: batches.reduce((a, b) => a + b.rawCount, 0),
     skipped: batches.map((b) => b.skipped).filter((s): s is ConnectorSkip => Boolean(s)),
+    connectorsUsados: connectors,
   }
 }
 
@@ -176,7 +181,10 @@ export async function runLeadPipeline(opts: PipelineRunOptions): Promise<Monitor
     llmBudget = 0,
     limitePorConector = filtros.maxResultsPerCycle || MAX_RESULTS_PER_CYCLE,
     enableEnrichment = true,
+    fontesHabilitadas,
   } = opts
+
+  const fontesDaExecucao = fontesHabilitadas ?? filtros.fontesHabilitadas
 
   const ctx: ConnectorFetchContext = {
     empresaId,
@@ -184,7 +192,10 @@ export async function runLeadPipeline(opts: PipelineRunOptions): Promise<Monitor
     limite: Math.min(MAX_RESULTS_PER_CYCLE, Math.max(1, limitePorConector)),
   }
 
-  const { leads, fontes, rawCount, skipped } = await collectNormalized(ctx)
+  const { leads, fontes, rawCount, skipped, connectorsUsados } = await collectNormalized(
+    ctx,
+    fontesDaExecucao
+  )
   const skipNotes = skipped.map((s) => `${s.label}: ${s.code} — ${s.message}`)
 
   const existing = await loadExisting(empresaId)
@@ -308,16 +319,27 @@ export async function runLeadPipeline(opts: PipelineRunOptions): Promise<Monitor
         ? 'google-places'
         : osmSkip?.connectorId || googleSkip?.connectorId,
     meta: {
-      source: fontes.join(',') || 'none',
-      query: [filtros.palavraChave, filtros.segmento, filtros.cidade, filtros.estado].filter(Boolean).join(' '),
-      cidade: filtros.cidade,
-      estado: filtros.estado,
+      campaignId: pesquisaId || null,
+      pesquisaId: pesquisaId || null,
+      robotId: 'busca',
+      connectorId: connectorsUsados.map((c) => c.meta.id).join(',') || null,
+      sourceName: fontes.join(',') || connectorsUsados.map((c) => c.meta.label).join(',') || 'none',
+      estado: filtros.estado || '',
+      cidade: filtros.cidade || '',
+      bairro: filtros.bairro || '',
+      cep: filtros.cep || '',
       timestamp: new Date().toISOString(),
-      status: osmSkip ? osmSkip.code : googleSkip ? 'optional_indisponivel' : 'ok',
-      skipped: skipped.map((s) => ({ connectorId: s.connectorId, code: s.code })),
-      quantidadeRetornada: result.encontrados,
+      resultado: `${result.encontrados} encontrados · ${result.novos} novos · ${result.duplicados} duplicados`,
+      quantidadeEncontrada: result.encontrados,
       quantidadeNova: result.novos,
       quantidadeDuplicada: result.duplicados,
+      status: osmSkip && !googleSkip && fontes.length === 0 ? osmSkip.code : skipNotes.length ? 'partial' : 'SUCCESS',
+      source: fontes.join(',') || 'none',
+      query: [filtros.palavraChave, filtros.segmento, filtros.cidade, filtros.estado].filter(Boolean).join(' '),
+      skipped: skipped.map((s) => ({ connectorId: s.connectorId, code: s.code })),
+      fontesSelecionadas: fontesDaExecucao || [],
+      fontesExecutadas: connectorsUsados.map((c) => c.meta.id),
+      quantidadeRetornada: result.encontrados,
       quantidadeEnriquecida: enriquecidos,
       quantidadeRejeitada: rejeitados,
       scoreMedio,

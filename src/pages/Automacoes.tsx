@@ -1,21 +1,16 @@
 ﻿import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../contexts/AuthContext'
 import { useNexusStore } from '../contexts/NexusStore'
 import { LETICIA_ACTIONS, LETICIA_TRIGGERS, type LeticiaStep } from '../lib/leticiaEngine'
 import { EmptyState, GhostButton, PageHeader, PrimaryButton, SelectInput, TextInput } from '../components/nexus/kit'
 import { useToast } from '../components/ui/Toast'
-import { ClienteLink } from '../components/nexus/ClienteLink'
-import { originLabel, originCode } from '../catalog/crmCatalog'
-import { stageLabel } from '../lib/nexusCore'
 import { labelPt } from '../lib/uiPt'
 
 const emptyStep = (): LeticiaStep => ({ tipo: 'trigger', gatilho: 'novo_lead' })
 
 export default function Automacoes() {
   const nav = useNavigate()
-  const { usuario } = useAuth()
-  const { automacoes, leticiaRuns, conversas, clientes, agenda } = useNexusStore()
+  const { automacoes, leticiaRuns } = useNexusStore()
   const toast = useToast()
   const [nome, setNome] = useState('Follow-up lead CLT')
   const [passos, setPassos] = useState<LeticiaStep[]>([
@@ -25,8 +20,6 @@ export default function Automacoes() {
     { tipo: 'delay', delayMinutos: 120 },
     { tipo: 'action', acao: 'enviar_whatsapp', payload: 'Olá, podemos seguir com sua simulação?' },
   ])
-
-  const fila = conversas.items.filter((c) => c.canal !== 'interno' && c.status !== 'finalizado')
 
   function patch(i: number, step: Partial<LeticiaStep>) {
     setPassos((p) => p.map((s, idx) => (idx === i ? { ...s, ...step } : s)))
@@ -40,50 +33,12 @@ export default function Automacoes() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Fila de atendimento" subtitle="Receber, identificar, atribuir e acompanhar. A automação Letícia permanece disponível abaixo." />
-
-      <div className="nexus-card overflow-auto">
-        {fila.length === 0 ? (
-          <div className="p-4"><EmptyState title="Fila vazia" description="Quando um cliente entrar no atendimento, ele aparece aqui." /></div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left" style={{ color: 'var(--code-muted)' }}>
-                <th className="p-3">Cliente</th>
-                <th className="p-3">Status</th>
-                <th className="p-3">Responsável</th>
-                <th className="p-3">Produto</th>
-                <th className="p-3">Origem</th>
-                <th className="p-3">Última mensagem</th>
-                <th className="p-3">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fila.map((c) => {
-                const cli = clientes.items.find((x) => x.id === c.clienteId)
-                return (
-                  <tr key={c.id} className="border-b" style={{ borderColor: 'var(--code-border)' }}>
-                    <td className="p-3">{cli ? <ClienteLink id={cli.id} nome={cli.nome} /> : String(c.titulo || '—')}</td>
-                    <td className="p-3">{labelPt(String(c.status || 'em_atendimento'))}</td>
-                    <td className="p-3">{String(c.assignedTo || '—')}</td>
-                    <td className="p-3">{cli?.modalidade || String(c.modalidade || '—')}{cli?.subproduto ? ` · ${cli.subproduto}` : ''}</td>
-                    <td className="p-3">{cli ? originLabel(originCode(String(cli.source || cli.origem))) : '—'}</td>
-                    <td className="p-3">{String(c.lastMessage || '—')}</td>
-                    <td className="p-3 flex flex-wrap gap-1">
-                      <GhostButton onClick={() => conversas.update(c.id, { assignedTo: usuario?.nome, assignedToId: usuario?.id, status: 'em_atendimento' })}>Assumir</GhostButton>
-                      <GhostButton onClick={() => nav(`/whatsapp?conversa=${c.id}&cliente=${c.clienteId || ''}`)}>Abrir</GhostButton>
-                      <GhostButton onClick={() => conversas.update(c.id, { status: 'finalizado' })}>Finalizar</GhostButton>
-                      <GhostButton onClick={() => agenda.create({ titulo: `Retorno ${cli?.nome || ''}`, tipo: 'follow-up', clienteId: c.clienteId, responsavel: usuario?.nome, status: 'aberto' } as any)}>Agendar retorno</GhostButton>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
+      <PageHeader title="Automações (Letícia)" subtitle="A fila operacional está no Chat Clientes. Aqui permanece só o motor IF/THEN/ELSE. WhatsApp só dispara com provedor configurado." />
+      <div className="nexus-card p-4 text-sm flex flex-wrap gap-2 items-center">
+        <span>Atendimento e distribuição:</span>
+        <GhostButton onClick={() => nav('/whatsapp?fila=novos')}>Abrir Chat Clientes / Fila</GhostButton>
       </div>
 
-      <PageHeader title="Automações (Letícia)" subtitle="Motor IF / THEN / ELSE. WhatsApp só dispara com provedor configurado no backend." />
       <div className="nexus-card p-4 space-y-3">
         <label className="text-xs font-semibold">Nome do fluxo
           <TextInput value={nome} onChange={(e) => setNome(e.target.value)} />

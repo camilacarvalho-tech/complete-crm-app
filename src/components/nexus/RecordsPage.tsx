@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useNexusStore } from '../../contexts/NexusStore'
 import { useAuth } from '../../contexts/AuthContext'
 import { EmptyState, ErrorBanner, LoadingBlock, PageHeader, PrimaryButton, SelectInput, TextInput } from './kit'
@@ -6,6 +7,7 @@ import { NexusModal } from './Modal'
 import { useToast } from '../ui/Toast'
 import { ClienteLink } from './ClienteLink'
 import { labelPt } from '../../lib/uiPt'
+import type { NexusRecord } from '../../types/nexus'
 
 type StoreKey =
   | 'propostas'
@@ -49,8 +51,9 @@ export function RecordsPage({
   const col = store[storeKey]
   const { usuario } = useAuth()
   const toast = useToast()
+  const [params] = useSearchParams()
   const [tab, setTab] = useState(tabs?.[0] || 'todas')
-  const [q, setQ] = useState('')
+  const [q, setQ] = useState(params.get('q') || '')
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)

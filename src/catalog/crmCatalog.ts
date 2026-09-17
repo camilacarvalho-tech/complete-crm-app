@@ -42,6 +42,11 @@ export const LEAD_ORIGINS = [
   { code: 'google', label: 'GOOGLE' },
   { code: 'campanha', label: 'CAMPANHA' },
   { code: 'api', label: 'API' },
+  { code: 'disparo_massa', label: 'DISPARO EM MASSA' },
+  { code: 'planilha', label: 'PLANILHA' },
+  { code: 'planilha_csv', label: 'PLANILHA CSV' },
+  { code: 'formulario', label: 'FORMULÁRIO' },
+  { code: 'webhook', label: 'WEBHOOK' },
   { code: 'importacao', label: 'IMPORTAÇÃO' },
   { code: 'manual', label: 'MANUAL' },
   { code: 'outros', label: 'OUTROS' },
@@ -129,6 +134,11 @@ export function originCode(value?: string): string {
   if (v.includes('monitor')) return 'leads_monitor'
   if (v.includes('facebook')) return 'facebook'
   if (v === 'campaign' || v.includes('campanha')) return 'campanha'
-  if (v === 'csv' || v.includes('import')) return 'importacao'
+  if (v.includes('disparo')) return 'disparo_massa'
+  if (v === 'csv' || v.includes('planilha')) return 'planilha_csv'
+  if (v.includes('import')) return 'importacao'
+  if (v.includes('form')) return 'formulario'
+  if (v.includes('webhook')) return 'webhook'
+  if (v === 'outra' || v === 'outro') return 'outros'
   return v || 'manual'
 }

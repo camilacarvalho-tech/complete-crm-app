@@ -1,10 +1,13 @@
 ﻿import { useState } from 'react'
 import { RecordsPage } from '../components/nexus/RecordsPage'
-import { PageHeader, PrimaryButton } from '../components/nexus/kit'
+import { PageHeader, PrimaryButton, SelectInput, TextInput } from '../components/nexus/kit'
 import { NexusModal } from '../components/nexus/Modal'
+import { useAuth } from '../contexts/AuthContext'
 import { useNexusStore } from '../contexts/NexusStore'
 import { useToast } from '../components/ui/Toast'
 import { originCode } from '../catalog/crmCatalog'
+import { garantirConversaFila } from '../lib/garantirConversaFila'
+import { agoraEntrada, eventoOrigem } from '../lib/origemLead'
 import { digits } from '../lib/nexusCore'
 
 type PreviewRow = { nome: string; telefone: string; cpf: string; origem: string; campanha: string; produto: string; data: string; responsavel: string; erro?: string }
@@ -30,7 +33,7 @@ function parseSheet(text: string): PreviewRow[] {
       nome: get(iNome),
       telefone: digits(get(iTel)),
       cpf: digits(get(iCpf)),
-      origem: originCode(get(iOrig) || 'campanha'),
+      origem: originCode(get(iOrig) || 'planilha'),
       campanha: get(iCamp),
       produto: get(iProd),
       data: get(iData),
@@ -44,10 +47,12 @@ function parseSheet(text: string): PreviewRow[] {
 
 export default function Campanhas() {
   const toast = useToast()
+  const { usuario } = useAuth()
   const { clientes } = useNexusStore()
   const [importOpen, setImportOpen] = useState(false)
   const [preview, setPreview] = useState<PreviewRow[]>([])
   const [saving, setSaving] = useState(false)
+  const [imp, setImp] = useState({ origem: 'planilha_csv', campanha: '', segmento: '', produto: '', equipe: '', responsavel: '' })
 
   async function confirmImport() {
     const ok = preview.filter((r) => !r.erro)
@@ -56,30 +61,71 @@ export default function Campanhas() {
     setSaving(true)
     try {
       let created = 0
-      let skipped = 0
+      let updated = 0
+      const empresaId = clientes.empresaId
+      if (!empresaId) throw new Error('Empresa não identificada')
       for (const row of ok) {
+        const origem = originCode(row.origem || imp.origem || 'planilha')
+        const campanhaNome = row.campanha || imp.campanha
+        const produto = row.produto || imp.produto
+        const segmento = imp.segmento
+        const responsavel = row.responsavel || imp.responsavel
+        const entrada = agoraEntrada()
+        const evento = eventoOrigem({ origem, origemDetalhe: campanhaNome || 'Importação CSV', campanha: campanhaNome, fonte: 'planilha_csv' })
         const dup = clientes.items.find((c) => (row.cpf && digits(String(c.cpf || '')) === row.cpf) || (row.telefone && digits(String(c.whatsapp || c.telefone || '')) === row.telefone))
+        let clienteId = dup?.id
         if (dup) {
-          skipped += 1
-          continue
+          const hist = [...((dup.historicoOrigens as unknown[]) || []), evento]
+          await clientes.update(dup.id, {
+            historicoOrigens: hist,
+            campanhaNome: dup.campanhaNome || campanhaNome,
+            campanha: dup.campanha || campanhaNome,
+            produto: dup.produto || produto,
+          } as any)
+          updated += 1
+        } else {
+          clienteId = await clientes.create({
+            nome: row.nome,
+            telefone: row.telefone,
+            telefoneNormalizado: row.telefone,
+            whatsapp: row.telefone,
+            cpf: row.cpf,
+            origem,
+            origemLead: origem,
+            source: origem,
+            origemDetalhe: campanhaNome || 'Importação CSV',
+            fonte: 'planilha_csv',
+            campanha: campanhaNome,
+            campanhaNome,
+            modalidade: segmento || produto,
+            produto,
+            equipe: imp.equipe,
+            responsavel,
+            pipelineStage: 'novo_lead',
+            status: 'NOVO LEAD',
+            historicoOrigens: [evento],
+            ...entrada,
+          } as any)
+          created += 1
         }
-        await clientes.create({
-          nome: row.nome,
-          telefone: row.telefone,
-          whatsapp: row.telefone,
-          cpf: row.cpf,
-          origem: row.origem,
-          source: row.origem,
-          campanha: row.campanha,
-          modalidade: row.produto,
-          produto: row.produto,
-          responsavel: row.responsavel,
-          pipelineStage: 'novo_lead',
-          status: 'NOVO LEAD',
-        } as any)
-        created += 1
+        if (clienteId) {
+          await garantirConversaFila({
+            empresaId,
+            clienteId,
+            titulo: row.nome,
+            telefone: row.telefone,
+            origemLead: origem,
+            campanhaNome,
+            segmento,
+            produto,
+            equipe: imp.equipe,
+            responsavel,
+            usuarioId: usuario?.id,
+            usuarioNome: usuario?.nome,
+          })
+        }
       }
-      toast.success(`${created} importados · ${skipped} duplicados ignorados`)
+      toast.success(`${created} criados · ${updated} atualizados (sem duplicar telefone/CPF)`)
       setImportOpen(false)
       setPreview([])
     } catch (e) {
@@ -115,7 +161,23 @@ export default function Campanhas() {
       />
       {importOpen && (
         <NexusModal title="Importar campanha" onClose={() => !saving && setImportOpen(false)} onSave={() => void confirmImport()} saving={saving} saveLabel="Confirmar importação" closeOnBackdrop={false}>
-          <p className="text-sm mb-2" style={{ color: 'var(--code-muted)' }}>Colunas: nome, telefone, CPF, origem, campanha, produto, data, responsável. Pré-visualize antes de salvar.</p>
+          <p className="text-sm mb-2" style={{ color: 'var(--code-muted)' }}>Defina origem/campanha antes de confirmar. CSV. Linhas com telefone ou CPF já existente atualizam o mesmo cliente.</p>
+          <div className="grid md:grid-cols-2 gap-2 mb-3">
+            <SelectInput value={imp.origem} onChange={(e) => setImp({ ...imp, origem: e.target.value })}>
+              <option value="planilha_csv">Planilha CSV</option>
+              <option value="disparo_massa">Disparo em massa</option>
+              <option value="trafego_pago">Tráfego pago</option>
+              <option value="landing_page">Landing page</option>
+              <option value="formulario">Formulário</option>
+              <option value="webhook">Webhook</option>
+              <option value="api">API</option>
+            </SelectInput>
+            <TextInput placeholder="Campanha" value={imp.campanha} onChange={(e) => setImp({ ...imp, campanha: e.target.value })} />
+            <TextInput placeholder="Segmento" value={imp.segmento} onChange={(e) => setImp({ ...imp, segmento: e.target.value })} />
+            <TextInput placeholder="Produto" value={imp.produto} onChange={(e) => setImp({ ...imp, produto: e.target.value })} />
+            <TextInput placeholder="Equipe" value={imp.equipe} onChange={(e) => setImp({ ...imp, equipe: e.target.value })} />
+            <TextInput placeholder="Responsável" value={imp.responsavel} onChange={(e) => setImp({ ...imp, responsavel: e.target.value })} />
+          </div>
           <input
             type="file"
             accept=".csv,.txt,.xlsx,.xls"

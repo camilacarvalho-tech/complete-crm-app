@@ -44,6 +44,7 @@ export interface LeadsMonitorJob {
     filtros?: FiltrosPesquisa
     connectorIds?: string[]
     fontesIds?: string[]
+    fontesHabilitadas?: string[]
     searchRunId?: string
     dlqId?: string
     pesquisaId?: string | null

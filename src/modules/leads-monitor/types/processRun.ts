@@ -53,6 +53,8 @@ export interface ProcessRun {
   cidadesProcessadas?: number
   cidadesErro?: number
   cidadeAtual?: string | null
+  geoBairro?: string | null
+  geoCep?: string | null
   filtrosSnapshot?: Record<string, unknown>
   mapping?: Record<string, string>
   arquivoNome?: string
