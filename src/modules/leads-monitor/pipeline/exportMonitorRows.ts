@@ -183,7 +183,6 @@ export function downloadDelimited(
     downloadSpreadsheetMl(filename.replace(/\.csv$/i, '.xls'), [{ name: 'DADOS', columns: keys, rows }])
     return
   }
-  if (!rows.length) return
   const body = [
     keys.join(';'),
     ...rows.map((r) => keys.map((k) => String(r[k] ?? '').replace(/[\t\n;]/g, ' ')).join(';')),

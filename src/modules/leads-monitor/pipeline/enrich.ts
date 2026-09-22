@@ -35,9 +35,17 @@ interface ReceitaPublica {
   ddd_telefone_1?: string
 }
 
-async function lookupBrasilApi(cnpj: string): Promise<ReceitaPublica | null> {
+async function lookupBrasilApi(cnpj: string, signal?: AbortSignal): Promise<ReceitaPublica | null> {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), 8000)
+  const onAbort = () => ctrl.abort()
+  if (signal) {
+    if (signal.aborted) {
+      clearTimeout(timer)
+      return null
+    }
+    signal.addEventListener('abort', onAbort)
+  }
   try {
     const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, {
       signal: ctrl.signal,
@@ -49,6 +57,7 @@ async function lookupBrasilApi(cnpj: string): Promise<ReceitaPublica | null> {
     return null
   } finally {
     clearTimeout(timer)
+    signal?.removeEventListener('abort', onAbort)
   }
 }
 
@@ -66,14 +75,14 @@ function resolveCnpj(lead: NormalizedLead): string | null {
 export async function enrichLead(
   lead: NormalizedLead,
   _empresaId: string,
-  _opts?: { useLlm?: boolean }
+  _opts?: { useLlm?: boolean; signal?: AbortSignal }
 ): Promise<EnrichedLead> {
   const fontes: string[] = []
   const telefoneFormatado = formatPhoneBr(lead.telefone) || undefined
   const cnpj = resolveCnpj(lead)
   let receita: ReceitaPublica | null = null
   if (cnpj) {
-    receita = await lookupBrasilApi(cnpj)
+    receita = await lookupBrasilApi(cnpj, _opts?.signal)
     if (receita) fontes.push('brasilapi_cnpj')
   }
 

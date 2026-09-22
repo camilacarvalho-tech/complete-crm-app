@@ -29,8 +29,9 @@ import { enviarPessoaParaCrm } from '../pipeline/sendPersonToCrm'
 import { enqueueJob } from '../services/jobQueue'
 import { processOneJob, startJobWorkerLoop } from '../services/jobWorker'
 import { writeLeadsMonitorAudit } from '../services/auditTrail'
-import { startIntelligentSearch, requestSearchCancel } from '../search/startSearch'
+import { startIntelligentSearch, stopSearchExecution } from '../search/startSearch'
 import { normalizeFiltros } from '../search/filters'
+import { clearSearchCancel } from '../search/searchCancel'
 import type {
   FiltrosPesquisa,
   MonitorRunResult,
@@ -145,11 +146,7 @@ export function useLeadsMonitor() {
       const found = searchRuns.find((r) => r.id === activeSearchRunId)
       if (found) return found
     }
-    return (
-      searchRuns.find(
-        (r) => r.status === 'running' || r.status === 'queued'
-      ) || null
-    )
+    return searchRuns.find((r) => r.status === 'running') || null
   }, [searchRuns, activeSearchRunId])
 
   const processRuns = useMemo(() => {
@@ -297,28 +294,14 @@ export function useLeadsMonitor() {
   )
 
   const cancelarBusca = useCallback(async () => {
-    if (!empresaId || !activeSearchRun?.id) return
-    await requestSearchCancel({
+    if (!empresaId) return
+    await stopSearchExecution({
       empresaId,
-      searchRunId: activeSearchRun.id,
+      searchRunId: activeSearchRun?.id || activeProcessRun?.searchRunId,
+      processRunId: activeProcessRun?.id,
       actor: { usuarioId: usuario?.id, usuarioNome: usuario?.nome },
     })
-    await enqueueJob({
-      empresaId,
-      type: 'search_cancel',
-      payload: { searchRunId: activeSearchRun.id },
-      actor: { usuarioId: usuario?.id, usuarioNome: usuario?.nome },
-    })
-    if (activeProcessRun?.id) {
-      await setProcessControl({
-        empresaId,
-        runId: activeProcessRun.id,
-        status: 'cancelado',
-        actor: { usuarioId: usuario?.id, usuarioNome: usuario?.nome },
-      })
-    }
-    void processOneJob(empresaId)
-  }, [empresaId, activeSearchRun?.id, activeProcessRun?.id, usuario?.id, usuario?.nome])
+  }, [empresaId, activeSearchRun?.id, activeProcessRun?.id, activeProcessRun?.searchRunId, usuario?.id, usuario?.nome])
 
   const salvarPesquisa = useCallback(
     async (nome: string) => {
@@ -360,6 +343,7 @@ export function useLeadsMonitor() {
         scoreMinimo: p.scoreMinimo,
         temperaturaMinima: p.temperaturaMinima,
         maxResultsPerCycle: p.limitePorCiclo || p.maxResultsPerCycle,
+        faixaFuncionarios: p.faixaFuncionarios,
         cidadesSelecionadas: p.cidadesSelecionadas,
         abrangenciaGeografica: p.abrangenciaGeografica,
         cargos: p.cargos,
@@ -368,8 +352,14 @@ export function useLeadsMonitor() {
         produtos: p.produtos,
         fontesHabilitadas: p.fontesHabilitadas || [],
         contextosSegmento: p.contextosSegmento || [],
+        personFieldsRequested: p.personFieldsRequested || [],
+        contactFieldsRequested: p.contactFieldsRequested || [],
+        tipoBusca: p.tipoBusca,
+        personSourcesHabilitadas: p.personSourcesHabilitadas || [],
         segmentoCustomNome: p.segmentoCustomNome,
         segmentoCustomCategoria: p.segmentoCustomCategoria,
+        campaignContext: p.campaignContext,
+        subsegment: p.subsegment,
       })
     )
   }, [])
@@ -454,6 +444,7 @@ export function useLeadsMonitor() {
       arquivoNome: string
       mapping: Record<string, string>
       rows: Record<string, string>[]
+      autoEnrich?: boolean
     }) => {
       if (!empresaId) throw new Error('Empresa não identificada')
       const actor = { usuarioId: usuario?.id, usuarioNome: usuario?.nome }
@@ -465,6 +456,7 @@ export function useLeadsMonitor() {
         total: payload.rows.length,
         arquivoNome: payload.arquivoNome,
         mapping: payload.mapping,
+        autoEnrich: payload.autoEnrich,
         actor,
       })
       await ingestMappedRows({ empresaId, processRunId, rows: payload.rows })
@@ -487,6 +479,18 @@ export function useLeadsMonitor() {
     async (run: ProcessRun, status: 'pausado' | 'processando' | 'cancelado') => {
       if (!empresaId) return
       const actor = { usuarioId: usuario?.id, usuarioNome: usuario?.nome }
+      if (status === 'cancelado') {
+        await stopSearchExecution({
+          empresaId,
+          searchRunId: run.searchRunId,
+          processRunId: run.id,
+          actor,
+        })
+        return
+      }
+      if (status === 'processando') {
+        clearSearchCancel({ searchRunId: run.searchRunId, processRunId: run.id })
+      }
       await setProcessControl({ empresaId, runId: run.id, status, actor })
       if (status === 'processando' && run.tipo === 'importacao') {
         await enqueueJob({
@@ -594,6 +598,7 @@ export function useLeadsMonitor() {
       failed: 'erro',
     }
     const geoOpen = (linked.cidadesTotal || 0) > 1 && (linked.cidadesProcessadas || 0) < (linked.cidadesTotal || 0)
+    if (linked.status === 'cancelado' || linked.status === 'pausado') return
     if (geoOpen && (activeSearchRun.status === 'succeeded' || activeSearchRun.status === 'failed')) {
       return
     }

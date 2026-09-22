@@ -74,6 +74,8 @@ export async function enviarPessoaParaCrm(
     campanhaId: asText(incoming.campanhaId),
     campanhaNome: asText(incoming.campanhaNome || company.nome),
     segmento: asText(incoming.modalidade),
+    produto: asText(incoming.produto),
+    operacao: asText(incoming.operacao),
     estado: asText(incoming.estado),
     cidade: asText(incoming.cidade),
     bairro: asText(incoming.bairro),

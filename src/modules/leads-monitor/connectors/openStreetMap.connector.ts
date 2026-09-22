@@ -27,6 +27,7 @@ export const openStreetMapConnector: IConnector = {
         empresaId: ctx.empresaId,
         filtros: ctx.filtros as unknown as Record<string, unknown>,
         limite,
+        signal: ctx.signal,
       })
       return result.places.map((place) => ({
         externalId: place.osmId,
@@ -34,6 +35,7 @@ export const openStreetMapConnector: IConnector = {
         payload: { ...place, _query: result.query, _tempoMs: result.tempoMs },
       }))
     } catch (e: any) {
+      if (e?.name === 'SearchCancelledError') throw e
       const message =
         e?.message ||
         'OpenStreetMap/Overpass indisponível. O Monitor continua com as demais fontes.'

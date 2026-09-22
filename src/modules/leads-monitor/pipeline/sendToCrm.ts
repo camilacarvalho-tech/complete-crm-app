@@ -76,7 +76,7 @@ export async function enviarOportunidadeParaCrm(
       empresaId,
       kind: oportunidade.tipo === 'pessoa' ? 'pessoa' : 'empresa',
       telefone: oportunidade.telefone,
-      whatsapp: oportunidade.telefone,
+      whatsapp: asText(oportunidade.metadados?.whatsapp),
       email: oportunidade.email,
       nome: oportunidade.nome,
       empresaCnpj: oportunidade.cnpj,
@@ -101,7 +101,7 @@ export async function enviarOportunidadeParaCrm(
       atualizadoEm: serverTimestamp(),
     })
 
-    await garantirConversaFila({
+    const fila = await garantirConversaFila({
       empresaId,
       clienteId,
       titulo: asText(incoming.nome),
@@ -114,7 +114,7 @@ export async function enviarOportunidadeParaCrm(
       campanhaNome: asText(incoming.campanhaNome || incoming.campanha),
       segmento: asText(incoming.modalidade),
       produto: asText(incoming.produto),
-      operacao: asText(oportunidade.metadados?.operacao),
+      operacao: asText(incoming.operacao || oportunidade.metadados?.operacao),
       estado: asText(incoming.estado),
       cidade: asText(incoming.cidade),
       bairro: asText(incoming.bairro),
@@ -123,6 +123,13 @@ export async function enviarOportunidadeParaCrm(
       responsavel: asText(incoming.responsavel),
       usuarioId: auditActor.usuarioId,
       usuarioNome: auditActor.usuarioNome,
+    })
+    await updateDoc(doc(db, 'empresas', empresaId, 'conversas', fila.conversaId), {
+      produto: asText(incoming.produto) || null,
+      operacao: asText(incoming.operacao || oportunidade.metadados?.operacao) || null,
+      campanhaId: asText(incoming.campanhaId) || null,
+      campanhaNome: asText(incoming.campanhaNome || incoming.campanha) || null,
+      atualizadoEm: serverTimestamp(),
     })
 
     await writeAudit({

@@ -17,6 +17,11 @@ import {
 import { runPeopleSearch, markPeopleRunFailed } from './peopleSearch/orchestrator'
 import { writeLeadsMonitorLog, moveToDlq } from './opsLogs'
 import { FILTROS_VAZIOS } from '../constants'
+import {
+  beginSearchAbort,
+  isSearchCancelledError,
+  readExecutionFlags,
+} from '../search/searchCancel'
 
 let loopTimer: ReturnType<typeof setInterval> | null = null
 let busy = false
@@ -37,8 +42,9 @@ export async function processOneJob(empresaId: string): Promise<boolean> {
   try {
     if (job.type === 'search_cancel') {
       const searchRunId = job.payload.searchRunId
+      const processRunId = job.payload.processRunId
       if (searchRunId) {
-        await requestSearchCancel({ empresaId, searchRunId })
+        await requestSearchCancel({ empresaId, searchRunId, processRunId })
       }
       await markJobSucceeded(empresaId, job.id, { cancelled: true })
       return true
@@ -47,6 +53,17 @@ export async function processOneJob(empresaId: string): Promise<boolean> {
     if (job.type === 'search_inteligente') {
       const searchRunId = job.payload.searchRunId
       if (!searchRunId) throw new Error('search_inteligente sem searchRunId')
+      const ids = { searchRunId, processRunId: job.payload.processRunId }
+      const flags = await readExecutionFlags(empresaId, ids)
+    if (flags.cancelled) {
+      await markJobSucceeded(empresaId, job.id, { cancelled: true, skipped: true })
+      return true
+    }
+    if (flags.paused) {
+      await markJobSucceeded(empresaId, job.id, { paused: true, skipped: true })
+      return true
+    }
+      const signal = beginSearchAbort(ids)
       const result = await runSearchEngine({
         empresaId,
         searchRunId,
@@ -57,12 +74,15 @@ export async function processOneJob(empresaId: string): Promise<boolean> {
         pesquisaId: job.payload.pesquisaId || undefined,
         llmBudget: 3,
         processRunId: job.payload.processRunId,
+        signal,
       })
       await markJobSucceeded(empresaId, job.id, result)
       await writeLeadsMonitorLog({
         empresaId,
         level: 'info',
-        message: `Search inteligente ok: +${result.novos} leads · ${result.encontrados} encontrados`,
+        message: result.erros?.includes('cancelado')
+          ? `Search interrompida (parada)`
+          : `Search inteligente ok: +${result.novos} leads · ${result.encontrados} encontrados`,
         jobId: job.id,
         meta: { ...result, searchRunId } as unknown as Record<string, unknown>,
       })
@@ -168,6 +188,10 @@ export async function processOneJob(empresaId: string): Promise<boolean> {
     }
     return true
   } catch (e: any) {
+    if (isSearchCancelledError(e)) {
+      await markJobSucceeded(empresaId, job.id, { cancelled: true })
+      return true
+    }
     const msg = e?.message || String(e)
     const outcome = await markJobFailed(empresaId, job, msg)
     await writeLeadsMonitorLog({

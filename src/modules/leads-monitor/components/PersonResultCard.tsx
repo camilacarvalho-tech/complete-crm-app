@@ -131,11 +131,12 @@ export function PersonResultCard({
             </div>
             <p className="text-xs font-semibold mb-1">Dados pessoais</p>
             <dl className="text-xs space-y-1">
-              <div>Nome: {person.personName || 'Não informado'}</div>
-              <div>Cargo: {person.jobTitle || 'Não informado'}</div>
-              <div>Telefone profissional: {person.phone || 'Não informado'}</div>
-              <div>WhatsApp profissional: {person.whatsapp || 'Não informado'}</div>
-              <div>E-mail profissional: Não informado</div>
+              <div>Nome: {person.personName || '—'}</div>
+              <div>CPF: {(person as { cpf?: string }).cpf || '—'}</div>
+              <div>Cargo: {person.jobTitle || '—'}</div>
+              <div>Telefone: {person.phone || '—'}</div>
+              <div>WhatsApp: {person.whatsapp || '—'}</div>
+              <div>E-mail: {(person as { email?: string }).email || '—'}</div>
             </dl>
             <p className="text-xs font-semibold mt-3 mb-1">Dados empresariais</p>
             <dl className="text-xs space-y-1">

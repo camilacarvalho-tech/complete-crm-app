@@ -13,6 +13,9 @@ export function filaAtendimentoDe(opts: {
   const blob = `${opts.operacao || ''} ${opts.segmento || ''} ${opts.produto || ''}`.toLowerCase()
   if (blob.includes('inss')) return 'FILA INSS'
   if (blob.includes('clt')) return 'FILA CLT'
+  if (blob.includes('fgts')) return 'FILA FGTS'
+  if (blob.includes('siape') || blob.includes('prefeitura') || blob.includes('servidor')) return 'FILA SERVIDOR'
+  if (blob.includes('imob') || blob.includes('casa') || blob.includes('carro') || blob.includes('refin')) return 'FILA REFIN'
   if (/\bcode\b/.test(blob) || blob.includes('crm') || blob.includes('erp')) return 'FILA CODE'
   return 'FILA COMERCIAL'
 }

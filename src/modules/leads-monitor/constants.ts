@@ -63,6 +63,16 @@ export const ESTADOS_BR_NOMES: Array<{ uf: string; nome: string }> = [
 export const OPERACOES_MONITOR = [
   { id: 'INSS', label: 'INSS' },
   { id: 'CREDITO_CLT', label: 'Crédito CLT' },
+  { id: 'CREDITO_PESSOAL', label: 'Crédito pessoal' },
+  { id: 'CREDITO_CONTA_ENERGIA', label: 'Crédito na conta de energia' },
+  { id: 'SAQUE_FGTS', label: 'Saque FGTS' },
+  { id: 'REFIN_CASA', label: 'Refinanciamento de casa' },
+  { id: 'REFIN_CARRO', label: 'Refinanciamento de carro' },
+  { id: 'CREDITO_IMOBILIARIO', label: 'Crédito imobiliário' },
+  { id: 'PORTABILIDADE_CONSIGNADO', label: 'Portabilidade de consignado' },
+  { id: 'SERVIDOR_SIAPE', label: 'Servidor SIAPE' },
+  { id: 'SERVIDOR_PREFEITURA', label: 'Servidor prefeitura' },
+  { id: 'LIMPA_NOME', label: 'Limpa nome' },
   { id: 'FGTS', label: 'FGTS' },
   { id: 'EMPRESTIMOS', label: 'Empréstimos' },
   { id: 'SERVIDOR', label: 'Servidor' },
@@ -85,7 +95,6 @@ export const SEGMENTOS = [
   { id: 'inss', label: 'INSS / Aposentadoria' },
   { id: 'credito_clt', label: 'Crédito CLT' },
   { id: 'emprestimo', label: 'Empréstimo Pessoal' },
-  { id: 'consignado', label: 'Consignado' },
   { id: 'fgts', label: 'FGTS' },
   { id: 'cartao', label: 'Cartão Benefício' },
   { id: 'corban', label: 'Correspondente Bancário' },
@@ -175,8 +184,14 @@ export const FILTROS_VAZIOS: FiltrosPesquisa = {
   beneficiosConsignaveis: 'todos',
   fontesHabilitadas: [],
   contextosSegmento: [],
+  personFieldsRequested: [],
+  contactFieldsRequested: [],
+  tipoBusca: 'empresa',
+  personSourcesHabilitadas: [],
   segmentoCustomNome: '',
   segmentoCustomCategoria: '',
+  campaignContext: '',
+  subsegment: '',
 }
 
 /** Intervalo padrão de auto-atualização (ms) para pesquisas ativas */
@@ -192,7 +207,7 @@ export const SCORE_THRESHOLDS = {
 } as const
 
 export const DEFAULT_SCORE_MINIMO = 70
-export const MAX_RESULTS_PER_CYCLE = 100
+export const MAX_RESULTS_PER_CYCLE = 5000
 
 export const JOB_MAX_ATTEMPTS = 5
 export const JOB_LEASE_MS = 60_000

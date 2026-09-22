@@ -18,6 +18,8 @@ import { agoraEntrada, eventoOrigem, preservarOrigemPrincipal } from '../../../l
 import { digitsOnly, normalizeCompanyName } from './normalizeFields'
 import type { CompanyPeopleResearch } from '../types/peopleResearch'
 import type { OportunidadeMonitor } from '../types'
+import { produtoPorOperacao, qualificationFromScore } from '../catalog/produtosMonitor'
+import { toPersonLead } from './personLead'
 
 export function asText(value: unknown): string {
   if (typeof value === 'string') return value
@@ -162,6 +164,17 @@ export function mergeClientePermitido(
     'twitterUrl',
     'leadsMonitorPersonId',
     'leadsMonitorOpportunityId',
+    'produto',
+    'operacao',
+    'qualificationStatus',
+    'modalidade',
+    'campanha',
+    'cpf',
+    'numero',
+    'complemento',
+    'vinculo',
+    'fonteVinculo',
+    'fonteUrl',
   ]
   for (const key of keys) {
     next[key] = fillIfEmpty(existing[key], asText(incoming[key]))
@@ -181,14 +194,17 @@ export function payloadEmpresaCliente(
   actorNome: string
 ): Record<string, unknown> {
   const tel = phoneDigits(oportunidade.telefone)
+  const wa = phoneDigits(asText(oportunidade.metadados?.whatsapp))
   const cnpj = digitsOnly(oportunidade.cnpj)
-  const score = Number.isFinite(Number(oportunidade.score)) ? Number(oportunidade.score) : 0
+  const score = Math.min(100, Math.max(0, Number.isFinite(Number(oportunidade.score)) ? Number(oportunidade.score) : 0))
+  const operacao = asText(oportunidade.metadados?.operacao)
+  const produtoId = produtoPorOperacao(asText(oportunidade.metadados?.produto) || operacao)?.id || asText(oportunidade.metadados?.produto) || operacao
   return {
     tenant_id: empresaId,
     empresaId,
     nome: asText(oportunidade.nome) || 'Sem nome',
     telefone: tel,
-    whatsapp: tel,
+    whatsapp: wa,
     email: asText(oportunidade.email),
     cidade: asText(oportunidade.cidade),
     estado: asText(oportunidade.estado),
@@ -233,9 +249,11 @@ export function payloadEmpresaCliente(
     leadsMonitorPersonId: '',
     modalidade: asText(oportunidade.segmento),
     campanha: asText(oportunidade.metadados?.campanha) || asText(oportunidade.pesquisaId),
-    produto: asText(oportunidade.metadados?.produto || oportunidade.segmento),
+    produto: produtoId,
+    operacao,
+    qualificationStatus: qualificationFromScore(score),
     banco: asText(oportunidade.metadados?.banco),
-    convenio: asText(oportunidade.metadados?.operacao) === 'INSS' ? 'inss' : asText(oportunidade.segmento),
+    convenio: operacao === 'INSS' ? 'inss' : asText(oportunidade.segmento),
     modalidades: asText(oportunidade.segmento) ? [asText(oportunidade.segmento)] : [],
     origem: 'leads_monitor',
     source: 'leads_monitor',
@@ -276,49 +294,59 @@ export function payloadPessoaCliente(
   company: OportunidadeMonitor,
   actorNome: string
 ): Record<string, unknown> {
-  const tel = phoneDigits(person.phone || person.whatsapp)
-  const wa = phoneDigits(person.whatsapp || person.phone)
-  const score = Number.isFinite(Number(company.score)) ? Number(company.score) : 0
+  const lead = toPersonLead(person, company)
+  const tel = phoneDigits(lead.telefone)
+  const wa = phoneDigits(lead.whatsapp)
+  const score = lead.score
+  const operacao = lead.operacao
+  const produtoId = lead.produto
   return {
     tenant_id: empresaId,
     empresaId,
-    nome: asText(person.personName),
+    nome: lead.nome || 'Sem nome',
+    cpf: lead.cpf,
     telefone: tel,
     whatsapp: wa,
-    email: asText((person as { email?: string }).email),
-    cidade: asText(company.cidade),
-    estado: asText(company.estado),
-    bairro: asText(company.bairro),
-    cep: asText(company.cep),
+    email: lead.email,
+    cidade: lead.cidade,
+    estado: lead.estado,
+    bairro: lead.bairro,
+    cep: lead.cep,
+    numero: lead.numero,
+    complemento: lead.complemento,
     pais: 'Brasil',
     origemLead: 'leads_monitor',
-    origemDetalhe: asText(person.sourceName || company.metadados?.campanha) || 'Pessoa — Leads Monitor',
-    fonte: asText(person.sourceName || person.source),
-    fonteId: asText(person.source),
-    campanhaId: asText(company.pesquisaId),
-    campanhaNome: asText(company.metadados?.campanha),
+    origemDetalhe: lead.fonte || 'Pessoa — Leads Monitor',
+    fonte: lead.fonte,
+    fonteId: lead.source,
+    campanhaId: lead.campanhaId,
+    campanhaNome: lead.campanha,
+    campanha: lead.campanha,
     ...agoraEntrada(),
     timestampEntrada: serverTimestamp(),
     historicoOrigens: [
       eventoOrigem({
         origem: 'leads_monitor',
-        origemDetalhe: asText(person.sourceName),
-        campanha: asText(company.metadados?.campanha),
-        campanhaId: asText(company.pesquisaId),
-        fonte: asText(person.sourceName || person.source),
-        fonteId: asText(person.source),
+        origemDetalhe: lead.fonte,
+        campanha: lead.campanha,
+        campanhaId: lead.campanhaId,
+        fonte: lead.fonte,
+        fonteId: lead.source,
       }),
     ],
-    cidadeOrigem: asText(company.cidade),
-    estadoOrigem: asText(company.estado),
-    endereco: asText(company.endereco),
-    empresaNome: asText(person.companyName || company.nome),
-    empresaCnpj: digitsOnly(person.companyCnpj || company.cnpj),
-    profissao: asText(person.jobTitle),
-    cargo: asText(person.jobTitle),
-    relacaoEmpresa: asText(person.relationToCompany),
-    fontePesquisa: asText(person.sourceName || person.source),
-    fonteUrl: asText(person.sourceUrl),
+    cidadeOrigem: lead.cidade,
+    estadoOrigem: lead.estado,
+    endereco: lead.endereco,
+    empresaNome: lead.empresa,
+    empresaCnpj: lead.cnpj,
+    profissao: lead.cargo,
+    cargo: lead.cargo,
+    relacaoEmpresa: lead.vinculo,
+    vinculo: lead.vinculo,
+    vinculoVerificado: lead.vinculoVerificado,
+    fonteVinculo: lead.fonteVinculo,
+    fontePesquisa: lead.fonte,
+    fonteUrl: lead.sourceUrl,
     linkedinUrl: asText(person.linkedinUrl),
     instagramUrl: asText(person.instagramUrl),
     facebookUrl: asText(person.facebookUrl),
@@ -327,34 +355,48 @@ export function payloadPessoaCliente(
     twitterUrl: '',
     leadsMonitorPersonId: asText(person.id),
     leadsMonitorOpportunityId: asText(company.id),
-    modalidade: asText(company.segmento),
-    modalidades: asText(company.segmento) ? [asText(company.segmento)] : [],
+    modalidade: lead.segmento,
+    modalidades: lead.segmento ? [lead.segmento] : [],
+    produto: produtoId,
+    operacao,
+    qualificationStatus: lead.classification || qualificationFromScore(score),
+    contextoCLT: lead.contextoCLT,
+    contextoINSS: lead.contextoINSS,
+    personLead: true,
+    origin: 'leads_monitor',
     origem: 'leads_monitor',
-    source: 'leads_monitor',
+    source: lead.source || 'leads_monitor',
+    sourceUrl: lead.sourceUrl,
+    classification: lead.classification,
     utm_source: 'leads_monitor',
-    utm_medium: asText(person.source) || 'people_search',
-    utm_campaign: asText(company.nome),
+    utm_medium: lead.source || 'people_search',
+    utm_campaign: lead.campanha || lead.empresa,
     status: 'Lead',
     pipeline: 'NOVO LEAD',
     pipelineStage: 'novo_lead',
     score,
     temperatura: asText(company.temperatura),
     observacoes: [
-      `Empresa: ${asText(company.nome)}`,
-      person.jobTitle ? `Cargo: ${asText(person.jobTitle)}` : '',
-      `Relação: ${asText(person.relationToCompany)}`,
-      `Fonte: ${asText(person.sourceName || person.source)}`,
-      person.sourceUrl ? `URL: ${asText(person.sourceUrl)}` : '',
-      `Score da empresa (contexto): ${score}`,
+      lead.empresa ? `Empresa (contexto): ${lead.empresa}` : '',
+      lead.cargo ? `Cargo: ${lead.cargo}` : '',
+      lead.vinculo ? `Vínculo: ${lead.vinculo}` : '',
+      lead.fonte ? `Fonte: ${lead.fonte}` : '',
+      lead.sourceUrl ? `URL: ${lead.sourceUrl}` : '',
+      `Score: ${score}`,
     ]
       .filter((l) => l.length > 0)
       .join('\n'),
     camposExtras: {
       tipoOportunidade: 'pessoa',
       companyPeopleId: asText(person.id),
-      relationToCompany: asText(person.relationToCompany),
-      evidência: asText(person.sourceName),
+      relationToCompany: lead.vinculo,
+      telefoneValid: lead.telefoneValid,
+      whatsappValid: lead.whatsappValid,
+      emailValid: lead.emailValid,
     },
+    purpose: lead.purpose,
+    legalBasis: lead.legalBasis,
+    consentStatus: lead.consentStatus,
     atendente: actorNome,
     responsavel: actorNome,
     criadoPor: actorNome || 'leads-monitor',

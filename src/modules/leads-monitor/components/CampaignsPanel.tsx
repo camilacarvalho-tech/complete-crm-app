@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import { Pause, Play, Plus, RefreshCw, Trash2 } from 'lucide-react'
-import type { PesquisaSalva } from '../types'
+import type { OportunidadeMonitor, PesquisaSalva } from '../types'
 import { FontesCapturaCheckboxes } from './FontesCapturaCheckboxes'
 import { FONTES_CAPTURA_CAMPANHA } from '../services/fontesCampanha'
 import { formatMonitorDateTime } from '../utils/datetime'
+import { produtoLabel } from '../catalog/produtosMonitor'
+import { contarBaseCampanha } from '../services/campaignWorkspace'
 
 export function CampaignsPanel(props: {
   pesquisas: PesquisaSalva[]
+  oportunidades: OportunidadeMonitor[]
   buscando: boolean
   onNova: () => void
   onEdit: (p: PesquisaSalva) => void
@@ -14,6 +17,10 @@ export function CampaignsPanel(props: {
   onRun: (p: PesquisaSalva) => void
   onRemove: (p: PesquisaSalva) => void
   onUpdateFontes: (p: PesquisaSalva, fontesHabilitadas: string[]) => void
+  onSalvarCrm: (p: PesquisaSalva) => void
+  onExportExcel: (p: PesquisaSalva) => void
+  onExportCsv: (p: PesquisaSalva) => void
+  onSyncErp: (p: PesquisaSalva) => void
 }) {
   const ativas = props.pesquisas.filter((p) => p.ativa).length
   const pausadas = props.pesquisas.length - ativas
@@ -51,6 +58,7 @@ export function CampaignsPanel(props: {
             <CampaignCard
               key={p.id}
               pesquisa={p}
+              oportunidades={props.oportunidades}
               aberta={aberta === p.id}
               onOpen={() => setAberta(p.id)}
               {...props}
@@ -64,6 +72,7 @@ export function CampaignsPanel(props: {
 
 function CampaignCard({
   pesquisa: p,
+  oportunidades,
   buscando,
   aberta,
   onOpen,
@@ -72,12 +81,20 @@ function CampaignCard({
   onRun,
   onRemove,
   onUpdateFontes,
+  onSalvarCrm,
+  onExportExcel,
+  onExportCsv,
+  onSyncErp,
 }: {
   pesquisa: PesquisaSalva
+  oportunidades: OportunidadeMonitor[]
   aberta: boolean
   onOpen: () => void
-} & Omit<Parameters<typeof CampaignsPanel>[0], 'pesquisas' | 'onNova'>) {
+} & Omit<Parameters<typeof CampaignsPanel>[0], 'pesquisas' | 'onNova' | 'oportunidades'>) {
   const fontes = p.fontesHabilitadas || []
+  const daCampanha = oportunidades.filter((o) => !p.id || o.pesquisaId === p.id || !o.pesquisaId)
+  const counts = contarBaseCampanha(p.id ? oportunidades.filter((o) => o.pesquisaId === p.id) : daCampanha)
+  const produto = produtoLabel(p.operacao)
   return (
     <article
       className="rounded-xl p-4 border space-y-3"
@@ -88,7 +105,7 @@ function CampaignCard({
           <div>
             <div className="text-sm font-semibold text-white">🎯 {p.nome}</div>
             <div className="text-[11px] text-slate-500 mt-1">
-              {[p.segmento, p.operacao, p.estado, p.cidade, p.bairro, p.cep].filter(Boolean).join(' · ') || 'Sem localização'}
+              {[produto !== '—' ? produto : '', p.segmento, p.operacao, p.estado, p.cidade].filter(Boolean).join(' · ') || 'Sem localização'}
             </div>
           </div>
           <span className={`text-[10px] px-2 py-0.5 rounded-full ${p.ativa ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700 text-slate-400'}`}>
@@ -97,9 +114,8 @@ function CampaignCard({
         </div>
       </button>
       <div className="text-[11px] text-slate-500">
-        Leads {p.encontrados || 0} · novos {p.novos || 0} · duplicados {p.duplicados || 0}
+        Encontrados {counts.encontrados} · Qualificados {counts.qualificados} · Hot {counts.hot} · WhatsApp {counts.comWhatsApp} · Telefone {counts.comTelefone}
         {p.ultimaExecucao ? ` · última ${formatMonitorDateTime(p.ultimaExecucao)}` : ''}
-        {p.proximaExecucao ? ` · próxima ${formatMonitorDateTime(p.proximaExecucao)}` : ''}
       </div>
       {aberta && (
         <>
@@ -131,6 +147,30 @@ function CampaignCard({
           className="text-xs px-2 py-1 rounded-md bg-nexus-orange text-white flex items-center gap-1"
         >
           <RefreshCw className="w-3 h-3" /> Rodar
+        </button>
+        <button type="button" onClick={() => onSalvarCrm(p)} className="text-xs px-2 py-1 rounded-md bg-slate-700 text-white">
+          Salvar campanha
+        </button>
+        <button type="button" onClick={() => onExportExcel(p)} className="text-xs px-2 py-1 rounded-md bg-slate-800 text-slate-200">
+          Exportar Excel
+        </button>
+        <button type="button" onClick={() => onExportCsv(p)} className="text-xs px-2 py-1 rounded-md bg-slate-800 text-slate-200">
+          Exportar CSV
+        </button>
+        <a href="/whatsapp" className="text-xs px-2 py-1 rounded-md bg-slate-800 text-slate-200">
+          Abrir Chat Clientes
+        </a>
+        <a href="/campanhas" className="text-xs px-2 py-1 rounded-md bg-slate-800 text-slate-200">
+          Abrir NX ERP / Campanhas
+        </a>
+        <button type="button" onClick={() => onSyncErp(p)} className="text-xs px-2 py-1 rounded-md bg-slate-800 text-slate-200">
+          Sincronizar NX ERP
+        </button>
+        <button type="button" disabled title="Templates Meta ficam no NX ERP. Só dispara com template APPROVED após a API do ERP." className="text-xs px-2 py-1 rounded-md bg-slate-900 text-slate-500">
+          Selecionar template
+        </button>
+        <button type="button" disabled title="O disparo é executado pelo NX ERP, não por um segundo motor no CRM." className="text-xs px-2 py-1 rounded-md bg-slate-900 text-slate-500">
+          Disparar
         </button>
         <button type="button" onClick={() => onRemove(p)} className="text-xs px-2 py-1 rounded-md text-slate-400">
           <Trash2 className="w-3 h-3" />

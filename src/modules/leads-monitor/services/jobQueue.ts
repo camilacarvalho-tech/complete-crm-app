@@ -186,6 +186,41 @@ export async function markJobRunning(empresaId: string, jobId: string): Promise<
   })
 }
 
+/** Marca jobs de busca ainda não concluídos como cancelados (não retomam no reload). */
+export async function cancelQueuedSearchJobs(opts: {
+  empresaId: string
+  searchRunId?: string | null
+  processRunId?: string | null
+}): Promise<number> {
+  const { empresaId, searchRunId, processRunId } = opts
+  if (!searchRunId && !processRunId) return 0
+  const q = query(
+    collection(db, 'empresas', empresaId, COL_JOBS),
+    where('status', 'in', ['queued', 'failed', 'leased']),
+    limit(40)
+  )
+  const snap = await getDocs(q)
+  let n = 0
+  for (const d of snap.docs) {
+    const data = d.data() as Omit<LeadsMonitorJob, 'id'>
+    const payload = data.payload || {}
+    const matchSearch = Boolean(searchRunId && payload.searchRunId === searchRunId)
+    const matchProcess = Boolean(processRunId && payload.processRunId === processRunId)
+    const isSearchJob = data.type === 'search_inteligente' || data.type === 'search' || data.type === 'import_csv'
+    if (!isSearchJob || (!matchSearch && !matchProcess)) continue
+    await updateDoc(doc(db, 'empresas', empresaId, COL_JOBS, d.id), {
+      status: 'succeeded' satisfies JobStatus,
+      lastError: 'cancelled',
+      leaseOwner: null,
+      leaseUntil: null,
+      result: { cancelled: true },
+      updatedAt: serverTimestamp(),
+    })
+    n += 1
+  }
+  return n
+}
+
 export async function markJobSucceeded(empresaId: string, jobId: string, meta?: object): Promise<void> {
   await updateDoc(doc(db, 'empresas', empresaId, COL_JOBS, jobId), {
     status: 'succeeded',

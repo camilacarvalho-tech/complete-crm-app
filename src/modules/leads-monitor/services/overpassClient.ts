@@ -2,6 +2,7 @@
  * Cliente OSM: Nominatim + Overpass direto no browser (sem Cloud Function / sem Billing).
  * URLs fixas. Sem scraping. © OpenStreetMap contributors
  */
+import { attachTimeout, SearchCancelledError } from '../search/searchCancel'
 import {
   OVERPASS_ENDPOINTS,
   OVERPASS_HEALTH_QUERY,
@@ -80,17 +81,22 @@ function cacheSet(key: string, value: OsmBbox) {
   bboxCache.set(key, { at: Date.now(), value })
 }
 
-async function fetchJson(url: string, init: RequestInit, timeoutMs: number): Promise<{ status: number; data: any; text: string }> {
+async function fetchJson(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  external?: AbortSignal
+): Promise<{ status: number; data: any; text: string }> {
   const allowed =
     url.startsWith('https://nominatim.openstreetmap.org/search?') ||
     OVERPASS_ENDPOINTS.includes(url as (typeof OVERPASS_ENDPOINTS)[number])
   if (!allowed) {
     throw new OverpassConnectorError('endpoint_not_allowed', 'error', 400)
   }
-  const ctrl = new AbortController()
-  const t = setTimeout(() => ctrl.abort(), timeoutMs)
+  if (external?.aborted) throw new SearchCancelledError()
+  const linked = attachTimeout(external, timeoutMs)
   try {
-    const res = await fetch(url, { ...init, signal: ctrl.signal })
+    const res = await fetch(url, { ...init, signal: linked.signal })
     const text = await res.text()
     let data: any = {}
     try {
@@ -98,15 +104,17 @@ async function fetchJson(url: string, init: RequestInit, timeoutMs: number): Pro
     } catch {
       data = { raw: text.slice(0, 200) }
     }
+    if (external?.aborted) throw new SearchCancelledError()
     return { status: res.status, data, text }
   } catch (e: any) {
+    if (external?.aborted || e?.name === 'SearchCancelledError') throw new SearchCancelledError()
     throw wrapError(e, e?.message || 'Falha de rede ao consultar OSM.')
   } finally {
-    clearTimeout(t)
+    linked.cleanup()
   }
 }
 
-async function geocodeBbox(filtros: OsmFiltros): Promise<OsmBbox> {
+async function geocodeBbox(filtros: OsmFiltros, signal?: AbortSignal): Promise<OsmBbox> {
   if (!filtros.cidade) {
     throw new OverpassConnectorError('Informe cidade (e UF) para buscar no OpenStreetMap.', 'skipped', 400)
   }
@@ -115,7 +123,7 @@ async function geocodeBbox(filtros: OsmFiltros): Promise<OsmBbox> {
   if (cached) return cached
 
   const url = buildNominatimUrl(filtros)
-  const { status, data } = await fetchJson(url, { method: 'GET', headers: { Accept: 'application/json' } }, 12000)
+  const { status, data } = await fetchJson(url, { method: 'GET', headers: { Accept: 'application/json' } }, 12000, signal)
   if (status === 429 || status >= 500) {
     throw new OverpassConnectorError(`Nominatim HTTP ${status}`, 'unavailable', status)
   }
@@ -149,7 +157,8 @@ function logOverpass(event: string, detail: Record<string, unknown>) {
 
 async function overpassQuery(
   query: string,
-  attempt = 0
+  attempt = 0,
+  signal?: AbortSignal
 ): Promise<{ elements: unknown[]; endpoint: string; fallbackUsed: boolean }> {
   const endpoint = OVERPASS_ENDPOINTS[Math.min(attempt, OVERPASS_ENDPOINTS.length - 1)]
   const t0 = Date.now()
@@ -158,6 +167,7 @@ async function overpassQuery(
   let failStatus: number | undefined
 
   try {
+    if (signal?.aborted) throw new SearchCancelledError()
     logOverpass(attempt === 0 ? 'primario' : 'fallback', { endpoint, attempt })
     const { status, data, text } = await fetchJson(
       endpoint,
@@ -166,7 +176,8 @@ async function overpassQuery(
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `data=${encodeURIComponent(query)}`,
       },
-      28000
+      28000,
+      signal
     )
     const tempoMs = Date.now() - t0
     if (isHttpRetryable(status)) {
@@ -188,6 +199,7 @@ async function overpassQuery(
       return { elements: data.elements, endpoint, fallbackUsed }
     }
   } catch (e: any) {
+    if (e instanceof SearchCancelledError || signal?.aborted) throw new SearchCancelledError()
     failMotivo = e?.message || String(e)
     failStatus = e?.status
     if (e instanceof OverpassConnectorError && e.code === 'skipped') throw e
@@ -197,7 +209,7 @@ async function overpassQuery(
   const retryable =
     isHttpRetryable(Number(failStatus) || 0) ||
     isTransportRetryable({ message: failMotivo, status: failStatus, code: 'unavailable' })
-  if (retryable && canTryFallback(attempt)) {
+  if (retryable && canTryFallback(attempt) && !signal?.aborted) {
     logOverpass('falha', {
       endpoint,
       motivo: failMotivo,
@@ -206,7 +218,8 @@ async function overpassQuery(
       fallbackEndpoint: OVERPASS_ENDPOINTS[attempt + 1],
     })
     await sleep(800)
-    return overpassQuery(query, attempt + 1)
+    if (signal?.aborted) throw new SearchCancelledError()
+    return overpassQuery(query, attempt + 1, signal)
   }
   logOverpass('falha', { endpoint, motivo: failMotivo, tempoMs, fallbackAcionado: false })
   throw new OverpassConnectorError(
@@ -244,9 +257,11 @@ export async function overpassSearch(opts: {
   empresaId: string
   filtros: Record<string, unknown>
   limite?: number
+  signal?: AbortSignal
 }): Promise<{ query: string; places: OsmPlace[]; returned: number; tempoMs: number; attribution?: string }> {
   const started = Date.now()
   try {
+    if (opts.signal?.aborted) throw new SearchCancelledError()
     const filtros = pickOsmFiltros(opts.filtros)
     const limite = Math.min(80, Math.max(1, Number(opts.limite) || 40))
     const selectors = buildSelectors(filtros)
@@ -257,9 +272,11 @@ export async function overpassSearch(opts: {
         400
       )
     }
-    const bbox = await geocodeBbox(filtros)
+    const bbox = await geocodeBbox(filtros, opts.signal)
+    if (opts.signal?.aborted) throw new SearchCancelledError()
     const ql = buildOverpassQuery(filtros, bbox)
-    const data = await overpassQuery(ql)
+    const data = await overpassQuery(ql, 0, opts.signal)
+    if (opts.signal?.aborted) throw new SearchCancelledError()
     const places = mapOsmElements(data.elements || [], filtros, limite)
     const tempoMs = Date.now() - started
     logOverpass('busca', {
@@ -277,6 +294,7 @@ export async function overpassSearch(opts: {
       attribution: OSM_ATTRIBUTION,
     }
   } catch (e: any) {
+    if (e instanceof SearchCancelledError || opts.signal?.aborted) throw new SearchCancelledError()
     throw wrapError(e, 'OpenStreetMap/Overpass indisponível. O Monitor continua com as demais fontes.')
   }
 }

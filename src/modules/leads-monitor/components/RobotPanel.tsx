@@ -8,7 +8,7 @@ const STATUS_LABEL: Record<ProcessRunStatus, string> = {
   concluido: 'CONCLUÍDO',
   concluido_com_erros: 'CONCLUÍDO COM ERROS',
   erro: 'ERRO',
-  cancelado: 'CANCELADO',
+  cancelado: 'PARADO',
 }
 
 const STATUS_STYLE: Record<ProcessRunStatus, { color: string; bg: string; border: string }> = {
@@ -108,10 +108,11 @@ export function RobotPanel(props: {
   onCancel: () => void
   onRetryErrors?: () => void
   starting?: boolean
+  stopping?: boolean
 }) {
   const run = props.run
   const status: ProcessRunStatus = run?.status || 'aguardando'
-  const style = STATUS_STYLE[status]
+  const style = props.stopping ? STATUS_STYLE.processando : STATUS_STYLE[status]
   const working = status === 'processando'
   const etapaIdx = run ? mapEtapaIndex(run.etapaAtual, status) : -1
   const cities = run?.geoCities || []
@@ -163,7 +164,7 @@ export function RobotPanel(props: {
           className="text-xs font-bold tracking-wide px-3 py-2 rounded-lg"
           style={{ color: style.color, background: style.bg, border: `1px solid ${style.border}` }}
         >
-          {STATUS_LABEL[status]}
+          {props.stopping ? 'PARANDO...' : STATUS_LABEL[status]}
         </div>
       </div>
 
@@ -181,11 +182,11 @@ export function RobotPanel(props: {
         )}
         {working && (
           <>
-            <button type="button" className={btnGhost} style={{ borderColor: 'var(--code-border)' }} onClick={props.onPause}>
+            <button type="button" className={btnGhost} style={{ borderColor: 'var(--code-border)' }} onClick={props.onPause} disabled={props.stopping}>
               Pausar
             </button>
-            <button type="button" className={btnDanger} style={{ background: 'var(--code-danger)' }} onClick={props.onCancel}>
-              Cancelar
+            <button type="button" className={btnDanger} style={{ background: 'var(--code-danger)' }} onClick={props.onCancel} disabled={props.stopping}>
+              {props.stopping ? 'PARANDO...' : 'Parar'}
             </button>
           </>
         )}
@@ -194,8 +195,8 @@ export function RobotPanel(props: {
             <button type="button" className={btnPrimary} style={{ background: 'var(--code-orange)' }} onClick={props.onResume}>
               Retomar
             </button>
-            <button type="button" className={btnDanger} style={{ background: 'var(--code-danger)' }} onClick={props.onCancel}>
-              Cancelar
+            <button type="button" className={btnDanger} style={{ background: 'var(--code-danger)' }} onClick={props.onCancel} disabled={props.stopping}>
+              {props.stopping ? 'PARANDO...' : 'Parar'}
             </button>
           </>
         )}

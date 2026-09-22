@@ -75,7 +75,12 @@ export function MonitorOverview(props: {
         {ultimoResultado ? (
           <div className="mt-3 text-xs text-slate-400">
             Última busca · {ultimoResultado.encontrados} encontrados · {ultimoResultado.novos} novos ·{' '}
-            {ultimoResultado.duplicados} duplicados · Fontes: {ultimoResultado.fontes.join(', ') || '—'}
+            {ultimoResultado.duplicados} duplicados
+            {ultimoResultado.pessoasEncontradas != null
+              ? ` · Pessoas ${ultimoResultado.pessoasEncontradas} (WA ${ultimoResultado.pessoasComWhatsapp ?? 0} · tel ${ultimoResultado.pessoasComTelefone ?? 0} · sem contato ${ultimoResultado.pessoasSemContato ?? 0})`
+              : ''}
+            {' · Fontes: '}
+            {ultimoResultado.fontes.join(', ') || '—'}
           </div>
         ) : null}
       </div>

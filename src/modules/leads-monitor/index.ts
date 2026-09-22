@@ -81,9 +81,18 @@ export {
 
 export { useLeadsMonitor } from './hooks/useLeadsMonitor'
 export { runLeadPipeline, executarPesquisaMonitor } from './pipeline'
+export { runPersonDiscovery, runPersonDiscoveryForNewCompanies } from './person/personDiscoveryEngine'
+export {
+  registerEnrichmentProvider,
+  getEnrichmentProviders,
+  getActiveEnrichmentProviders,
+} from './enrichment/enrichmentRegistry'
+export { enrichExistingPersonLead } from './enrichment/enrichmentEngine'
+export { runEnrichmentQueue } from './enrichment/enrichmentQueue'
 export { normalizeFiltros, filtrosResumo } from './search/filters'
 export { runSearchEngine } from './search/SearchEngine'
-export { startIntelligentSearch, requestSearchCancel } from './search/startSearch'
+export { startIntelligentSearch, requestSearchCancel, stopSearchExecution } from './search/startSearch'
+export { PRODUTOS_MONITOR, produtoPorOperacao, produtoLabel, LIMITES_BUSCA_PRESETS } from './catalog/produtosMonitor'
 export {
   seedFontesCatalogo,
   updateFontePesquisa,
@@ -94,6 +103,9 @@ export { parseCsv, mapCsvRow } from './connectors/csvParse'
 export { savePendingCsv, saveFonteCsvText } from './connectors/csvImport.connector'
 export { enviarOportunidadeParaCrm } from './pipeline/sendToCrm'
 export { enviarPessoaParaCrm } from './pipeline/sendPersonToCrm'
+export type { PersonLead } from './types/personLead'
+export { PERSON_LEAD_EXPORT_COLUMNS, PERSON_FIELD_REQUEST_OPTIONS } from './types/personLead'
+export { toPersonLead, personLeadToNxErpContact } from './pipeline/personLead'
 export {
   downloadDelimited,
   downloadSpreadsheetMl,

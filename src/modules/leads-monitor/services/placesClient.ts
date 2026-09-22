@@ -189,17 +189,36 @@ export async function placesSearch(opts: {
   empresaId: string
   filtros: Record<string, unknown>
   limite?: number
+  signal?: AbortSignal
 }): Promise<{ query: string; places: PlacesCompany[]; returned: number; tempoMs: number }> {
-  const res = await fetch(getPlacesSearchUrl(), {
-    method: 'POST',
-    headers: await authHeaders(),
-    body: JSON.stringify({
-      empresaId: opts.empresaId,
-      filtros: opts.filtros,
-      limite: opts.limite || 100,
-      action: 'search',
-    }),
-  })
+  if (opts.signal?.aborted) {
+    const { SearchCancelledError } = await import('../search/searchCancel')
+    throw new SearchCancelledError()
+  }
+  let res: Response
+  try {
+    res = await fetch(getPlacesSearchUrl(), {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify({
+        empresaId: opts.empresaId,
+        filtros: opts.filtros,
+        limite: opts.limite || 100,
+        action: 'search',
+      }),
+      signal: opts.signal,
+    })
+  } catch (e: any) {
+    if (opts.signal?.aborted || e?.name === 'AbortError') {
+      const { SearchCancelledError } = await import('../search/searchCancel')
+      throw new SearchCancelledError()
+    }
+    throw e
+  }
+  if (opts.signal?.aborted) {
+    const { SearchCancelledError } = await import('../search/searchCancel')
+    throw new SearchCancelledError()
+  }
   const data = await res.json().catch(() => ({}))
   if (!res.ok || data.error) {
     const classified = classifyClientPlacesFailure(data, res.status)

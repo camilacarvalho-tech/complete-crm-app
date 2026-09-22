@@ -1,12 +1,14 @@
 import type { FiltrosPesquisa } from '../types'
 import {
-  SEGMENTOS_MONITOR,
+  GRUPOS_PRODUTO_CREDITO,
   aplicarCardSegmento,
+  aplicarFuncaoInss,
   aplicarProdutoCredito,
   cardIdFromFiltros,
   defDoCard,
   funcoesDoContexto,
   keywordsSugeridas,
+  segmentosDaBuscaManual,
   type SegmentoMonitorId,
 } from '../catalog/segmentosMonitor'
 
@@ -68,8 +70,8 @@ export function SegmentContextPanel({
           Escolha o contexto. Mercados e Empresas genéricos não são oferecidos; registros antigos permanecem.
         </p>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
-        {SEGMENTOS_MONITOR.map((s) => {
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+        {segmentosDaBuscaManual().map((s) => {
           const active = cardId === s.id
           return (
             <button
@@ -107,7 +109,7 @@ export function SegmentContextPanel({
 
           {def.opcoes && cardId !== 'credito' && (
             <div className="flex flex-wrap gap-2">
-              {def.opcoes.map((o) => (
+              {def.opcoes.filter((o) => !o.hidden).map((o) => (
                 <Chip
                   key={o.id}
                   id={o.id}
@@ -118,6 +120,9 @@ export function SegmentContextPanel({
                     onChange({
                       ...filtros,
                       contextosSegmento: nextCtx,
+                      subsegment: nextCtx[0] || '',
+                      segmento: cardId === 'clinicas' ? 'clinicas' : filtros.segmento,
+                      tipoBusca: cardId === 'clinicas' ? 'empresa' : filtros.tipoBusca,
                       palavraChave: keywordsSugeridas(def, nextCtx) || filtros.palavraChave,
                     })
                   }}
@@ -126,21 +131,50 @@ export function SegmentContextPanel({
             </div>
           )}
 
+          {cardId === 'clinicas' ? (
+            <label className="flex items-center gap-2 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={filtros.campaignContext === 'MENTORIA_CLINICAS'}
+                onChange={(e) =>
+                  onChange({
+                    ...filtros,
+                    campaignContext: e.target.checked ? 'MENTORIA_CLINICAS' : '',
+                    tipoBusca: 'empresa',
+                    segmento: 'clinicas',
+                  })
+                }
+              />
+              Buscar clínicas para mentoria
+            </label>
+          ) : null}
+
           {cardId === 'credito' && def.opcoes && (
-            <div className="flex flex-wrap gap-2">
-              {def.opcoes.map((o) => (
-                <Chip
-                  key={o.id}
-                  id={o.id}
-                  label={o.label}
-                  checked={produtos.includes(o.id)}
-                  onToggle={(id, next) => onChange(aplicarProdutoCredito(filtros, id, next))}
-                />
-              ))}
+            <div className="space-y-3">
+              {GRUPOS_PRODUTO_CREDITO.map((grupo) => {
+                const ops = (def.opcoes || []).filter((o) => grupo.opcaoIds.includes(o.id))
+                if (!ops.length) return null
+                return (
+                  <div key={grupo.label}>
+                    <div className="text-[10px] font-semibold tracking-wide text-slate-400 mb-1.5">{grupo.label}</div>
+                    <div className="flex flex-wrap gap-2">
+                      {ops.map((o) => (
+                        <Chip
+                          key={o.id}
+                          id={o.id}
+                          label={o.label}
+                          checked={produtos.includes(o.id)}
+                          onToggle={(id, next) => onChange(aplicarProdutoCredito(filtros, id, next))}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
 
-          {funcoes.length > 0 && (
+          {funcoes.length > 0 && cardId !== 'clinicas' && (
             <div>
               <div className="text-xs text-slate-400 mb-2">Funções / contexto específico</div>
               <div className="flex flex-wrap gap-2">
@@ -151,6 +185,10 @@ export function SegmentContextPanel({
                     label={f.label}
                     checked={cargos.includes(f.id) || contextos.includes(f.id)}
                     onToggle={(id) => {
+                      if (cardId === 'credito' && produtos.includes('INSS')) {
+                        onChange(aplicarFuncaoInss(filtros, id))
+                        return
+                      }
                       const inCargos = cargos.includes(id)
                       onChange({
                         ...filtros,

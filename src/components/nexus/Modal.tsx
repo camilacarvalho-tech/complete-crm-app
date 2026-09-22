@@ -11,6 +11,7 @@ export function NexusModal({
   saveLabel = 'Salvar',
   cancelLabel = 'Cancelar',
   saving = false,
+  saveDisabled = false,
   closeOnBackdrop = true,
 }: {
   title: string
@@ -20,6 +21,7 @@ export function NexusModal({
   saveLabel?: string
   cancelLabel?: string
   saving?: boolean
+  saveDisabled?: boolean
   closeOnBackdrop?: boolean
 }) {
   useEscLayer(!saving, onClose)
@@ -59,7 +61,7 @@ export function NexusModal({
         <div className="flex justify-end gap-2 px-5 py-3 border-t shrink-0" style={{ borderColor: 'var(--code-border)', background: 'var(--code-surface)' }}>
           <GhostButton type="button" onClick={onClose} disabled={saving}>{cancelLabel}</GhostButton>
           {onSave && (
-            <PrimaryButton type="button" onClick={onSave} disabled={saving}>
+            <PrimaryButton type="button" onClick={onSave} disabled={saving || saveDisabled}>
               {saving ? 'Salvando...' : saveLabel}
             </PrimaryButton>
           )}

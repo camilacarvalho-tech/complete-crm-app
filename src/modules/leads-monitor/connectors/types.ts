@@ -55,6 +55,8 @@ export interface ConnectorFetchContext {
   preferredApiVersion?: number
   /** Secrets/credenciais configurados para o conector (apiKey, authToken, etc) */
   secrets?: Record<string, string>
+  signal?: AbortSignal
+  cancelIds?: { searchRunId?: string | null; processRunId?: string | null }
 }
 
 /**

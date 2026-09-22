@@ -25,9 +25,18 @@ import { LeadResults, type FiltroLista } from '../modules/leads-monitor/componen
 import { QueuePanel } from '../modules/leads-monitor/components/QueuePanel'
 import { LogsPanel } from '../modules/leads-monitor/components/LogsPanel'
 import { downloadBaseCompleta } from '../modules/leads-monitor/pipeline/exportWorkbook'
+import {
+  exportarCampanhaCsv,
+  exportarCampanhaExcel,
+  salvarCampanhaNoCrm,
+  sincronizarCampanhaNxErp,
+} from '../modules/leads-monitor/services/campaignWorkspace'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
 import { FontesPesquisaGovernanca } from '../modules/leads-monitor/components/FontesPesquisaGovernanca'
+import { FontesEnrichmentPanel } from '../modules/leads-monitor/components/FontesEnrichmentPanel'
+import { FontesHub } from '../modules/leads-monitor/components/FontesHub'
+import { PeoplePanel } from '../modules/leads-monitor/components/PeoplePanel'
 import { LgpdOperacaoPanel } from '../modules/leads-monitor/components/LgpdOperacaoPanel'
 import { LgpdGovernancaBlock } from '../modules/leads-monitor/components/LgpdGovernancaBlock'
 import { NexusModal } from '../components/nexus/Modal'
@@ -135,6 +144,7 @@ export default function LeadsMonitor() {
   const [segundosAuto, setSegundosAuto] = useState(Math.round(AUTO_REFRESH_MS / 1000))
   const [cepMsg, setCepMsg] = useState('')
   const [lgpdOp, setLgpdOp] = useState<OportunidadeMonitor | null>(null)
+  const [parando, setParando] = useState(false)
 
   const pesquisasAtivas = pesquisas.filter((p) => p.ativa).length
 
@@ -238,7 +248,10 @@ export default function LeadsMonitor() {
     }
   }
 
-  const searchRunning = activeSearchRun?.status === 'running' || activeSearchRun?.status === 'queued'
+  const searchLive =
+    activeSearchRun?.status === 'running' ||
+    (Boolean(activeSearchRun?.id) && activeSearchRun?.status === 'queued')
+  const searchRunning = Boolean(searchLive)
   const robotLogs = [...(auditItems || []), ...(logItems || [])] as Array<Record<string, unknown> & { id: string }>
   const robotsAtivos = activeProcessRun?.status === 'processando' ? 1 : 0
 
@@ -309,10 +322,19 @@ export default function LeadsMonitor() {
         run={activeProcessRun}
         logs={robotLogs}
         starting={buscando}
+        stopping={parando}
         onStart={() => void onBuscarManual()}
         onPause={() => activeProcessRun && void controlarProcesso(activeProcessRun, 'pausado')}
         onResume={() => activeProcessRun && void controlarProcesso(activeProcessRun, 'processando')}
-        onCancel={() => activeProcessRun && void controlarProcesso(activeProcessRun, 'cancelado')}
+        onCancel={async () => {
+          if (!activeProcessRun) return
+          setParando(true)
+          try {
+            await controlarProcesso(activeProcessRun, 'cancelado')
+          } finally {
+            setParando(false)
+          }
+        }}
         onRetryErrors={() => activeProcessRun && void retentarErros(activeProcessRun)}
       />
 
@@ -333,6 +355,7 @@ export default function LeadsMonitor() {
       {view === 'campanhas' && (
         <CampaignsPanel
           pesquisas={pesquisas}
+          oportunidades={oportunidades}
           buscando={buscando}
           onNova={() => {
             setNomePesquisa('')
@@ -350,6 +373,48 @@ export default function LeadsMonitor() {
           onRun={(p) => void onRodarCampanha(p)}
           onRemove={(p) => removePesquisa(p.id, p).then(() => toast.info('Campanha removida'))}
           onUpdateFontes={(p, fontesHabilitadas) => void updatePesquisa(p.id, { fontesHabilitadas }, p)}
+          onSalvarCrm={async (p) => {
+            if (!empresaId) return
+            try {
+              const r = await salvarCampanhaNoCrm({ empresaId, pesquisa: p, oportunidades })
+              toast.success(
+                'Campanha no CRM',
+                `Encontrados ${r.counts.encontrados} · WhatsApp ${r.counts.comWhatsApp} · ERP: ${r.erpSyncStatus}`
+              )
+            } catch (e: any) {
+              toast.error('Não foi possível salvar a campanha', e?.message)
+            }
+          }}
+          onExportExcel={(p) =>
+            exportarCampanhaExcel(
+              oportunidades.filter((o) => !p.id || o.pesquisaId === p.id || !o.pesquisaId),
+              p,
+              peopleItems
+            )
+          }
+          onExportCsv={(p) =>
+            exportarCampanhaCsv(
+              oportunidades.filter((o) => !p.id || o.pesquisaId === p.id || !o.pesquisaId),
+              p,
+              peopleItems
+            )
+          }
+          onSyncErp={async (p) => {
+            if (!empresaId) return
+            try {
+              const saved = await salvarCampanhaNoCrm({ empresaId, pesquisa: p, oportunidades })
+              const sync = await sincronizarCampanhaNxErp({
+                empresaId,
+                campaignDocId: saved.campaignId,
+                pesquisa: p,
+                oportunidades,
+                people: peopleItems,
+              })
+              toast.info('NX ERP', sync.message)
+            } catch (e: any) {
+              toast.error('Falha na sincronização ERP', e?.message)
+            }
+          }}
         />
       )}
 
@@ -363,13 +428,14 @@ export default function LeadsMonitor() {
           onCepMsg={setCepMsg}
           buscando={buscando}
           searchRunning={searchRunning}
-          progresso={activeSearchRun?.progresso}
+          progresso={searchRunning ? activeSearchRun?.progresso : undefined}
           erro={erro}
           nomeCampanha={nomePesquisa}
           onNomeCampanha={setNomePesquisa}
           onBuscar={() => void onBuscarManual()}
           onCancelar={() => void onCancelar()}
           onSalvarCampanha={() => void onSalvar()}
+          ultimoResultado={ultimoResultado}
         />
       )}
 
@@ -403,7 +469,9 @@ export default function LeadsMonitor() {
               ViaCEP são referência geográfica, não captura de leads.
             </p>
           </div>
+          <FontesHub />
           <FontesPesquisaGovernanca fontes={(fontesItems || []) as FontePesquisa[]} />
+          <FontesEnrichmentPanel />
           <IntegrationsAdminPanel
             empresaId={empresaId}
             healthItems={healthItems || []}
@@ -449,69 +517,26 @@ export default function LeadsMonitor() {
       )}
 
       {view === 'pessoas' && (
-        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-x-auto">
-          <table className="min-w-full text-xs">
-            <thead className="bg-slate-50 dark:bg-slate-900/40 text-slate-500">
-              <tr>
-                {['Nome', 'Empresa', 'CNPJ', 'Cargo', 'Relação', 'Telefone', 'WhatsApp', 'LinkedIn', 'Status', 'Ações'].map((h) => (
-                  <th key={h} className="text-left px-3 py-2">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {peopleItems.map((p) => {
-                const company = oportunidades.find((o) => o.id === p.opportunityId)
-                return (
-                  <tr key={p.id} className="border-t border-slate-100 dark:border-slate-700">
-                    <td className="px-3 py-2">{p.personName}</td>
-                    <td className="px-3 py-2">{p.companyName}</td>
-                    <td className="px-3 py-2">{p.companyCnpj}</td>
-                    <td className="px-3 py-2">{p.jobTitle}</td>
-                    <td className="px-3 py-2">{p.relationToCompany}</td>
-                    <td className="px-3 py-2">{p.phone}</td>
-                    <td className="px-3 py-2">{p.whatsapp}</td>
-                    <td className="px-3 py-2 truncate max-w-[140px]">{p.linkedinUrl}</td>
-                    <td className="px-3 py-2">{p.status}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex gap-2">
-                        {company && (
-                          <button type="button" className="underline" onClick={() => void onAprovar(company)}>
-                            Empresa→CRM
-                          </button>
-                        )}
-                        {company && (
-                          <button
-                            type="button"
-                            className="underline"
-                            onClick={async () => {
-                              try {
-                                const r = await adicionarPessoaAoCrm(p, company)
-                                toast.success(r.jaExistia ? 'Já existia no CRM' : 'Pessoa enviada ao CRM')
-                              } catch (e: any) {
-                                toast.error('Falha CRM', e?.message)
-                              }
-                            }}
-                          >
-                            CRM
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-              {!peopleItems.length && (
-                <tr>
-                  <td colSpan={10} className="px-3 py-6 text-center text-slate-400">
-                    Nenhuma pessoa publicamente associada foi encontrada nas fontes consultadas.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <PeoplePanel
+          people={peopleItems}
+          companies={oportunidades}
+          empresaId={empresaId || ''}
+          actor={{ usuarioId: usuario?.id, usuarioNome: usuario?.nome }}
+          onAprovarEmpresa={(company) => void onAprovar(company)}
+          onAddCrm={async (p, company) => {
+            try {
+              const r = await adicionarPessoaAoCrm(p, company)
+              toast.success(r.jaExistia ? 'Já existia no CRM' : 'Pessoa enviada ao CRM')
+            } catch (e: any) {
+              toast.error('Falha CRM', e?.message)
+            }
+          }}
+          onToast={(kind, title, msg) => {
+            if (kind === 'success') toast.success(title, msg)
+            else if (kind === 'error') toast.error(title, msg)
+            else toast.info(title, msg)
+          }}
+        />
       )}
 
       {jobs?.length > 0 && view === 'visao' ? (

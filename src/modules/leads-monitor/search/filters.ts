@@ -27,7 +27,7 @@ export function normalizeFiltros(input?: Partial<FiltrosPesquisa>): FiltrosPesqu
     googleMapsQuery: clean(input?.googleMapsQuery),
     scoreMinimo: Number.isFinite(scoreMinimo) && scoreMinimo > 0 ? scoreMinimo : 70,
     temperaturaMinima: input?.temperaturaMinima || '',
-    maxResultsPerCycle: Number.isFinite(maxResults) && maxResults > 0 ? Math.min(100, maxResults) : 100,
+    maxResultsPerCycle: Number.isFinite(maxResults) && maxResults > 0 ? Math.min(5000, maxResults) : 100,
     faixaFuncionarios: input?.faixaFuncionarios || 'qualquer',
     pais: clean(input?.pais) || 'Brasil',
     abrangenciaGeografica: input?.abrangenciaGeografica,
@@ -51,8 +51,23 @@ export function normalizeFiltros(input?: Partial<FiltrosPesquisa>): FiltrosPesqu
     contextosSegmento: Array.isArray(input?.contextosSegmento)
       ? input.contextosSegmento.map((id) => String(id).trim()).filter(Boolean)
       : [],
+    personFieldsRequested: Array.isArray(input?.personFieldsRequested)
+      ? input.personFieldsRequested.map((id) => String(id).trim()).filter(Boolean)
+      : [],
+    contactFieldsRequested: Array.isArray(input?.contactFieldsRequested)
+      ? input.contactFieldsRequested.map((id) => String(id).trim()).filter(Boolean)
+      : [],
+    tipoBusca:
+      input?.tipoBusca === 'pessoa' || input?.tipoBusca === 'empresa_funcionarios' || input?.tipoBusca === 'empresa'
+        ? input.tipoBusca
+        : 'empresa',
+    personSourcesHabilitadas: Array.isArray(input?.personSourcesHabilitadas)
+      ? input.personSourcesHabilitadas.map((id) => String(id).trim()).filter(Boolean)
+      : [],
     segmentoCustomNome: clean(input?.segmentoCustomNome),
     segmentoCustomCategoria: clean(input?.segmentoCustomCategoria),
+    campaignContext: clean(input?.campaignContext),
+    subsegment: clean(input?.subsegment),
   }
 }
 

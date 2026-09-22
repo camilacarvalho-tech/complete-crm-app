@@ -54,12 +54,22 @@ export async function advanceGeoQueue(opts: {
   pesquisaId?: string | null
   filtros: FiltrosPesquisa
   cityError?: string | null
+  signal?: AbortSignal
 }): Promise<{ done: boolean; nextCidade?: string; nextEstado?: string }> {
   const ref = doc(db, 'empresas', opts.empresaId, COL_PROCESS_RUNS, opts.processRunId)
   const snap = await getDoc(ref)
   if (!snap.exists()) return { done: true }
   const run = { id: snap.id, ...snap.data() } as ProcessRun
+  const { isSearchHardCancelled, readExecutionFlags } = await import('./searchCancel')
   if (run.status === 'pausado' || run.status === 'cancelado') return { done: true }
+  if (isSearchHardCancelled({ processRunId: opts.processRunId, searchRunId: opts.searchRunId })) {
+    return { done: true }
+  }
+  const live = await readExecutionFlags(opts.empresaId, {
+    processRunId: opts.processRunId,
+    searchRunId: opts.searchRunId,
+  })
+  if (live.cancelled || live.paused) return { done: true }
   const abrangencia = run.abrangenciaGeografica || resolveAbrangencia(opts.filtros)
 
   let ufIndex = run.geoUfIndex || 0
@@ -116,13 +126,25 @@ export async function advanceGeoQueue(opts: {
       )
       return { done: true }
     }
-    cities = await fetchMunicipiosUf(ufs[ufIndex])
+    cities = await fetchMunicipiosUf(ufs[ufIndex], opts.signal)
+    const afterUf = await readExecutionFlags(opts.empresaId, {
+      processRunId: opts.processRunId,
+      searchRunId: opts.searchRunId,
+    })
+    if (afterUf.cancelled || afterUf.paused) return { done: true }
     cityIndex = 0
     cidadesTotal += cities.length
   }
 
   const nextCidade = cities[cityIndex]
   const nextEstado = ufs[ufIndex]
+  const beforeEnqueue = await readExecutionFlags(opts.empresaId, {
+    processRunId: opts.processRunId,
+    searchRunId: opts.searchRunId,
+  })
+  if (beforeEnqueue.cancelled || beforeEnqueue.paused || isSearchHardCancelled({ processRunId: opts.processRunId, searchRunId: opts.searchRunId })) {
+    return { done: true }
+  }
   await updateDoc(
     ref,
     omitUndefinedForFirestore({
@@ -146,6 +168,13 @@ export async function advanceGeoQueue(opts: {
     estado: nextEstado,
     abrangenciaGeografica: (run.abrangenciaGeografica as FiltrosPesquisa['abrangenciaGeografica']) || resolveAbrangencia(opts.filtros),
     cidadesSelecionadas: cities,
+  }
+  const stillGo = await readExecutionFlags(opts.empresaId, {
+    processRunId: opts.processRunId,
+    searchRunId: opts.searchRunId,
+  })
+  if (stillGo.cancelled || stillGo.paused || isSearchHardCancelled({ processRunId: opts.processRunId, searchRunId: opts.searchRunId })) {
+    return { done: true }
   }
   await enqueueJob({
     empresaId: opts.empresaId,

@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { CSV_TARGET_FIELDS, type CsvTargetField } from '../types/processRun'
-import { applyMapping, parseCsvTable, previewStats, suggestMapping } from '../pipeline/csvImportMap'
+import { applyMapping, inferMappingFromTable, previewStats } from '../pipeline/csvImportMap'
+import { parseImportedWorkbook } from '../pipeline/xlsxImport'
+import { getCallableEnrichmentProviders } from '../enrichment/enrichmentRegistry'
 
 export function ImportBasePanel(props: {
   busy?: boolean
@@ -9,6 +11,7 @@ export function ImportBasePanel(props: {
     arquivoNome: string
     mapping: Record<string, CsvTargetField | ''>
     rows: Record<string, string>[]
+    autoEnrich?: boolean
   }) => Promise<void>
 }) {
   const [fileName, setFileName] = useState('')
@@ -17,36 +20,53 @@ export function ImportBasePanel(props: {
   const [mapping, setMapping] = useState<Record<string, CsvTargetField | ''>>({})
   const [nome, setNome] = useState('')
   const [notice, setNotice] = useState('')
+  const [autoEnrich, setAutoEnrich] = useState(false)
+  const callable = getCallableEnrichmentProviders()
 
   const stats = useMemo(() => previewStats(rows, mapping), [rows, mapping])
 
-  const onFile = async (file: File) => {
-    setFileName(file.name)
-    setNome(file.name.replace(/\.[^.]+$/, ''))
-    if (/\.xlsx?$/i.test(file.name) && !/\.csv$/i.test(file.name)) {
-      setNotice('XLSX nativo será suportado em seguida. Exporte CSV por enquanto (UTF-8, ; ou ,).')
-    } else {
-      setNotice('')
+  const onFiles = async (list: FileList | File[]) => {
+    const files = Array.from(list)
+    if (!files.length) return
+    setFileName(files.map((f) => f.name).join(', '))
+    setNome(files[0].name.replace(/\.[^.]+$/, ''))
+    setNotice('')
+    let accHeaders: string[] = []
+    let accRows: Record<string, string>[] = []
+    const notes: string[] = []
+    for (const file of files) {
+      try {
+        const table = await parseImportedWorkbook(file)
+        if (!table.headers.length) {
+          notes.push(`${file.name}: sem abas/linhas.`)
+          continue
+        }
+        accHeaders = Array.from(new Set([...accHeaders, ...table.headers]))
+        accRows = [...accRows, ...table.rows]
+      } catch (e) {
+        notes.push(`${file.name}: ${e instanceof Error ? e.message : 'falha ao ler'}`)
+      }
     }
-    const text = await file.text()
-    const table = parseCsvTable(text)
-    setHeaders(table.headers)
-    setRows(table.rows)
-    setMapping(suggestMapping(table.headers))
+    setHeaders(accHeaders)
+    setRows(accRows)
+    setMapping(inferMappingFromTable(accHeaders, accRows))
+    if (notes.length) setNotice(notes.join(' '))
   }
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 space-y-4">
       <div>
         <h2 className="text-lg font-bold text-slate-800 dark:text-white">Importar base</h2>
-        <p className="text-sm text-slate-500">CSV com pessoas e/ou empresas. Mapeie as colunas antes de processar.</p>
+        <p className="text-sm text-slate-500">
+          CSV ou XLSX. Uma ou várias planilhas. A planilha é origem — o registro operacional é o PERSON_LEAD.
+        </p>
       </div>
       <input
         type="file"
-        accept=".csv,text/csv,.txt,.xlsx,.xls"
+        multiple
+        accept=".csv,text/csv,.txt,.xlsx,.xls,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.oasis.opendocument.spreadsheet"
         onChange={(e) => {
-          const f = e.target.files?.[0]
-          if (f) void onFile(f)
+          if (e.target.files?.length) void onFiles(e.target.files)
         }}
       />
       {notice && <p className="text-xs text-amber-700">{notice}</p>}
@@ -115,6 +135,15 @@ export function ImportBasePanel(props: {
             placeholder="Nome da base"
             className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-sm w-full max-w-md"
           />
+          <label className="flex items-center gap-2 text-xs text-slate-300">
+            <input type="checkbox" checked={autoEnrich} onChange={(e) => setAutoEnrich(e.target.checked)} />
+            Enriquecer automaticamente após importar
+          </label>
+          <p className="text-[11px] text-amber-400">
+            {callable.length
+              ? 'A fila de enriquecimento só consulta providers configurados.'
+              : 'Nenhuma fonte de enriquecimento configurada.'}
+          </p>
           <button
             type="button"
             disabled={props.busy || !rows.length}
@@ -124,11 +153,12 @@ export function ImportBasePanel(props: {
                 arquivoNome: fileName,
                 mapping,
                 rows: rows.map((r) => applyMapping(r, mapping)),
+                autoEnrich,
               })
             }
             className="px-4 py-2.5 bg-nexus-orange text-white rounded-lg text-sm font-semibold disabled:opacity-60"
           >
-            Iniciar processamento
+            {autoEnrich ? 'Importar e enriquecer base' : 'Iniciar processamento'}
           </button>
         </>
       )}

@@ -1,5 +1,5 @@
 import { Play, RefreshCw, Save } from 'lucide-react'
-import type { FiltrosPesquisa, SearchRunProgresso } from '../types'
+import type { FiltrosPesquisa, MonitorRunResult, SearchRunProgresso } from '../types'
 import { SearchFilters } from './SearchFilters'
 
 export function ManualSearch(props: {
@@ -16,6 +16,7 @@ export function ManualSearch(props: {
   onBuscar: () => void
   onCancelar: () => void
   onSalvarCampanha: () => void
+  ultimoResultado?: MonitorRunResult | null
 }) {
   return (
     <div
@@ -34,16 +35,37 @@ export function ManualSearch(props: {
         cepMsg={props.cepMsg}
         onCepMsg={props.onCepMsg}
       />
-      {props.searchRunning && props.progresso && (
+      {props.ultimoResultado ? (
+        <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
+          <span className="rounded-md border border-slate-600 px-2 py-1">
+            Pessoas encontradas {props.ultimoResultado.pessoasEncontradas ?? 0}
+          </span>
+          <span className="rounded-md border border-slate-600 px-2 py-1">
+            Pessoas com WhatsApp {props.ultimoResultado.pessoasComWhatsapp ?? 0}
+          </span>
+          <span className="rounded-md border border-slate-600 px-2 py-1">
+            Pessoas com telefone {props.ultimoResultado.pessoasComTelefone ?? 0}
+          </span>
+          <span className="rounded-md border border-slate-600 px-2 py-1">
+            Pessoas sem contato {props.ultimoResultado.pessoasSemContato ?? 0}
+          </span>
+          <span className="rounded-md border border-slate-600 px-2 py-1">
+            Empresas encontradas {props.ultimoResultado.empresasEncontradas ?? props.ultimoResultado.novos}
+          </span>
+        </div>
+      ) : null}
+      {props.searchRunning ? (
         <div className="rounded-xl border border-nexus-orange/30 px-4 py-3 space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className="font-semibold text-slate-200">Busca em andamento · {props.progresso.etapa}</span>
+            <span className="font-semibold text-slate-200">
+              Busca em andamento · {props.progresso?.etapa || 'Processando'}
+            </span>
             <span className="tabular-nums text-slate-500">
-              {props.progresso.percent}% · {props.progresso.encontrados} encontrados
+              {Number(props.progresso?.percent || 0)}% · {Number(props.progresso?.encontrados || 0)} encontrados
             </span>
           </div>
           <div className="h-2 rounded-full bg-slate-700 overflow-hidden">
-            <div className="h-full bg-nexus-orange" style={{ width: `${Math.min(100, props.progresso.percent)}%` }} />
+            <div className="h-full bg-nexus-orange" style={{ width: `${Math.min(100, Number(props.progresso?.percent || 0))}%` }} />
           </div>
           <div className="flex justify-end">
             <button type="button" onClick={props.onCancelar} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-600 text-white">
@@ -51,7 +73,7 @@ export function ManualSearch(props: {
             </button>
           </div>
         </div>
-      )}
+      ) : null}
       <div className="flex flex-wrap gap-2 items-center">
         <button
           type="button"

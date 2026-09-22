@@ -58,6 +58,7 @@ export interface ProcessRun {
   filtrosSnapshot?: Record<string, unknown>
   mapping?: Record<string, string>
   arquivoNome?: string
+  autoEnrich?: boolean
   lastError?: string | null
   usuarioId?: string | null
   usuarioNome?: string | null
@@ -98,6 +99,10 @@ export const CSV_TARGET_FIELDS = [
   'cidade',
   'uf',
   'endereco',
+  'numero',
+  'complemento',
+  'bairro',
+  'cep',
   'segmento',
   'site',
   'observacoes',
@@ -110,6 +115,8 @@ export const CSV_TARGET_FIELDS = [
   'dataInicioBeneficio',
   'banco',
   'produto',
+  'operacao',
+  'vinculo',
   'beneficiosConsignaveis',
 ] as const
 

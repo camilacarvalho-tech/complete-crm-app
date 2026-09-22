@@ -126,6 +126,9 @@ export function getGoogleAdsProvider(): ChannelProvider {
   return unconfiguredChannel('Google Ads')
 }
 
+export { getNxErpCampaignAdapter, UnconfiguredNxErpCampaignAdapter } from './nxErpCampaign'
+export { personLeadToNxErpContact } from '../modules/leads-monitor/pipeline/personLead'
+
 export async function collectProviderHealth() {
   const [bank, fiscal, wa, voip, ig, msg, sms, email, meta, gads] = await Promise.all([
     getBankProvider().healthCheck(),

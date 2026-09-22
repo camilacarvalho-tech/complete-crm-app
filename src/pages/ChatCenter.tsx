@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import { useAuth } from '../contexts/AuthContext'
@@ -9,6 +9,8 @@ import { useToast } from '../components/ui/Toast'
 import { writeAudit } from '../lib/audit'
 import { DOCUMENT_PASTAS, inferCategoriaDocumento } from '../lib/documentCategoria'
 import { origemMarca, origemPrincipalDe, origemTexto } from '../lib/origemLead'
+import { produtoLabel } from '../modules/leads-monitor/catalog/produtosMonitor'
+import { drainErpInbound } from '../lib/inboundErpMessage'
 import { getWhatsAppProvider } from '../integrations/providers'
 import { labelPt } from '../lib/uiPt'
 import { ClienteLink } from '../components/nexus/ClienteLink'
@@ -86,6 +88,12 @@ export default function ChatCenter() {
   const [waReady, setWaReady] = useState<boolean | null>(null)
   const [painel, setPainel] = useState<'lista' | 'chat' | 'ficha'>(params.get('conversa') ? 'chat' : 'lista')
   const selectedId = params.get('conversa')
+
+  useEffect(() => {
+    const eid = usuario?.empresaId
+    if (!eid) return
+    void drainErpInbound(eid)
+  }, [usuario?.empresaId])
 
   const externas = useMemo(() => conversas.items.filter((c) => c.canal !== 'interno'), [conversas.items])
 
@@ -419,6 +427,11 @@ export default function ChatCenter() {
               <p className="text-[11px] truncate" style={{ color: 'var(--code-muted)' }}>{String(c.lastMessage || 'Sem mensagens')}</p>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className="text-[10px] font-semibold" style={{ color: mk.cor }}>{mk.emoji} {origemTexto(oc)}</span>
+                {(cli?.produto || cli?.modalidade || c.produto) ? (
+                  <span className="text-[10px] font-semibold" style={{ color: 'var(--code-orange)' }}>
+                    {produtoLabel(String(cli?.produto || cli?.modalidade || c.produto || ''))}
+                  </span>
+                ) : null}
                 {unread > 0 && <span className="ml-auto text-[10px] px-1.5 rounded-full text-white" style={{ background: 'var(--code-orange)' }}>{unread}</span>}
               </div>
               <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>{String(cli?.campanhaNome || cli?.campanha || c.campanhaNome || '—')} · {String(c.assignedTo || 'sem responsável')}</p>
@@ -441,7 +454,16 @@ export default function ChatCenter() {
                   <p className="font-bold text-sm">{cliente?.nome || selected.titulo}</p>
                 </div>
                 <p className="text-[11px]" style={{ color: 'var(--code-muted)' }}>📱 {String(cliente?.whatsapp || cliente?.telefone || '—')} · {labelPt(String(selected.status))} · 👤 {String(selected.assignedTo || cliente?.responsavel || '—')}</p>
+                <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>
+                  Robô: {String((selected as { robotState?: string }).robotState || 'NEW')}
+                  {(selected as { robotPaused?: boolean }).robotPaused ? ' · pausado (humano)' : ' · preparado (não dispara sem WhatsApp conectado)'}
+                </p>
                 <p className="text-[11px] font-semibold" style={{ color: marca.cor }}>{marca.emoji} {origemTexto(origemCode)}</p>
+                {(cliente?.produto || cliente?.modalidade || selected.produto) && (
+                  <p className="text-[11px] font-semibold" style={{ color: 'var(--code-orange)' }}>
+                    {produtoLabel(String(cliente?.produto || cliente?.modalidade || selected.produto || selected.operacao || ''))}
+                  </p>
+                )}
                 {(cliente?.campanhaNome || cliente?.campanha) && <p className="text-[11px]">🎯 {String(cliente.campanhaNome || cliente.campanha)}</p>}
                 {(cliente?.fonte || cliente?.fontePesquisa) && <p className="text-[11px]">🔎 {String(cliente.fonte || cliente.fontePesquisa)}</p>}
                 <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>Entrada {cliente?.dataEntrada || '—'} {cliente?.horaEntrada || ''}</p>

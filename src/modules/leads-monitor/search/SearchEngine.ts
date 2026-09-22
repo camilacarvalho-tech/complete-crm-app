@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { addDoc, collection, doc, getDoc, runTransaction, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { db } from '../../../firebase'
 import { COL_OPORTUNIDADES, COL_PROCESS_RUNS, COL_SEARCH_RUNS } from '../constants'
 import { runLeadPipeline } from '../pipeline'
@@ -11,6 +11,59 @@ import type { FiltrosPesquisa, MonitorRunResult } from '../types'
 import { needsGeoQueue, resolveAbrangencia } from './geoCoverage'
 import { advanceGeoQueue } from './geoAdvance'
 import type { NormalizedLead } from '../connectors/types'
+import {
+  beginSearchAbort,
+  isSearchCancelledError,
+  isSearchHardCancelled,
+  readExecutionFlags,
+  throwIfSearchCancelled,
+  type SearchCancelIds,
+} from './searchCancel'
+
+const EMPTY_CANCELLED: MonitorRunResult = {
+  encontrados: 0,
+  novos: 0,
+  duplicados: 0,
+  fontes: [],
+  enriquecidos: 0,
+  rejeitados: 0,
+  scoreMedio: 0,
+  quentes: 0,
+  muitoQuentes: 0,
+  tempoMs: 0,
+  erros: ['cancelado'],
+}
+
+async function markSearchRunRunningIfActive(opts: {
+  empresaId: string
+  searchRunId: string
+  jobId?: string
+  filtros: FiltrosPesquisa
+  fontesTotal: number
+}): Promise<boolean> {
+  const runRef = doc(db, 'empresas', opts.empresaId, COL_SEARCH_RUNS, opts.searchRunId)
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(runRef)
+    const st = String(snap.data()?.status || '')
+    if (st === 'cancelled' || st === 'paused') return false
+    tx.update(runRef, {
+      status: 'running',
+      jobId: opts.jobId || null,
+      atualizadoEm: serverTimestamp(),
+      progresso: {
+        percent: 10,
+        etapa: opts.filtros.cidade ? `Buscando ${opts.filtros.cidade}` : 'Processando fontes',
+        fontesConcluidas: 0,
+        fontesTotal: opts.fontesTotal,
+        encontrados: 0,
+        novos: 0,
+        duplicados: 0,
+        tempoMs: 0,
+      },
+    })
+    return true
+  })
+}
 
 async function runCnpjEnrichment(empresaId: string, cnpj: string, filtros: FiltrosPesquisa): Promise<MonitorRunResult> {
   const formatted = formatCnpj(cnpj) || cnpj
@@ -79,26 +132,26 @@ export async function runSearchEngine(opts: {
   pesquisaId?: string
   llmBudget?: number
   processRunId?: string
+  signal?: AbortSignal
 }): Promise<MonitorRunResult> {
+  const ids: SearchCancelIds = { searchRunId: opts.searchRunId, processRunId: opts.processRunId }
   const runRef = doc(db, 'empresas', opts.empresaId, COL_SEARCH_RUNS, opts.searchRunId)
-  await updateDoc(runRef, {
-    status: 'running',
-    jobId: opts.jobId || null,
-    atualizadoEm: serverTimestamp(),
-    progresso: {
-      percent: 10,
-      etapa: opts.filtros.cidade ? `Buscando ${opts.filtros.cidade}` : 'Processando fontes',
-      fontesConcluidas: 0,
-      fontesTotal: opts.fontesIds?.length || 0,
-      encontrados: 0,
-      novos: 0,
-      duplicados: 0,
-      tempoMs: 0,
-    },
+  const flags = await readExecutionFlags(opts.empresaId, ids)
+  if (flags.cancelled || flags.paused) return EMPTY_CANCELLED
+  throwIfSearchCancelled(ids)
+
+  const started = await markSearchRunRunningIfActive({
+    empresaId: opts.empresaId,
+    searchRunId: opts.searchRunId,
+    jobId: opts.jobId,
+    filtros: opts.filtros,
+    fontesTotal: opts.fontesIds?.length || 0,
   })
+  if (!started) return EMPTY_CANCELLED
+
+  const signal = opts.signal || beginSearchAbort(ids)
   const startedAt = Date.now()
   const cnpj = digitsOnly(opts.filtros.cnpjConsulta)
-  let cityError: string | null = null
   try {
     let result: MonitorRunResult
     if (cnpj.length === 14) {
@@ -111,7 +164,18 @@ export async function runSearchEngine(opts: {
         llmBudget: opts.llmBudget,
         limitePorConector: opts.filtros.maxResultsPerCycle,
         fontesHabilitadas: opts.fontesHabilitadas || opts.filtros.fontesHabilitadas,
+        cancelIds: ids,
+        signal,
       })
+    }
+    const stopped = await readExecutionFlags(opts.empresaId, ids)
+    if (stopped.cancelled || isSearchHardCancelled(ids)) {
+      await updateDoc(runRef, {
+        status: 'cancelled',
+        atualizadoEm: serverTimestamp(),
+        finalizadoEm: serverTimestamp(),
+      })
+      return EMPTY_CANCELLED
     }
     const tempoMs = Date.now() - startedAt
     const abrangencia =
@@ -134,15 +198,23 @@ export async function runSearchEngine(opts: {
         pesquisaId: opts.pesquisaId || null,
         filtros: opts.filtros,
         cityError: null,
+        signal,
       })
       const geoSnap = await getDoc(doc(db, 'empresas', opts.empresaId, COL_PROCESS_RUNS, opts.processRunId))
-      const geo = geoSnap.data() as { cidadesProcessadas?: number; cidadesTotal?: number; cidadeAtual?: string } | undefined
+      const geo = geoSnap.data() as {
+        cidadesProcessadas?: number
+        cidadesTotal?: number
+        cidadeAtual?: string
+        status?: string
+      } | undefined
+      const cancelledNow = geo?.status === 'cancelado' || isSearchHardCancelled(ids)
+      const pausedNow = geo?.status === 'pausado'
       await updateDoc(runRef, {
-        status: adv.done ? 'succeeded' : 'running',
+        status: cancelledNow ? 'cancelled' : pausedNow ? 'paused' : adv.done ? 'succeeded' : 'running',
         resultadoResumo: { ...result, tempoMs },
         progresso: {
           percent: geo?.cidadesTotal ? Math.round(((geo.cidadesProcessadas || 0) / geo.cidadesTotal) * 100) : 50,
-          etapa: adv.done ? 'Concluída' : `Cidade ${geo?.cidadeAtual || ''}`,
+          etapa: cancelledNow ? 'Parado' : pausedNow ? 'Pausado' : adv.done ? 'Concluída' : `Cidade ${geo?.cidadeAtual || ''}`,
           fontesConcluidas: result.fontes.length,
           fontesTotal: opts.fontesIds?.length || result.fontes.length,
           encontrados: result.encontrados,
@@ -151,9 +223,9 @@ export async function runSearchEngine(opts: {
           tempoMs,
         },
         atualizadoEm: serverTimestamp(),
-        ...(adv.done ? { finalizadoEm: serverTimestamp() } : {}),
+        ...((adv.done || cancelledNow || pausedNow) ? { finalizadoEm: pausedNow ? null : serverTimestamp() } : {}),
       })
-      return result
+      return cancelledNow ? EMPTY_CANCELLED : result
     }
 
     await updateDoc(runRef, {
@@ -174,11 +246,17 @@ export async function runSearchEngine(opts: {
     })
     return result
   } catch (error: any) {
-    cityError = error?.message || String(error)
-    if (
-      opts.processRunId &&
-      needsGeoQueue(opts.filtros)
-    ) {
+    if (isSearchCancelledError(error) || isSearchHardCancelled(ids)) {
+      await updateDoc(runRef, {
+        status: 'cancelled',
+        atualizadoEm: serverTimestamp(),
+        finalizadoEm: serverTimestamp(),
+      }).catch(() => {})
+      return EMPTY_CANCELLED
+    }
+    const cityError = error?.message || String(error)
+    const stopped = await readExecutionFlags(opts.empresaId, ids)
+    if (!stopped.cancelled && !stopped.paused && opts.processRunId && needsGeoQueue(opts.filtros)) {
       await advanceGeoQueue({
         empresaId: opts.empresaId,
         processRunId: opts.processRunId,
@@ -187,14 +265,16 @@ export async function runSearchEngine(opts: {
         pesquisaId: opts.pesquisaId || null,
         filtros: opts.filtros,
         cityError,
+        signal,
       })
     }
     await updateDoc(runRef, {
-      status: 'failed',
-      lastError: cityError,
+      status: stopped.cancelled ? 'cancelled' : 'failed',
+      lastError: stopped.cancelled ? null : cityError,
       finalizadoEm: serverTimestamp(),
       atualizadoEm: serverTimestamp(),
     })
+    if (stopped.cancelled) return EMPTY_CANCELLED
     throw error
   }
 }

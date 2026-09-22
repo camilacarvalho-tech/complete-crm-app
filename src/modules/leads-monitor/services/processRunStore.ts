@@ -30,6 +30,7 @@ export async function createProcessRun(opts: {
   arquivoNome?: string
   mapping?: Record<string, string>
   searchRunId?: string | null
+  autoEnrich?: boolean
   actor?: { usuarioId?: string; usuarioNome?: string }
 }): Promise<string> {
   const ref = doc(collection(db, 'empresas', opts.empresaId, COL_PROCESS_RUNS))
@@ -58,6 +59,7 @@ export async function createProcessRun(opts: {
       searchRunId: opts.searchRunId || null,
       mapping: opts.mapping || null,
       arquivoNome: opts.arquivoNome || null,
+      autoEnrich: Boolean(opts.autoEnrich),
       lastError: null,
       usuarioId: opts.actor?.usuarioId || null,
       usuarioNome: opts.actor?.usuarioNome || null,
@@ -154,6 +156,7 @@ export async function setProcessControl(opts: {
   }
   if (opts.status === 'cancelado' || opts.status === 'pausado') {
     patch.completedAt = opts.status === 'cancelado' ? serverTimestamp() : null
+    if (opts.status === 'cancelado') patch.etapaAtual = 'Parado'
   }
   await patchProcessRun(opts.empresaId, opts.runId, patch)
   const action =

@@ -4,9 +4,11 @@ import {
   doc,
   getDoc,
   getDocs,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
 } from 'firebase/firestore'
 import { db } from '../../../firebase'
 import {
@@ -316,6 +318,8 @@ export async function processBaseBatch(opts: {
 
       const personName = normalizeCompanyName(mapped.nome)
       const companyName = normalizeCompanyName(mapped.empresa || mapped.razaoSocial || enriched.nome)
+      const source = /\.xlsx?$/i.test(String(run.arquivoNome || '')) ? 'planilha_xlsx' : 'planilha_csv'
+      const sourceLabel = source
       if (personName && enriched.tipo === 'pessoa') {
         pessoasEncontradas += 1
         const personKey = `imp:${digitsOnly(mapped.cpf) || personName.toLowerCase()}|${digitsOnly(enriched.cnpj) || companyName.toLowerCase()}`
@@ -330,19 +334,22 @@ export async function processBaseBatch(opts: {
             personName,
             jobTitle: mapped.cargo || '',
             relationToCompany: mapped.cargo ? 'profissional_relacionado' : 'nao_confirmado',
-            phone: enriched.telefone || '',
+            phone: mapped.telefone || '',
             phoneType: 'autorizado',
-            phoneSource: 'planilha',
+            phoneSource: source,
             phoneSourceUrl: '',
             whatsapp: mapped.whatsapp || '',
-            whatsappSource: 'planilha',
+            cpf: digitsOnly(mapped.cpf) || null,
+            email: mapped.email || null,
+            whatsappSource: sourceLabel,
             whatsappSourceUrl: '',
             whatsappVerified: false,
-            source: 'importacao',
+            source,
             sourceUrl: '',
             sourceName: 'Planilha importada',
             confidence: 80,
             foundAt: serverTimestamp(),
+            collectedAt: serverTimestamp(),
             status: 'encontrado',
             crmPersonId: null,
             createdAt: serverTimestamp(),
@@ -352,6 +359,50 @@ export async function processBaseBatch(opts: {
             facebookUrl: '',
             dedupeKey: personKey,
             processRunId: opts.processRunId,
+            endereco: mapped.endereco || '',
+            cidade: mapped.cidade || '',
+            estado: (mapped.uf || '').toUpperCase(),
+            cep: mapped.cep || '',
+            bairro: mapped.bairro || '',
+            numero: mapped.numero || '',
+            complemento: mapped.complemento || '',
+            dataNascimento: mapped.dataNascimento || '',
+            cargo: mapped.cargo || '',
+            vinculo: mapped.vinculo || mapped.cargo || '',
+            origem: 'leads_monitor',
+            enrichmentStatus: 'NOT_ENRICHED',
+            originalData: {
+              nome: personName,
+              cpf: digitsOnly(mapped.cpf),
+              telefone: mapped.telefone || '',
+              whatsapp: mapped.whatsapp || '',
+              email: mapped.email || '',
+              endereco: mapped.endereco || '',
+              numero: mapped.numero || '',
+              complemento: mapped.complemento || '',
+              bairro: mapped.bairro || '',
+              cep: mapped.cep || '',
+              cidade: mapped.cidade || '',
+              estado: (mapped.uf || '').toUpperCase(),
+              empresa: companyName,
+              cnpj: digitsOnly(enriched.cnpj),
+              cargo: mapped.cargo || '',
+              vinculo: mapped.vinculo || '',
+              dataNascimento: mapped.dataNascimento || '',
+              produto: mapped.produto || '',
+              operacao: mapped.operacao || '',
+            },
+            enrichedData: {},
+            enrichmentHistory: [],
+            enrichmentCandidates: [],
+            enrichmentSources: [],
+            purpose: 'Importação de base autorizada',
+            legalBasis: 'base_autorizada',
+            consentStatus: '',
+            optOut: false,
+            blocked: false,
+            deleted: false,
+            corrected: false,
           })
         )
       } else if (digitsOnly(enriched.cnpj).length === 14 && peopleQueued < 3) {
@@ -395,6 +446,10 @@ export async function processBaseBatch(opts: {
     }
     cursor = i + 1
     const progresso = total ? Math.round((cursor / total) * 100) : 0
+    const liveNow = (await getDoc(runRef)).data()?.status
+    if (liveNow === 'pausado' || liveNow === 'cancelado') {
+      break
+    }
     await updateDoc(
       runRef,
       omitUndefinedForFirestore({
@@ -451,6 +506,25 @@ export async function processBaseBatch(opts: {
     })
   )
   if (remaining === 0) {
+    if (run.autoEnrich) {
+      try {
+        const { getCallableEnrichmentProviders } = await import('../enrichment/enrichmentRegistry')
+        const { runEnrichmentQueue } = await import('../enrichment/enrichmentQueue')
+        if (getCallableEnrichmentProviders().length) {
+          const peopleSnap = await getDocs(
+            query(collection(db, 'empresas', opts.empresaId, COL_PEOPLE_RESEARCH), where('processRunId', '==', opts.processRunId))
+          )
+          const people = peopleSnap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as import('../types/peopleResearch').CompanyPeopleResearch[]
+          await runEnrichmentQueue({
+            empresaId: opts.empresaId,
+            people,
+            companies: [],
+          })
+        }
+      } catch {
+        /* sem provider ou fila vazia — importação já concluiu */
+      }
+    }
     await writeLeadsMonitorAudit({
       empresaId: opts.empresaId,
       action: erros > 0 ? 'monitor.job.failed' : 'monitor.job.completed',

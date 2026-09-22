@@ -16,6 +16,8 @@ export interface OpcaoSegmento {
   operacao?: OperacaoMonitor
   segmentoPipeline?: string
   funcoes?: OpcaoSegmento[]
+  /** Opção histórica — não aparece no card, mas campanhas antigas continuam válidas. */
+  hidden?: boolean
 }
 
 export interface SegmentoMonitorDef {
@@ -30,6 +32,8 @@ export interface SegmentoMonitorDef {
   opcoes?: OpcaoSegmento[]
   funcoes?: OpcaoSegmento[]
   livre?: boolean
+  /** Cards principais da busca manual: clínicas, crédito, outros. */
+  hiddenFromMain?: boolean
 }
 
 /** Catálogo editável da CODE — não incluir mercados nem empresa_b2b na UI. */
@@ -42,9 +46,17 @@ export const SEGMENTOS_MONITOR: SegmentoMonitorDef[] = [
     accent: '#38bdf8',
     segmentoPipeline: 'clinicas',
     keywords: ['clínica', 'consultório', 'saúde'],
-    pergunta: 'Qual área deseja pesquisar?',
+    pergunta: 'Qual tipo de clínica deseja pesquisar?',
     opcoes: [
-      { id: 'odontologia', label: 'Odontologia', keywords: ['dentista', 'odontologia', 'clínica odontológica', 'consultório odontológico'], funcoes: [
+      { id: 'clinica_medica', label: 'Clínica médica', keywords: ['clínica médica', 'consultório médico', 'medicina'] },
+      { id: 'clinica_odonto', label: 'Clínica odontológica', keywords: ['clínica odontológica', 'dentista', 'odontologia', 'consultório odontológico'] },
+      { id: 'clinica_estetica', label: 'Clínica de estética', keywords: ['clínica de estética', 'estética', 'harmonização'] },
+      { id: 'clinica_saude', label: 'Clínica de saúde', keywords: ['clínica de saúde', 'saúde'] },
+      { id: 'clinica_especializada', label: 'Clínica especializada', keywords: ['clínica especializada', 'especialidade'] },
+      { id: 'clinica_veterinaria', label: 'Clínica veterinária', keywords: ['clínica veterinária', 'veterinária', 'veterinario'] },
+      { id: 'PET_SHOP', label: 'Pet Shop', keywords: ['pet shop', 'petshop', 'banho e tosa'] },
+      { id: 'outra_clinica', label: 'Outro', keywords: ['clínica'] },
+      { id: 'odontologia', label: 'Odontologia', keywords: ['dentista', 'odontologia'], hidden: true, funcoes: [
         { id: 'Dentista', label: 'Dentista' },
         { id: 'Ortodontista', label: 'Ortodontista' },
         { id: 'Implantodontista', label: 'Implantodontista' },
@@ -53,18 +65,15 @@ export const SEGMENTOS_MONITOR: SegmentoMonitorDef[] = [
         { id: 'Gerência', label: 'Gerência' },
         { id: 'Outro', label: 'Outro' },
       ] },
-      { id: 'medicina', label: 'Medicina', keywords: ['clínica médica', 'consultório médico'] },
-      { id: 'fisioterapia', label: 'Fisioterapia', keywords: ['fisioterapia'] },
-      { id: 'psicologia', label: 'Psicologia', keywords: ['psicologia', 'clínica psicológica'] },
-      { id: 'nutricao', label: 'Nutrição', keywords: ['nutrição', 'nutricionista'] },
-      { id: 'dermatologia', label: 'Dermatologia', keywords: ['dermatologia'] },
-      { id: 'cardiologia', label: 'Cardiologia', keywords: ['cardiologia'] },
-      { id: 'pediatria', label: 'Pediatria', keywords: ['pediatria'] },
-      { id: 'laboratorio', label: 'Laboratório', keywords: ['laboratório', 'análises clínicas'] },
-      { id: 'clinica_medica', label: 'Clínica médica', keywords: ['clínica médica'] },
-      { id: 'clinica_odonto', label: 'Clínica odontológica', keywords: ['clínica odontológica'] },
-      { id: 'consultorio', label: 'Consultório', keywords: ['consultório'] },
-      { id: 'outra_clinica', label: 'Outra', keywords: ['clínica'] },
+      { id: 'medicina', label: 'Medicina', keywords: ['clínica médica'], hidden: true },
+      { id: 'fisioterapia', label: 'Fisioterapia', keywords: ['fisioterapia'], hidden: true },
+      { id: 'psicologia', label: 'Psicologia', keywords: ['psicologia'], hidden: true },
+      { id: 'nutricao', label: 'Nutrição', keywords: ['nutrição'], hidden: true },
+      { id: 'dermatologia', label: 'Dermatologia', keywords: ['dermatologia'], hidden: true },
+      { id: 'cardiologia', label: 'Cardiologia', keywords: ['cardiologia'], hidden: true },
+      { id: 'pediatria', label: 'Pediatria', keywords: ['pediatria'], hidden: true },
+      { id: 'laboratorio', label: 'Laboratório', keywords: ['laboratório'], hidden: true },
+      { id: 'consultorio', label: 'Consultório', keywords: ['consultório'], hidden: true },
     ],
     funcoes: [
       { id: 'Recepção', label: 'Recepção' },
@@ -80,6 +89,7 @@ export const SEGMENTOS_MONITOR: SegmentoMonitorDef[] = [
     descricao: 'Varejo alimentício',
     accent: '#fbbf24',
     segmentoPipeline: 'supermercados',
+    hiddenFromMain: true,
     keywords: ['supermercado', 'mercado', 'varejo', 'atacado'],
     funcoes: [
       { id: 'Gerente', label: 'Gerente' },
@@ -108,6 +118,7 @@ export const SEGMENTOS_MONITOR: SegmentoMonitorDef[] = [
     descricao: 'Produção e indústria',
     accent: '#94a3b8',
     segmentoPipeline: 'industrias',
+    hiddenFromMain: true,
     keywords: ['indústria', 'fábrica', 'produção', 'manufatura'],
     funcoes: [
       { id: 'Produção', label: 'Produção' },
@@ -137,6 +148,7 @@ export const SEGMENTOS_MONITOR: SegmentoMonitorDef[] = [
     descricao: 'Fitness e esporte',
     accent: '#fb7185',
     segmentoPipeline: 'academias',
+    hiddenFromMain: true,
     keywords: ['academia', 'fitness', 'musculação'],
     funcoes: [
       { id: 'Academia', label: 'Academia' },
@@ -159,6 +171,7 @@ export const SEGMENTOS_MONITOR: SegmentoMonitorDef[] = [
     descricao: 'Pet e veterinária',
     accent: '#a78bfa',
     segmentoPipeline: 'pet_shops',
+    hiddenFromMain: true,
     keywords: ['pet shop', 'petshop', 'veterinária'],
     funcoes: [
       { id: 'Pet shop', label: 'Pet shop' },
@@ -185,13 +198,14 @@ export const SEGMENTOS_MONITOR: SegmentoMonitorDef[] = [
       { id: 'INSS', label: 'INSS', operacao: 'INSS', segmentoPipeline: 'inss', keywords: ['INSS', 'aposentadoria'], funcoes: [
         { id: 'Aposentado', label: 'Aposentado' },
         { id: 'Pensionista', label: 'Pensionista' },
-        { id: 'Beneficiário', label: 'Beneficiário' },
-        { id: 'Portabilidade', label: 'Portabilidade' },
+        { id: 'Beneficio_recem_concedido', label: 'Benefício recém-concedido' },
+        { id: 'Beneficio_mantido', label: 'Benefício mantido' },
+        { id: 'Portabilidade', label: 'Portabilidade de consignado' },
         { id: 'Redução de parcela', label: 'Redução de parcela' },
         { id: 'Nova margem', label: 'Nova margem' },
-        { id: 'Refinanciamento INSS', label: 'Refinanciamento' },
-        { id: 'Crédito INSS', label: 'Crédito INSS' },
-        { id: 'Outra operação INSS', label: 'Outra operação' },
+        { id: 'Refinanciamento INSS', label: 'Refinanciamento consignado' },
+        { id: 'Crédito INSS', label: 'Crédito consignado INSS' },
+        { id: 'LOAS_BPC', label: 'LOAS/BPC' },
       ] },
       { id: 'CREDITO_CLT', label: 'Crédito CLT', operacao: 'CREDITO_CLT', segmentoPipeline: 'credito_clt', keywords: ['crédito CLT', 'trabalhador CLT'], funcoes: [
         { id: 'Trabalhador CLT', label: 'Trabalhador CLT' },
@@ -199,11 +213,20 @@ export const SEGMENTOS_MONITOR: SegmentoMonitorDef[] = [
         { id: 'Prospecção empresarial', label: 'Prospecção empresarial' },
         { id: 'Outro CLT', label: 'Outro' },
       ] },
-      { id: 'EMPRESTIMOS', label: 'Crédito pessoal', operacao: 'EMPRESTIMOS', segmentoPipeline: 'emprestimo', keywords: ['crédito pessoal', 'empréstimo'] },
-      { id: 'FGTS', label: 'Saque FGTS', operacao: 'FGTS', segmentoPipeline: 'fgts', keywords: ['FGTS', 'saque FGTS'] },
+      { id: 'EMPRESTIMOS', label: 'Crédito pessoal', operacao: 'CREDITO_PESSOAL', segmentoPipeline: 'emprestimo', keywords: ['crédito pessoal', 'empréstimo'] },
+      { id: 'CREDITO_PESSOAL', label: 'Crédito pessoal', operacao: 'CREDITO_PESSOAL', segmentoPipeline: 'emprestimo', keywords: ['crédito pessoal'] },
+      { id: 'CREDITO_CONTA_ENERGIA', label: 'Crédito na conta de energia', operacao: 'CREDITO_CONTA_ENERGIA', segmentoPipeline: 'emprestimo', keywords: ['conta de energia', 'Crefaz'] },
+      { id: 'FGTS', label: 'Saque FGTS', operacao: 'SAQUE_FGTS', segmentoPipeline: 'fgts', keywords: ['FGTS', 'saque FGTS'] },
+      { id: 'SAQUE_FGTS', label: 'Saque FGTS', operacao: 'SAQUE_FGTS', segmentoPipeline: 'fgts', keywords: ['FGTS'] },
+      { id: 'REFIN_CASA', label: 'Refinanciamento de casa', operacao: 'REFIN_CASA', segmentoPipeline: 'emprestimo', keywords: ['refinanciamento imóvel', 'casa'] },
+      { id: 'REFIN_CARRO', label: 'Refinanciamento de carro', operacao: 'REFIN_CARRO', segmentoPipeline: 'emprestimo', keywords: ['refinanciamento veículo', 'carro'] },
+      { id: 'CREDITO_IMOBILIARIO', label: 'Crédito imobiliário', operacao: 'CREDITO_IMOBILIARIO', segmentoPipeline: 'emprestimo', keywords: ['crédito imobiliário'] },
+      { id: 'SERVIDOR_SIAPE', label: 'Servidor SIAPE', operacao: 'SERVIDOR_SIAPE', segmentoPipeline: 'consignado', keywords: ['SIAPE', 'servidor federal'] },
+      { id: 'SERVIDOR_PREFEITURA', label: 'Servidor prefeitura', operacao: 'SERVIDOR_PREFEITURA', segmentoPipeline: 'consignado', keywords: ['servidor municipal', 'prefeitura'] },
+      { id: 'LIMPA_NOME', label: 'Limpa nome', operacao: 'LIMPA_NOME', segmentoPipeline: 'outros', keywords: ['limpa nome', 'regularização'] },
       { id: 'REFIN', label: 'Refinanciamento', operacao: 'EMPRESTIMOS', segmentoPipeline: 'consignado', keywords: ['refinanciamento'] },
-      { id: 'CASA', label: 'Crédito imobiliário / Casa', operacao: 'EMPRESTIMOS', segmentoPipeline: 'emprestimo', keywords: ['crédito imobiliário', 'casa'] },
-      { id: 'CARRO', label: 'Crédito para veículo / Carro', operacao: 'EMPRESTIMOS', segmentoPipeline: 'emprestimo', keywords: ['veículo', 'carro', 'financiamento'] },
+      { id: 'CASA', label: 'Crédito imobiliário / Casa', operacao: 'CREDITO_IMOBILIARIO', segmentoPipeline: 'emprestimo', keywords: ['crédito imobiliário', 'casa'] },
+      { id: 'CARRO', label: 'Crédito para veículo / Carro', operacao: 'REFIN_CARRO', segmentoPipeline: 'emprestimo', keywords: ['veículo', 'carro', 'financiamento'] },
       { id: 'SOLAR', label: 'Energia solar', operacao: 'OUTROS', segmentoPipeline: 'outros', keywords: ['energia solar'] },
       { id: 'SERVIDOR', label: 'Servidor', operacao: 'SERVIDOR', segmentoPipeline: 'consignado', keywords: ['servidor público'], funcoes: [
         { id: 'Federal', label: 'Federal' },
@@ -228,16 +251,47 @@ export const SEGMENTOS_MONITOR: SegmentoMonitorDef[] = [
   },
 ]
 
-const CREDIT_PIPELINE = new Set(['inss', 'credito_clt', 'emprestimo', 'consignado', 'fgts', 'cartao', 'corban'])
+/** Agrupamento visual dos produtos de crédito. Não cria IDs novos. */
+export const GRUPOS_PRODUTO_CREDITO: Array<{ label: string; opcaoIds: string[] }> = [
+  { label: 'INSS', opcaoIds: ['INSS'] },
+  { label: 'CRÉDITO', opcaoIds: ['CREDITO_CLT', 'EMPRESTIMOS', 'CREDITO_PESSOAL', 'CREDITO_CONTA_ENERGIA', 'SOLAR', 'OUTROS'] },
+  { label: 'FGTS', opcaoIds: ['FGTS', 'SAQUE_FGTS'] },
+  { label: 'REFINANCIAMENTO', opcaoIds: ['REFIN_CASA', 'REFIN_CARRO', 'REFIN', 'CARRO'] },
+  { label: 'IMOBILIÁRIO', opcaoIds: ['CREDITO_IMOBILIARIO', 'CASA'] },
+  { label: 'SERVIDORES', opcaoIds: ['SERVIDOR_SIAPE', 'SERVIDOR_PREFEITURA', 'SERVIDOR'] },
+  { label: 'LIMPA NOME', opcaoIds: ['LIMPA_NOME'] },
+]
+
+const CREDIT_PIPELINE = new Set([
+  'inss',
+  'credito_clt',
+  'emprestimo',
+  'consignado',
+  'fgts',
+  'cartao',
+  'corban',
+  'refinanciamento',
+  'imobiliario',
+])
+
+export const SEGMENTOS_PRINCIPAIS: SegmentoMonitorId[] = ['clinicas', 'credito', 'outros']
+
+export function segmentosDaBuscaManual(): SegmentoMonitorDef[] {
+  return SEGMENTOS_MONITOR.filter((s) => !s.hiddenFromMain)
+}
 
 export function cardIdFromFiltros(filtros: Pick<FiltrosPesquisa, 'segmento' | 'operacao'>): SegmentoMonitorId | '' {
   const s = (filtros.segmento || '').toLowerCase()
+  if (s === 'pet_shops' || s === 'clinicas') return 'clinicas'
   if (s === 'mercados') return 'supermercados'
   if (s === 'empresa_b2b') return 'outros'
   if (SEGMENTOS_MONITOR.some((d) => d.id === s || d.segmentoPipeline === s)) {
     const direct = SEGMENTOS_MONITOR.find((d) => d.id === s)
-    if (direct) return direct.id
+    if (direct?.hiddenFromMain && direct.id === 'pet_shops') return 'clinicas'
+    if (direct && !direct.hiddenFromMain) return direct.id
+    if (direct?.id === 'supermercados' || direct?.id === 'industrias' || direct?.id === 'academias') return direct.id
   }
+  if (s === 'consignado' || filtros.operacao === 'INSS' || filtros.operacao === 'PORTABILIDADE_CONSIGNADO') return 'credito'
   if (CREDIT_PIPELINE.has(s) || filtros.operacao) return 'credito'
   return (SEGMENTOS_MONITOR.find((d) => d.segmentoPipeline === s)?.id || '') as SegmentoMonitorId | ''
 }
@@ -277,6 +331,9 @@ export function aplicarCardSegmento(filtros: FiltrosPesquisa, cardId: SegmentoMo
     segmentoCustomNome: cardId === 'outros' ? filtros.segmentoCustomNome : '',
     segmentoCustomCategoria: cardId === 'outros' ? filtros.segmentoCustomCategoria : '',
     tipoBeneficiario: 'todos',
+    tipoBusca: cardId === 'clinicas' ? 'empresa' : filtros.tipoBusca || 'empresa',
+    campaignContext: cardId === 'clinicas' ? '' : filtros.campaignContext,
+    subsegment: cardId === 'clinicas' ? '' : filtros.subsegment,
   }
 }
 
@@ -284,15 +341,48 @@ export function aplicarProdutoCredito(filtros: FiltrosPesquisa, produtoId: strin
   const def = defDoCard('credito')
   const opt = def?.opcoes?.find((o) => o.id === produtoId)
   const produtos = filtros.produtos || []
-  const nextProdutos = checked ? Array.from(new Set([...produtos, produtoId])) : produtos.filter((p) => p !== produtoId)
+  let nextProdutos = checked ? Array.from(new Set([...produtos, produtoId])) : produtos.filter((p) => p !== produtoId)
+  if (!checked && produtoId === 'INSS') {
+    nextProdutos = nextProdutos.filter((p) => p !== 'PORTABILIDADE_CONSIGNADO')
+  }
   const principal = def?.opcoes?.find((o) => nextProdutos.includes(o.id))
   const contextos = checked ? filtros.contextosSegmento || [] : (filtros.contextosSegmento || []).filter((c) => !(opt?.funcoes || []).some((f) => f.id === c))
+  const portabilidadeOn = (contextos.includes('Portabilidade') || nextProdutos.includes('PORTABILIDADE_CONSIGNADO')) && nextProdutos.includes('INSS')
   return {
     ...filtros,
     produtos: nextProdutos,
     operacao: (principal?.operacao || '') as OperacaoMonitor | '',
-    segmento: principal?.segmentoPipeline || def?.segmentoPipeline || 'emprestimo',
+    segmento: principal?.id === 'INSS' || portabilidadeOn ? 'inss' : principal?.segmentoPipeline || def?.segmentoPipeline || 'emprestimo',
     contextosSegmento: contextos,
     palavraChave: keywordsSugeridas(def, nextProdutos),
+    tipoBusca: nextProdutos.includes('CREDITO_CLT')
+      ? 'empresa_funcionarios'
+      : nextProdutos.includes('INSS')
+        ? 'pessoa'
+        : filtros.tipoBusca || 'empresa',
+  }
+}
+
+/** Chip de contexto INSS; Portabilidade reutiliza o produto PORTABILIDADE_CONSIGNADO sem segmento visual CONSIGNADO. */
+export function aplicarFuncaoInss(filtros: FiltrosPesquisa, funcaoId: string): FiltrosPesquisa {
+  const cargos = filtros.cargos || []
+  const contextos = filtros.contextosSegmento || []
+  const inCargos = cargos.includes(funcaoId)
+  const nextCargos = inCargos ? cargos.filter((x) => x !== funcaoId) : [...cargos, funcaoId]
+  const nextCtx = inCargos || contextos.includes(funcaoId) ? contextos.filter((x) => x !== funcaoId) : [...contextos, funcaoId]
+  const portabilidadeOn = nextCtx.includes('Portabilidade')
+  const produtos = Array.from(new Set([...(filtros.produtos || []), 'INSS']))
+  const nextProdutos = portabilidadeOn
+    ? Array.from(new Set([...produtos, 'PORTABILIDADE_CONSIGNADO']))
+    : produtos.filter((p) => p !== 'PORTABILIDADE_CONSIGNADO')
+  return {
+    ...filtros,
+    cargos: nextCargos,
+    contextosSegmento: nextCtx,
+    produtos: nextProdutos,
+    operacao: 'INSS' as OperacaoMonitor,
+    segmento: 'inss',
+    tipoBeneficiario:
+      funcaoId === 'Aposentado' ? 'aposentado' : funcaoId === 'Pensionista' ? 'pensionista' : filtros.tipoBeneficiario,
   }
 }

@@ -75,7 +75,24 @@ export type EmployeeCountStatus = 'nao_informada' | 'faixa_publica'
 
 export type AbrangenciaGeografica = 'CIDADE' | 'ESTADO' | 'BRASIL'
 
-export type OperacaoMonitor = 'INSS' | 'CREDITO_CLT' | 'FGTS' | 'EMPRESTIMOS' | 'SERVIDOR' | 'OUTROS' | ''
+export type OperacaoMonitor =
+  | 'INSS'
+  | 'CREDITO_CLT'
+  | 'CREDITO_PESSOAL'
+  | 'CREDITO_CONTA_ENERGIA'
+  | 'SAQUE_FGTS'
+  | 'REFIN_CASA'
+  | 'REFIN_CARRO'
+  | 'CREDITO_IMOBILIARIO'
+  | 'PORTABILIDADE_CONSIGNADO'
+  | 'SERVIDOR_SIAPE'
+  | 'SERVIDOR_PREFEITURA'
+  | 'LIMPA_NOME'
+  | 'FGTS'
+  | 'EMPRESTIMOS'
+  | 'SERVIDOR'
+  | 'OUTROS'
+  | ''
 
 export type TipoBeneficiarioInss = 'todos' | 'aposentado' | 'pensionista' | 'outro'
 
@@ -125,8 +142,16 @@ export interface FiltrosPesquisa {
   fontesHabilitadas?: string[]
   /** Subcategorias/produtos do card de segmento (não apaga mercados/empresas históricos). */
   contextosSegmento?: string[]
+  /** Tentativa de obter dados da pessoa se a fonte autorizada existir — não inventa. */
+  personFieldsRequested?: string[]
+  contactFieldsRequested?: string[]
+  /** empresa | pessoa | empresa_funcionarios */
+  tipoBusca?: 'empresa' | 'pessoa' | 'empresa_funcionarios'
+  personSourcesHabilitadas?: string[]
   segmentoCustomNome?: string
   segmentoCustomCategoria?: string
+  campaignContext?: string
+  subsegment?: string
 }
 
 export interface PesquisaSalva extends FiltrosPesquisa {
@@ -311,4 +336,10 @@ export interface MonitorRunResult {
   muitoQuentes?: number
   tempoMs?: number
   erros?: string[]
+  pessoasEncontradas?: number
+  pessoasComWhatsapp?: number
+  pessoasComTelefone?: number
+  pessoasSemContato?: number
+  empresasEncontradas?: number
+  personDiscoveryStatus?: string
 }
