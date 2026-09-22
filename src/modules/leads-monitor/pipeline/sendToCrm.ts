@@ -7,6 +7,7 @@ import { db } from '../../../firebase'
 import { writeAudit } from '../../../lib/audit'
 import { COL_OPORTUNIDADES } from '../constants'
 import { writeLeadsMonitorAudit } from '../services/auditTrail'
+import { assertRobotNotPaused } from '../services/robotControl'
 import type { OportunidadeMonitor } from '../types'
 import { garantirConversaFila } from '../../../lib/garantirConversaFila'
 import {
@@ -56,6 +57,7 @@ export async function enviarOportunidadeParaCrm(
   usuarioNome?: string,
   actor?: { usuarioId?: string; usuarioNome?: string }
 ): Promise<EnviarCrmResult> {
+  await assertRobotNotPaused(empresaId, 'crm', 'Robô CRM pausado — retome na Central de Robôs para enviar.')
   if (!oportunidade.consentimentoLgpd) {
     throw new Error('Oportunidade sem base legal LGPD — não pode ser enviada ao CRM.')
   }
@@ -153,6 +155,17 @@ export async function enviarOportunidadeParaCrm(
       entidadeId: oportunidade.id,
       after: { status: 'enviado_crm', crmClienteId: clienteId, jaExistia, score },
       meta: { event: 'data.sent_to_crm' },
+    })
+
+    const { afterCrmLeadSynced } = await import('../../../integrations/crm/crmSync')
+    await afterCrmLeadSynced({
+      empresaId,
+      leadId: oportunidade.id,
+      crmId: clienteId,
+      kind: oportunidade.tipo === 'pessoa' ? 'pessoa' : 'empresa',
+      jaExistia,
+      campaignId: asText(oportunidade.pesquisaId),
+      origin: 'leads_monitor',
     })
 
     return { clienteId, jaExistia }

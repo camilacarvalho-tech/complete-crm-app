@@ -7,6 +7,7 @@ import type { OportunidadeMonitor } from '../types'
 import type { EnrichmentQueueStatus } from './enrichmentTypes'
 import { enrichExistingPersonLead } from './enrichmentEngine'
 import type { EnrichmentResult } from './enrichmentResult'
+import { isRobotPaused } from '../services/robotControl'
 
 export type EnrichmentQueueJob = {
   personId: string
@@ -63,6 +64,10 @@ export async function runEnrichmentQueue(opts: {
       const index = next
       next += 1
       if (index >= jobs.length) return
+      if (await isRobotPaused(opts.empresaId, 'enrichment')) {
+        next = index
+        return
+      }
       const job = jobs[index]
       const person = byId.get(job.personId)
       if (!person) {

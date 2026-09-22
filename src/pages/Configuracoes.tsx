@@ -6,10 +6,12 @@ import { useAppearance } from '../contexts/ThemeContext'
 import { auth } from '../firebase'
 import { PIPELINE_STAGES, USER_ROLES } from '../types/nexus'
 import { CONVENIOS_PADRAO } from '../catalog/crmCatalog'
+import { INSTITUTION_ADAPTERS } from '../integrations/banks/registry'
 import { GhostButton, PageHeader, PrimaryButton, SelectInput, TextInput } from '../components/nexus/kit'
 import { useToast } from '../components/ui/Toast'
+import { IntegrationsHub } from '../integrations/crm/IntegrationsHub'
 
-const TABS = ['Aparência', 'Perfil', 'Usuários', 'Origens e etapas', 'Convênios', 'Tags', 'WhatsApp', 'Meta', 'VoIP', 'Bancos', 'IA', 'White Label', 'Auditoria', 'Segurança']
+const TABS = ['Aparência', 'Perfil', 'Usuários', 'Origens e etapas', 'Convênios', 'Tags', 'Integrações', 'WhatsApp', 'Meta', 'VoIP', 'Bancos', 'IA', 'White Label', 'Auditoria', 'Segurança']
 
 export default function Configuracoes() {
   const { usuario } = useAuth()
@@ -42,8 +44,13 @@ export default function Configuracoes() {
           <p className="font-bold uppercase text-xs" style={{ color: 'var(--code-muted)' }}>Personalização</p>
           <div className="grid md:grid-cols-3 gap-3">
             <label>Tema
-              <SelectInput className="w-full" value="dark" disabled>
+              <SelectInput
+                className="w-full"
+                value={appearance.appearance === 'system' ? appearance.resolved : appearance.appearance}
+                onChange={(e) => appearance.setAppearance(e.target.value as 'light' | 'dark')}
+              >
                 <option value="dark">Escuro</option>
+                <option value="light">Claro</option>
               </SelectInput>
             </label>
             <label>Cor principal
@@ -89,7 +96,21 @@ export default function Configuracoes() {
           <ul className="text-sm">{usuariosEmpresa.items.map((p) => <li key={p.id}>{String(p.nome)} · {String(p.perfil)}</li>)}</ul>
         </div>
       )}
-      {(tab === 'WhatsApp' || tab === 'Meta' || tab === 'VoIP' || tab === 'Bancos' || tab === 'IA') && (
+      {tab === 'Integrações' && <IntegrationsHub empresaId={usuario?.empresaId} />}
+      {tab === 'Bancos' && (
+        <div className="nexus-card p-4 text-sm space-y-2 max-w-xl">
+          <p className="font-semibold">Instituições (adapters)</p>
+          <p className="text-xs" style={{ color: 'var(--code-muted)' }}>INSS não é banco. Chaves só no backend.</p>
+          {INSTITUTION_ADAPTERS.map((a) => (
+            <p key={a.id}>
+              {a.name}
+              <br />
+              <b>{a.isConfigured() ? '● API configurada' : '● API não configurada'}</b>
+            </p>
+          ))}
+        </div>
+      )}
+      {(tab === 'WhatsApp' || tab === 'Meta' || tab === 'VoIP' || tab === 'IA') && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
           Credenciais dessas integrações devem ficar em variáveis de ambiente / backend. Este painel só registra se o canal está ativo.
           Campos: App ID, Phone Number ID, WABA ID — sem Access Token no frontend.

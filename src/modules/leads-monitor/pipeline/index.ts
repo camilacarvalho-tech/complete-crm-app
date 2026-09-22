@@ -16,7 +16,7 @@ import { db } from '../../../firebase'
 import { COL_OPORTUNIDADES, COL_PESQUISAS, MAX_RESULTS_PER_CYCLE } from '../constants'
 import { bootstrapConnectors, getRunnableConnectors } from '../connectors'
 import type { ConnectorFetchContext, IConnector, NormalizedLead } from '../connectors/types'
-import type { FiltrosPesquisa, MonitorRunResult, OportunidadeMonitor } from '../types'
+import type { FiltrosPesquisa, LeadScoreResult, MonitorRunResult, OportunidadeMonitor } from '../types'
 import { getNexusAiQualifier } from '../ai/INexusAiQualifier'
 import { recordConnectorFailure, recordConnectorSuccess } from '../services/healthStore'
 import { omitUndefinedForFirestore } from '../services/jobQueue'
@@ -30,6 +30,7 @@ import { temperaturaFromScore } from './score'
 import { qualificationFromScore } from '../catalog/produtosMonitor'
 import { runPersonDiscoveryForNewCompanies } from '../person/personDiscoveryEngine'
 import { isSearchCancelledError, SearchCancelledError, throwIfSearchCancelled } from '../search/searchCancel'
+import { isRobotPaused } from '../services/robotControl'
 
 export interface PipelineRunOptions {
   empresaId: string
@@ -247,17 +248,26 @@ export async function runLeadPipeline(opts: PipelineRunOptions): Promise<Monitor
   let muitoQuentes = 0
   let rejeitados = 0
 
+  const classPaused = await isRobotPaused(empresaId, 'classification')
   const newCompanies: Array<{ id: string; nome: string; cnpj?: string; telefone?: string; cidade?: string; estado?: string }> = []
   for (const lead of leadsEnriquecidos) {
     throwIfSearchCancelled(ids)
     if (signal?.aborted) throw new SearchCancelledError()
     const existingId = matchExistingId(lead, existing)
-    const scored = await qualifier.classifyAndScore(lead, {
-      empresaId,
-      filtros,
-      useLlm: budget > 0,
-    })
-    if (budget > 0) budget -= 1
+    const scored: LeadScoreResult = classPaused
+      ? {
+          score: 0,
+          temperatura: 'Frio',
+          classificacao: 'aguardando_classificacao',
+          motivos: ['Robô de classificação pausado'],
+          origemScore: 'nexus_ai_heuristica',
+        }
+      : await qualifier.classifyAndScore(lead, {
+          empresaId,
+          filtros,
+          useLlm: budget > 0,
+        })
+    if (!classPaused && budget > 0) budget -= 1
     scores.push(scored.score)
     if (scored.temperatura === 'Muito quente') muitoQuentes += 1
     if (scored.temperatura === 'Quente' || scored.temperatura === 'Muito quente') quentes += 1

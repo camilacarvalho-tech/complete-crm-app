@@ -4,6 +4,7 @@ import { Menu } from 'lucide-react'
 import { Sidebar } from '../app/components/layout/Sidebar'
 import { LeticiaWorker } from './LeticiaWorker'
 import { GlobalSearchHost } from './layout/AppHeader'
+import { ThemeToggle } from './layout/ThemeToggle'
 import { useAppearance } from '../contexts/ThemeContext'
 import { ErrorBoundary } from './ErrorBoundary'
 
@@ -22,6 +23,9 @@ export default function Layout() {
             <Menu className="w-5 h-5" />
           </button>
           <span className="font-bold text-sm">Nexus · CODE</span>
+          <div className="ml-auto">
+            <ThemeToggle className="!p-1.5" />
+          </div>
         </header>
         <GlobalSearchHost />
         <main className="p-3 md:p-4" onClick={() => setOpen(false)}>

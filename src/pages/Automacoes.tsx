@@ -1,7 +1,7 @@
 ﻿import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useNexusStore } from '../contexts/NexusStore'
-import { LETICIA_ACTIONS, LETICIA_TRIGGERS, type LeticiaStep } from '../lib/leticiaEngine'
+import { LETICIA_ACTION_LABELS, LETICIA_ACTIONS, LETICIA_FIELDS, LETICIA_TRIGGERS, type LeticiaStep } from '../lib/leticiaEngine'
 import { EmptyState, GhostButton, PageHeader, PrimaryButton, SelectInput, TextInput } from '../components/nexus/kit'
 import { useToast } from '../components/ui/Toast'
 import { labelPt } from '../lib/uiPt'
@@ -59,7 +59,11 @@ export default function Automacoes() {
             )}
             {step.tipo === 'condition' && (
               <>
-                <TextInput placeholder="campo" value={step.campo || ''} onChange={(e) => patch(i, { campo: e.target.value })} />
+                <SelectInput value={step.campo || 'origem'} onChange={(e) => patch(i, { campo: e.target.value })}>
+                  {LETICIA_FIELDS.map((f) => (
+                    <option key={f.id} value={f.id}>{f.label}</option>
+                  ))}
+                </SelectInput>
                 <SelectInput value={step.operador} onChange={(e) => patch(i, { operador: e.target.value as LeticiaStep['operador'] })}>
                   <option value="eq">igual</option>
                   <option value="neq">diferente</option>
@@ -72,9 +76,11 @@ export default function Automacoes() {
             {step.tipo === 'action' && (
               <>
                 <SelectInput className="md:col-span-2" value={step.acao} onChange={(e) => patch(i, { acao: e.target.value })}>
-                  {LETICIA_ACTIONS.map((a) => <option key={a}>{a}</option>)}
+                  {LETICIA_ACTIONS.map((a) => (
+                    <option key={a} value={a}>{LETICIA_ACTION_LABELS[a] || a}</option>
+                  ))}
                 </SelectInput>
-                <TextInput className="md:col-span-2" placeholder="mensagem / etapa / tag" value={step.payload || ''} onChange={(e) => patch(i, { payload: e.target.value })} />
+                <TextInput className="md:col-span-2" placeholder="detalhe (mensagem, status, minutos)" value={step.payload || ''} onChange={(e) => patch(i, { payload: e.target.value })} />
               </>
             )}
             {step.tipo === 'delay' && (

@@ -9,6 +9,7 @@ import { garantirConversaFila } from './garantirConversaFila'
 import { digits } from './nexusCore'
 import { writeAudit } from './audit'
 import { tickChatRobot } from '../modules/chat-robot/chatRobot'
+import { resolveInboundOrigin } from './inboundOrigin'
 
 export type InboundErpPayload = {
   messageId?: string
@@ -23,14 +24,18 @@ export type InboundErpPayload = {
   timestamp?: string
   templateId?: string
   source?: string
+  origin?: string
   direction?: string
 }
+
+export { resolveInboundOrigin } from './inboundOrigin'
 
 export async function handleInboundErpMessage(
   empresaId: string,
   payload: InboundErpPayload
 ): Promise<{ conversaId: string; clienteId: string; created: boolean }> {
   const tel = digits(payload.whatsapp || payload.phone || '')
+  const origemLead = resolveInboundOrigin(payload)
   let clienteId = String(payload.clientId || '')
   if (!tel && !clienteId) {
     throw new Error('Inbound ERP sem whatsapp/phone e sem clientId')
@@ -54,11 +59,12 @@ export async function handleInboundErpMessage(
       telefone: tel,
       telefoneNormalizado: tel,
       whatsapp: tel,
-      origemLead: 'webhook',
-      origem: 'webhook',
+      origemLead,
+      origem: origemLead,
       fonte: payload.source || 'NX_ERP',
       campanhaId: payload.campaignId || '',
       erpCampaignId: payload.erpCampaignId || '',
+      leadId: payload.leadId || '',
       pipelineStage: 'novo_lead',
       status: 'NOVO LEAD',
       criadoEm: serverTimestamp(),
@@ -82,7 +88,7 @@ export async function handleInboundErpMessage(
     clienteId,
     titulo: tel || 'Atendimento',
     telefone: tel,
-    origemLead: 'webhook',
+    origemLead,
     fonte: payload.source || 'NX_ERP',
     campanhaId: payload.campaignId,
   })
@@ -111,16 +117,20 @@ export async function handleInboundErpMessage(
       templateId: payload.templateId || null,
       erpCampaignId: payload.erpCampaignId || null,
       campaignId: payload.campaignId || null,
+      origemLead,
       criadoEm: serverTimestamp(),
     })
     const convSnap = await getDoc(doc(db, 'empresas', empresaId, 'conversas', fila.conversaId))
-    const st = String(convSnap.data()?.status || '')
+    const conv = convSnap.data() || {}
+    const st = String(conv.status || '')
     const keepStatus = st === 'em_atendimento' || st === 'aguardando_cliente' || st === 'aguardando_funcionario'
     const tick = tickChatRobot({
-      state: String(convSnap.data()?.robotState || 'NEW'),
+      state: String(conv.robotState || 'NEW'),
       inboundText: texto,
       channelConnected: false,
       robotEnabled: false,
+      produto: String(conv.produto || conv.robotProduto || ''),
+      operacao: String(conv.operacao || conv.robotOperacao || ''),
     })
     await updateDoc(doc(db, 'empresas', empresaId, 'conversas', fila.conversaId), {
       lastMessage: texto.slice(0, 240),
@@ -132,6 +142,11 @@ export async function handleInboundErpMessage(
       ...(keepStatus ? {} : { status: tick.pauseRobot ? 'aguardando_funcionario' : 'aguardando_triagem' }),
       robotState: tick.nextState,
       robotPaused: tick.pauseRobot || st === 'em_atendimento',
+      robotProduto: tick.produto || conv.robotProduto || null,
+      robotOperacao: tick.operacao || conv.robotOperacao || null,
+      requiredDocuments: tick.requiredDocuments || conv.requiredDocuments || null,
+      requisitosPendentes: tick.pendingConfig || false,
+      origemLead,
       atualizadoEm: serverTimestamp(),
     })
   }
@@ -142,7 +157,7 @@ export async function handleInboundErpMessage(
     acao: 'inbound.erp',
     entidade: 'conversa',
     entidadeId: fila.conversaId,
-    depois: { source: 'NX_ERP', messageId: payload.messageId || null, clienteId },
+    depois: { source: 'NX_ERP', messageId: payload.messageId || null, clienteId, origemLead },
   })
 
   return { conversaId: fila.conversaId, clienteId, created }

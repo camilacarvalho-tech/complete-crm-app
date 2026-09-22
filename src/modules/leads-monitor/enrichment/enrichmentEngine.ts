@@ -2,7 +2,7 @@
  * Enrichment Engine — complementa PersonLead existente.
  * Não inventa dado. Não sobrescreve valor válido. Não usa jobQueue.
  */
-import { collection, doc, getDocs, query, serverTimestamp, updateDoc, where } from 'firebase/firestore'
+import { doc, getDocs, collection, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { db } from '../../../firebase'
 import { COL_PEOPLE_RESEARCH } from '../constants'
 import { getNxErpCampaignAdapter } from '../../../integrations/nxErpCampaign'
@@ -10,8 +10,8 @@ import { writeLeadsMonitorAudit } from '../services/auditTrail'
 import { writeLeadsMonitorLog } from '../services/opsLogs'
 import { digitsOnly } from '../pipeline/normalizeFields'
 import { isLikelyEmail, isLikelyPhone, personLeadDedupeKeys, toPersonLead } from '../pipeline/personLead'
-import { enviarPessoaParaCrm } from '../pipeline/sendPersonToCrm'
-import { applyClienteMerge, findExistingCliente, payloadPessoaCliente, asText } from '../pipeline/crmClientePayload'
+import { collectAuthorizedProposals, simulateCreditIfConfigured } from '../services/enrichment'
+import { isValidForAtendimento, pipelineFromEnrichment } from '../types/personPipeline'
 import type { CompanyPeopleResearch } from '../types/peopleResearch'
 import type { OportunidadeMonitor } from '../types'
 import type { PersonLead } from '../types/personLead'
@@ -142,6 +142,15 @@ function firestorePatch(lead: PersonLead): Record<string, unknown> {
     enrichmentProviders: lead.enrichmentProviders,
     enrichmentFields: lead.enrichmentFields,
     enrichmentUpdatedAt: serverTimestamp(),
+    pipelineStatus: lead.pipelineStatus || null,
+    atendimentoStatus: lead.atendimentoStatus || 'nao_enviado',
+    valorLiberado: lead.valorLiberado ?? null,
+    valorParcela: lead.valorParcela ?? null,
+    quantidadeParcelas: lead.quantidadeParcelas ?? null,
+    taxa: lead.taxa ?? null,
+    bancoOferta: lead.bancoOferta || '',
+    dataConsultaCredito: lead.dataConsultaCredito || null,
+    statusConsultaCredito: lead.statusConsultaCredito || null,
     purpose: lead.purpose || null,
     legalBasis: lead.legalBasis || null,
     consentStatus: lead.consentStatus || null,
@@ -185,85 +194,6 @@ function collidingPerson(
   return null
 }
 
-async function syncCrmIfContact(
-  empresaId: string,
-  person: CompanyPeopleResearch,
-  company: OportunidadeMonitor | null,
-  lead: PersonLead,
-  actor?: { usuarioId?: string; usuarioNome?: string }
-) {
-  if (!lead.whatsapp && !lead.telefone) return
-  const opp =
-    company ||
-    ({
-      id: person.opportunityId || person.companyId || lead.id,
-      empresaId,
-      nome: lead.empresa,
-      cnpj: lead.cnpj,
-      telefone: '',
-      cidade: lead.cidade,
-      estado: lead.estado,
-      segmento: lead.segmento,
-      connectorId: 'person_enrichment',
-      origemLabel: 'PERSON ENRICHMENT',
-      dedupeKey: lead.id,
-      tipo: 'pessoa',
-      consentimentoLgpd: true,
-      baseLegal: lead.legalBasis || 'interesse_legitimo',
-      status: 'novo',
-      score: lead.score,
-      temperatura: 'Frio',
-      classificacao: lead.classification,
-      motivosScore: [],
-      origemScore: 'enrichment',
-      metadados: { produto: lead.produto, operacao: lead.operacao, campanha: lead.campanhaId },
-      pesquisaId: lead.campanhaId || null,
-    } as unknown as OportunidadeMonitor)
-
-  const mergedPerson: CompanyPeopleResearch = {
-    ...person,
-    personName: lead.nome,
-    phone: lead.telefone,
-    whatsapp: lead.whatsapp,
-    companyName: lead.empresa,
-    companyCnpj: lead.cnpj,
-    jobTitle: lead.cargo,
-    source: lead.source,
-    sourceUrl: lead.sourceUrl,
-    sourceName: lead.fonte,
-  }
-
-  const existing = await findExistingCliente({
-    empresaId,
-    kind: 'pessoa',
-    telefone: lead.telefone,
-    whatsapp: lead.whatsapp,
-    email: lead.email,
-    nome: lead.nome,
-    empresaCnpj: lead.cnpj,
-    leadsMonitorPersonId: person.id,
-    leadsMonitorOpportunityId: opp.id,
-  })
-
-  if (existing) {
-    const convCol = collection(db, 'empresas', empresaId, 'conversas')
-    const convSnap = await getDocs(query(convCol, where('clienteId', '==', existing.id)))
-    const emAtendimento = convSnap.docs.some((d) => {
-      const st = String(d.data().status || d.data().situacao || '').toLowerCase()
-      return st === 'em_atendimento' || st === 'em atendimento'
-    })
-    const incoming = payloadPessoaCliente(empresaId, mergedPerson, opp, asText(actor?.usuarioNome))
-    await applyClienteMerge(empresaId, existing.id, existing.data, incoming)
-    if (emAtendimento) return
-  }
-
-  try {
-    await enviarPessoaParaCrm(empresaId, mergedPerson, opp, actor)
-  } catch {
-    /* CRM isolado */
-  }
-}
-
 export async function enrichExistingPersonLead(opts: {
   empresaId: string
   person: CompanyPeopleResearch
@@ -291,6 +221,7 @@ export async function enrichExistingPersonLead(opts: {
 
   await updateDoc(doc(db, 'empresas', opts.empresaId, COL_PEOPLE_RESEARCH, opts.person.id), {
     enrichmentStatus: 'PROCESSING' satisfies EnrichmentStatus,
+    pipelineStatus: 'enriquecendo',
     atualizadoEm: serverTimestamp(),
   })
 
@@ -302,6 +233,7 @@ export async function enrichExistingPersonLead(opts: {
     lead.enrichmentStatus = 'NO_PROVIDER'
     await updateDoc(doc(db, 'empresas', opts.empresaId, COL_PEOPLE_RESEARCH, opts.person.id), {
       enrichmentStatus: 'NO_PROVIDER',
+      pipelineStatus: 'aguardando_enriquecimento',
       originalData: lead.originalData,
       atualizadoEm: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -318,21 +250,7 @@ export async function enrichExistingPersonLead(opts: {
     return r
   }
 
-  const proposed: EnrichmentProposedField[] = []
-  const errors: string[] = []
-  const providersUsed: string[] = []
-
-  for (const provider of configuredForCall) {
-    try {
-      const out = await provider.enrich(toInput(lead))
-      providersUsed.push(provider.id)
-      if (out.proposed?.length) proposed.push(...out.proposed)
-      if (out.errors.length) errors.push(...out.errors)
-    } catch (e: unknown) {
-      errors.push(provider.id)
-      providersUsed.push(provider.id)
-    }
-  }
+  const { proposed, errors, providersUsed } = await collectAuthorizedProposals(toInput(lead))
 
   const history: EnrichmentHistoryEntry[] = [...(lead.enrichmentHistory || [])]
   const candidates: EnrichmentCandidate[] = [...(lead.enrichmentCandidates || [])]
@@ -426,6 +344,21 @@ export async function enrichExistingPersonLead(opts: {
   else if (lead.telefone) lead.contactStatus = 'PHONE'
   else if (lead.email) lead.contactStatus = 'EMAIL'
 
+  const credit = await simulateCreditIfConfigured({ cpf: lead.cpf, produto: lead.produto })
+  lead.valorLiberado = credit.valorLiberado
+  lead.valorParcela = credit.valorParcela
+  lead.quantidadeParcelas = credit.quantidadeParcelas
+  lead.taxa = credit.taxa
+  lead.bancoOferta = credit.bancoOferta
+  lead.dataConsultaCredito = credit.dataConsultaCredito
+  lead.statusConsultaCredito = credit.statusConsultaCredito
+
+  const valid = isValidForAtendimento(lead)
+  let pipe = pipelineFromEnrichment(status, valid)
+  if (pipe === 'aguardando_validacao' && valid) pipe = 'pronto_atendimento'
+  lead.pipelineStatus = pipe
+  if (!lead.atendimentoStatus) lead.atendimentoStatus = 'nao_enviado'
+
   await updateDoc(
     doc(db, 'empresas', opts.empresaId, COL_PEOPLE_RESEARCH, opts.person.id),
     firestorePatch(lead)
@@ -454,10 +387,6 @@ export async function enrichExistingPersonLead(opts: {
     connectorId: 'person_enrichment',
     meta: { status, fieldsUpdated: updated.length, personLeadId: lead.id },
   })
-
-  if (status === 'ENRICHED' || status === 'PARTIAL') {
-    await syncCrmIfContact(opts.empresaId, opts.person, opts.company, lead, opts.actor)
-  }
 
   void getNxErpCampaignAdapter()
 

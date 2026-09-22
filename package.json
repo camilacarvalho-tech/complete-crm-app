@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:erp": "node --experimental-strip-types --test src/integrations/crm/idempotency.test.ts src/integrations/adapters/nxErpHealth.test.ts src/integrations/banks/digitacaoBanks.test.ts src/modules/chat-robot/chatRobot.test.ts src/lib/inboundOrigin.test.ts src/modules/digitacao/digitacaoDesk.test.ts"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

@@ -24,14 +24,20 @@ import {
 } from '../constants'
 import { bootstrapConnectors } from '../connectors'
 import { aprovarOportunidade, rejeitarOportunidade } from '../pipeline/approve'
-import { enviarOportunidadeParaCrm } from '../pipeline/sendToCrm'
-import { enviarPessoaParaCrm } from '../pipeline/sendPersonToCrm'
+import { sendLeadToCrm } from '../../../integrations/crm/erpBridge'
 import { enqueueJob } from '../services/jobQueue'
 import { processOneJob, startJobWorkerLoop } from '../services/jobWorker'
 import { writeLeadsMonitorAudit } from '../services/auditTrail'
 import { startIntelligentSearch, stopSearchExecution } from '../search/startSearch'
 import { normalizeFiltros } from '../search/filters'
 import { clearSearchCancel } from '../search/searchCancel'
+import {
+  DEFAULT_ROBOT_CONTROL,
+  setRobotIntent,
+  subscribeRobotControl,
+  type RobotControlKey,
+  type RobotControlState,
+} from '../services/robotControl'
 import type {
   FiltrosPesquisa,
   MonitorRunResult,
@@ -67,6 +73,7 @@ export function useLeadsMonitor() {
   const [activeSearchRunId, setActiveSearchRunId] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [ultimaAutoExecucao, setUltimaAutoExecucao] = useState<number | null>(null)
+  const [robotControl, setRobotControlState] = useState<RobotControlState>(DEFAULT_ROBOT_CONTROL)
   const autoBusy = useRef(false)
 
   const {
@@ -369,12 +376,12 @@ export function useLeadsMonitor() {
       if (!empresaId) throw new Error('Empresa não identificada')
       const actor = { usuarioId: usuario?.id, usuarioNome: usuario?.nome }
       await aprovarOportunidade(empresaId, op, actor)
-      return enviarOportunidadeParaCrm(
+      return sendLeadToCrm({
         empresaId,
-        { ...op, status: 'aprovado' },
-        usuario?.nome,
-        actor
-      )
+        kind: 'empresa',
+        oportunidade: { ...op, status: 'aprovado' },
+        actor,
+      })
     },
     [empresaId, usuario?.id, usuario?.nome]
   )
@@ -430,9 +437,12 @@ export function useLeadsMonitor() {
         entidadeId: person.id,
         after: { status: 'aprovado' },
       })
-      return enviarPessoaParaCrm(empresaId, person, company, {
-        usuarioId: usuario?.id,
-        usuarioNome: usuario?.nome,
+      return sendLeadToCrm({
+        empresaId,
+        kind: 'pessoa',
+        person,
+        company,
+        actor: { usuarioId: usuario?.id, usuarioNome: usuario?.nome },
       })
     },
     [empresaId, usuario?.id, usuario?.nome]
@@ -568,6 +578,44 @@ export function useLeadsMonitor() {
     return startJobWorkerLoop(empresaId, 4000)
   }, [empresaId])
 
+  useEffect(() => {
+    if (!empresaId) return
+    return subscribeRobotControl(empresaId, setRobotControlState)
+  }, [empresaId])
+
+  const setRobotControl = useCallback(
+    async (key: RobotControlKey, intent: 'paused' | 'running') => {
+      if (!empresaId) return
+      const actor = { usuarioId: usuario?.id, usuarioNome: usuario?.nome }
+      await setRobotIntent({ empresaId, key, intent, actor })
+      if (key !== 'search' || intent !== 'running') return
+      const run = processRuns.find((r) => r.tipo === 'busca' && (r.status === 'processando' || r.status === 'aguardando' || r.status === 'pausado'))
+      if (!run) return
+      const queuedSearch = jobs.some((j) => {
+        const t = String((j as { type?: string }).type || '')
+        const st = String((j as { status?: string }).status || '')
+        return ['search', 'search_inteligente'].includes(t) && (st === 'queued' || st === 'leased' || st === 'running')
+      })
+      if (queuedSearch) return
+      const snap = (run as ProcessRun & { filtrosSnapshot?: FiltrosPesquisa }).filtrosSnapshot
+      const cidade = run.cidadeAtual || (run.geoCities || [])[run.geoCityIndex || 0] || snap?.cidade || ''
+      const estado = (run.geoUfs || [])[run.geoUfIndex || 0] || snap?.estado || ''
+      await enqueueJob({
+        empresaId,
+        type: 'search_inteligente',
+        payload: {
+          filtros: { ...(snap || FILTROS_VAZIOS), cidade, estado } as FiltrosPesquisa,
+          searchRunId: run.searchRunId || undefined,
+          processRunId: run.id,
+        },
+        idempotencyKey: `robot-resume:${empresaId}:${run.id}:${estado}:${cidade}:${Date.now()}`,
+        actor,
+      })
+      void processOneJob(empresaId)
+    },
+    [empresaId, usuario?.id, usuario?.nome, processRuns, jobs]
+  )
+
   // Sincroniza último resultado quando SearchRun termina
   useEffect(() => {
     if (!activeSearchRun) return
@@ -588,6 +636,7 @@ export function useLeadsMonitor() {
     if (!empresaId || !activeSearchRun) return
     const linked = processRuns.find((p) => p.searchRunId === activeSearchRun.id && p.tipo === 'busca')
     if (!linked) return
+    if (activeSearchRun.status === 'paused') return
     const prog = activeSearchRun.progresso
     const statusMap: Record<string, ProcessRun['status']> = {
       queued: 'aguardando',
@@ -731,6 +780,8 @@ export function useLeadsMonitor() {
     retentarErros,
     excluirProcessamento,
     rejeitar,
+    robotControl,
+    setRobotControl,
     removeOportunidade: remove,
     update,
   }

@@ -11,10 +11,12 @@ import { DOCUMENT_PASTAS, inferCategoriaDocumento } from '../lib/documentCategor
 import { origemMarca, origemPrincipalDe, origemTexto } from '../lib/origemLead'
 import { produtoLabel } from '../modules/leads-monitor/catalog/produtosMonitor'
 import { drainErpInbound } from '../lib/inboundErpMessage'
+import { drainErpToCrmEvents } from '../integrations/events/eventHandlers'
 import { getWhatsAppProvider } from '../integrations/providers'
 import { labelPt } from '../lib/uiPt'
 import { ClienteLink } from '../components/nexus/ClienteLink'
 import type { NexusCliente } from '../types/nexus'
+import { digits, redactCpf, maskPhone } from '../lib/format'
 
 const FILA = [
   { id: 'todas', label: 'Todas' },
@@ -50,6 +52,33 @@ function dataHora(v: unknown) {
   return `${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
 }
 
+function displayPhone(value?: string) {
+  const d = digits(value)
+  if (d.length === 11) return `${d.slice(0, 2)} ${d.slice(2, 7)}-${d.slice(7)}`
+  if (d.length === 10) return `${d.slice(0, 2)} ${d.slice(2, 6)}-${d.slice(6)}`
+  const masked = maskPhone(value)
+  return masked || ''
+}
+
+function displayCpfSidebar(value?: string) {
+  const d = digits(value)
+  if (d.length === 11) return `***.***.${d.slice(6, 9)}-${d.slice(9)}`
+  return redactCpf(value) || ''
+}
+
+function moneyOrEmpty(v: unknown) {
+  const n = Number(v)
+  if (!Number.isFinite(n) || n <= 0) return ''
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function statusAtendimentoLabel(status?: string) {
+  const st = String(status || '')
+  if (st === 'finalizado') return { label: 'Finalizado', color: '#94a3b8' }
+  if (st === 'em_atendimento') return { label: 'Em atendimento', color: '#22c55e' }
+  return { label: 'Novo', color: '#f59e0b' }
+}
+
 function slotFila(c: { status?: unknown }, cli?: NexusCliente): string {
   const st = String(c.status || '')
   const stage = String(cli?.pipelineStage || '')
@@ -66,7 +95,7 @@ function slotFila(c: { status?: unknown }, cli?: NexusCliente): string {
 export default function ChatCenter() {
   const { usuario } = useAuth()
   const toast = useToast()
-  const { conversas, mensagens, clientes, documentos, propostas, contratos, usuariosEmpresa, equipes } = useNexusStore()
+  const { conversas, mensagens, clientes, documentos, propostas, contratos, usuariosEmpresa } = useNexusStore()
   const [params, setParams] = useSearchParams()
   const clientePref = params.get('cliente')
   const modalidade = params.get('modalidade')
@@ -83,8 +112,6 @@ export default function ChatCenter() {
   const [texto, setTexto] = useState('')
   const [interno, setInterno] = useState(false)
   const [busca, setBusca] = useState('')
-  const [motivoTx, setMotivoTx] = useState('')
-  const [especialidadeTx, setEspecialidadeTx] = useState('')
   const [waReady, setWaReady] = useState<boolean | null>(null)
   const [painel, setPainel] = useState<'lista' | 'chat' | 'ficha'>(params.get('conversa') ? 'chat' : 'lista')
   const selectedId = params.get('conversa')
@@ -93,6 +120,7 @@ export default function ChatCenter() {
     const eid = usuario?.empresaId
     if (!eid) return
     void drainErpInbound(eid)
+    void drainErpToCrmEvents(eid)
   }, [usuario?.empresaId])
 
   const externas = useMemo(() => conversas.items.filter((c) => c.canal !== 'interno'), [conversas.items])
@@ -292,8 +320,6 @@ export default function ChatCenter() {
       assignedTo: u.nome,
       assignedToId: u.id,
       status: 'em_atendimento',
-      transferenciaMotivo: motivoTx,
-      transferenciaEspecialidade: especialidadeTx,
       transferidoPor: usuario?.nome,
       transferidoPorId: usuario?.id,
       transferidoEm: new Date().toISOString(),
@@ -306,9 +332,8 @@ export default function ChatCenter() {
       acao: 'assignment.transferred',
       entidade: 'conversa',
       entidadeId: selected.id,
-      depois: { de: selected.assignedTo, para: u.nome, motivo: motivoTx, especialidade: especialidadeTx },
+      depois: { de: selected.assignedTo, para: u.nome },
     })
-    setMotivoTx('')
     toast.success(`Atendimento transferido para ${String(u.nome)}`)
   }
 
@@ -483,17 +508,11 @@ export default function ChatCenter() {
                 </SelectInput>
               </div>
             </div>
-            <div className="flex flex-wrap gap-1 mt-2">
+            <div className="mt-2">
               <SelectInput value="" onChange={(e) => void transferir(e.target.value)}>
                 <option value="">Transferir para funcionário</option>
                 {usuariosEmpresa.items.map((u) => <option key={u.id} value={u.id}>{String(u.nome)}{u.cargo ? ` — ${String(u.cargo)}` : ''}</option>)}
               </SelectInput>
-              <SelectInput value={String(selected.equipeId || '')} onChange={(e) => conversas.update(selected.id, { equipeId: e.target.value })}>
-                <option value="">Equipe</option>
-                {equipes.items.map((u) => <option key={u.id} value={u.id}>{String(u.nome)}</option>)}
-              </SelectInput>
-              <TextInput placeholder="Especialidade" value={especialidadeTx} onChange={(e) => setEspecialidadeTx(e.target.value)} />
-              <TextInput placeholder="Motivo" value={motivoTx} onChange={(e) => setMotivoTx(e.target.value)} />
             </div>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -557,61 +576,149 @@ export default function ChatCenter() {
   )
 
   const fichaCol = (
-    <div className="h-full min-h-0 overflow-y-auto border-l p-3 text-sm space-y-3" style={{ borderColor: 'var(--code-border)', background: 'var(--code-surface)' }}>
+    <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden border-l px-3 py-2.5 text-sm" style={{ borderColor: 'var(--code-border)', background: 'var(--code-surface)' }}>
       {cliente ? (
-        <>
-          <button type="button" className="lg:hidden text-xs font-semibold" onClick={() => setPainel('chat')}>← Conversa</button>
-          <div>
-            <p className="font-bold"><ClienteLink id={cliente.id} nome={cliente.nome} /></p>
-            <p>📱 {cliente.whatsapp || cliente.telefone || '—'}</p>
-            <p className="font-semibold" style={{ color: marca.cor }}>{marca.emoji} {origemTexto(origemCode)}</p>
-            <p className="text-xs">Canal: {String(cliente.canalEntrada || selected?.canalEntrada || '—')}</p>
-            <p>🎯 {String(cliente.campanhaNome || cliente.campanha || '—')}</p>
-            <p>🔎 {String(cliente.fonte || cliente.fontePesquisa || '—')}</p>
-            <p className="text-xs">{cliente.dataEntrada || '—'} {cliente.horaEntrada || ''}</p>
-            <p className="text-xs">{[cliente.estado, cliente.cidade, cliente.bairro, cliente.cep].filter(Boolean).join(' · ') || '—'}</p>
-          </div>
-          <div>
-            <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--code-muted)' }}>Documentos</p>
-            {DOCUMENT_PASTAS.map((pasta) => {
-              const items = docsCli.filter((d) => (pasta.cats as readonly string[]).includes(String(d.categoria)))
-              return (
-                <div key={pasta.id} className="mt-1">
-                  <p className="text-[11px] font-semibold">📁 {pasta.label}</p>
-                  {items.length ? items.map((d) => <p key={d.id} className="text-[11px] pl-3">{String(d.nome || d.categoria)}</p>) : <p className="text-[11px] pl-3" style={{ color: 'var(--code-muted)' }}>—</p>}
-                </div>
-              )
-            })}
-          </div>
-          <div>
-            <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--code-muted)' }}>Proposta</p>
-            <Link className="text-xs font-semibold" to={`/propostas?cliente=${cliente.id}`}>+ Nova proposta</Link>
-            {propsCli.map((p) => (
-              <p key={p.id} className="text-[11px]"><Link to={`/propostas?cliente=${cliente.id}`}>{String(p.produto || 'Proposta')} · {labelPt(String(p.status))}</Link></p>
-            ))}
-          </div>
-          <div>
-            <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--code-muted)' }}>Contrato</p>
-            {contrCli.length ? contrCli.map((p) => (
-              <p key={p.id} className="text-[11px]"><Link to="/contratos">{String(p.numero || p.produto || 'Contrato')} · {labelPt(String(p.status))}</Link></p>
-            )) : <p className="text-[11px]" style={{ color: 'var(--code-muted)' }}>—</p>}
-          </div>
-          {Array.isArray(cliente.historicoOrigens) && cliente.historicoOrigens.length > 0 && (
-            <div>
-              <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--code-muted)' }}>Histórico de origens</p>
-              {cliente.historicoOrigens.map((h, i) => (
-                <p key={i} className="text-[11px]">{origemTexto(String(h.origem))} · {String(h.campanha || h.fonte || h.canal || '')}</p>
-              ))}
-            </div>
-          )}
-          <div>
-            <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--code-muted)' }}>Histórico</p>
-            {timeline.slice(-12).map((ev, i) => (
-              <p key={i} className="text-[11px]">{horaCurta(ev.t) || dataHora(ev.t)} — {ev.label}</p>
-            ))}
-          </div>
-          <Link className="text-xs font-semibold block" to={`/documentos?q=${encodeURIComponent(String(cliente.nome || ''))}`}>Central de documentos</Link>
-        </>
+        <div className="space-y-2.5 min-w-0">
+          <button type="button" className="lg:hidden text-[11px] font-semibold" onClick={() => setPainel('chat')}>← Conversa</button>
+          {(() => {
+            const phone = displayPhone(String(cliente.whatsapp || cliente.telefone || ''))
+            const st = statusAtendimentoLabel(String(selected?.status || cliente.status || ''))
+            const credLiberado = moneyOrEmpty(cliente.valorLiberado)
+            const credParcela = moneyOrEmpty(cliente.valorParcela)
+            const credPrazo = cliente.quantidadeParcelas ? `${cliente.quantidadeParcelas}x` : ''
+            const hasCredit = Boolean(credLiberado || credParcela || credPrazo)
+            const rua = [cliente.endereco, cliente.numero].filter(Boolean).join(', ')
+            const hasAddr = Boolean(rua || cliente.bairro || cliente.cidade || cliente.cep)
+            return (
+              <>
+                <header className="pb-2" style={{ borderBottom: '1px solid var(--code-border)' }}>
+                  <p className="font-semibold text-[15px] leading-snug tracking-tight break-words">
+                    <ClienteLink id={cliente.id} nome={cliente.nome} />
+                  </p>
+                  {phone ? <p className="text-[12px] mt-1" style={{ color: 'var(--code-muted)' }}>📱 {phone}</p> : null}
+                  <p className="flex items-center gap-1.5 text-[11px] mt-1.5" style={{ color: st.color }}>
+                    <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: st.color }} />
+                    {st.label}
+                  </p>
+                </header>
+
+                <section className="rounded-lg px-2.5 py-2" style={{ background: 'var(--code-surface-muted)', border: '1px solid var(--code-border)' }}>
+                  <p className="text-[10px] font-semibold tracking-wide" style={{ color: 'var(--code-orange)' }}>💰 CRÉDITO</p>
+                  {hasCredit ? (
+                    <div className="mt-1.5">
+                      <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>Valor liberado</p>
+                      <p className="text-[16px] font-semibold leading-tight">{credLiberado || '—'}</p>
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        <div>
+                          <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>Parcela</p>
+                          <p className="text-[13px] font-semibold">{credParcela || '—'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>Prazo</p>
+                          <p className="text-[13px] font-semibold">{credPrazo || '—'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] mt-1" style={{ color: 'var(--code-muted)' }}>Crédito ainda não consultado</p>
+                  )}
+                </section>
+
+                <details open className="rounded-lg px-2.5 py-1.5" style={{ border: '1px solid var(--code-border)' }}>
+                  <summary className="cursor-pointer text-[11px] font-semibold" style={{ color: 'var(--code-text)' }}>👤 Dados pessoais</summary>
+                  <div className="mt-2 space-y-1.5 text-[12px]">
+                    <div>
+                      <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>CPF</p>
+                      <p>{displayCpfSidebar(cliente.cpf) || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>Nascimento</p>
+                      <p>{cliente.dataNascimento || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>Telefone</p>
+                      <p>{phone || '—'}</p>
+                    </div>
+                  </div>
+                </details>
+
+                <section className="rounded-lg px-2.5 py-2" style={{ border: '1px solid var(--code-border)' }}>
+                  <p className="text-[11px] font-semibold">📍 Endereço</p>
+                  {hasAddr ? (
+                    <div className="mt-1 text-[12px] leading-snug space-y-0.5">
+                      {rua ? <p>{rua}{cliente.complemento ? `, ${cliente.complemento}` : ''}</p> : null}
+                      {cliente.bairro ? <p>{String(cliente.bairro)}</p> : null}
+                      {cliente.cidade || cliente.estado ? <p>{[cliente.cidade, cliente.estado].filter(Boolean).join(' - ')}</p> : null}
+                      {cliente.cep ? <p>CEP {String(cliente.cep)}</p> : null}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] mt-1" style={{ color: 'var(--code-muted)' }}>Endereço ainda não enriquecido</p>
+                  )}
+                </section>
+
+                <details className="rounded-lg px-2.5 py-1.5" style={{ border: '1px solid var(--code-border)' }}>
+                  <summary className="cursor-pointer text-[11px] font-semibold" style={{ color: 'var(--code-muted)' }}>⚙ Informações técnicas</summary>
+                  <div className="mt-2 space-y-0.5 text-[11px] break-words" style={{ color: 'var(--code-muted)' }}>
+                    <p>Origem: {origemTexto(origemCode)}</p>
+                    <p>Canal: {String(cliente.canalEntrada || selected?.canalEntrada || '')}</p>
+                    <p>Campanha: {String(cliente.campanhaNome || cliente.campanha || '')}</p>
+                    <p>Fonte: {String(cliente.fonte || cliente.fontePesquisa || '')}</p>
+                    <p>API: {String(cliente.statusConsultaCredito || '')}</p>
+                    <p>Consulta: {String(cliente.dataConsultaCredito || '')}</p>
+                    <p>Entrada: {cliente.dataEntrada || ''} {cliente.horaEntrada || ''}</p>
+                    <p>ID cliente: {cliente.id}</p>
+                    <p>ID conversa: {selected?.id || ''}</p>
+                    <p>PersonLead: {String(cliente.leadsMonitorPersonId || '')}</p>
+                    <p>Status: {String(selected?.status || cliente.status || '')}</p>
+                    {Array.isArray(cliente.historicoOrigens) && cliente.historicoOrigens.map((h, i) => (
+                      <p key={i}>{origemTexto(String(h.origem))} · {String(h.campanha || h.fonte || h.canal || '')}</p>
+                    ))}
+                    {timeline.slice(-8).map((ev, i) => (
+                      <p key={`t${i}`}>{horaCurta(ev.t) || dataHora(ev.t)} — {ev.label}</p>
+                    ))}
+                  </div>
+                </details>
+
+                <section>
+                  <p className="text-[11px] font-semibold mb-1">📁 Documentos</p>
+                  <div className="divide-y rounded-lg overflow-hidden" style={{ border: '1px solid var(--code-border)', borderColor: 'var(--code-border)' }}>
+                    {DOCUMENT_PASTAS.map((pasta) => {
+                      const items = docsCli.filter((d) => (pasta.cats as readonly string[]).includes(String(d.categoria)))
+                      return (
+                        <Link
+                          key={pasta.id}
+                          to={`/documentos?q=${encodeURIComponent(String(cliente.nome || ''))}`}
+                          className="flex items-center justify-between px-2 py-1.5 text-[11px] hover:opacity-90"
+                          style={{ borderColor: 'var(--code-border)' }}
+                        >
+                          <span>{pasta.label}</span>
+                          <span style={{ color: 'var(--code-muted)' }}>{items.length ? items.length : ''}</span>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </section>
+
+                <section className="pt-0.5" style={{ borderTop: '1px solid var(--code-border)' }}>
+                  <p className="text-[10px] font-semibold tracking-wide" style={{ color: 'var(--code-muted)' }}>📄 PROPOSTA</p>
+                  {propsCli.length ? (
+                    <Link className="text-[12px] font-semibold" to={`/propostas?cliente=${cliente.id}`}>Ver proposta</Link>
+                  ) : (
+                    <Link className="text-[12px] font-semibold" to={`/propostas?cliente=${cliente.id}`}>+ Nova proposta</Link>
+                  )}
+                </section>
+                <section>
+                  <p className="text-[10px] font-semibold tracking-wide" style={{ color: 'var(--code-muted)' }}>📑 CONTRATO</p>
+                  {contrCli.length ? (
+                    <Link className="text-[12px] font-semibold" to="/contratos">Ver contrato</Link>
+                  ) : (
+                    <Link className="text-[12px] font-semibold" to="/contratos">+ Novo contrato</Link>
+                  )}
+                </section>
+              </>
+            )
+          })()}
+        </div>
       ) : (
         <p className="text-xs" style={{ color: 'var(--code-muted)' }}>Selecione uma conversa para ver o cliente.</p>
       )}

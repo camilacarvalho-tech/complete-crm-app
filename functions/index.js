@@ -5,6 +5,7 @@ const admin = require('firebase-admin')
 const { logger } = require('firebase-functions')
 const { handler: placesSearchHandler } = require('./placesSearch')
 const { handler: overpassSearchHandler } = require('./overpassSearch')
+const { handler: nxErpHealthHandler } = require('./nxErpHealth')
 
 admin.initializeApp()
 
@@ -444,6 +445,18 @@ exports.leadsMonitorOverpassSearch = onRequest({
 }, overpassSearchHandler)
 
 /**
+ * Health check NX ERP. Secrets só no backend.
+ * Não inventa rota: HTTP ao ERP somente se NX_ERP_HEALTH_PATH existir.
+ * Não envia lead / WhatsApp / SMS / Meta.
+ */
+exports.nxErpHealth = onRequest({
+  cors: true,
+  region: 'southamerica-east1',
+  timeoutSeconds: 15,
+  invoker: 'public',
+}, nxErpHealthHandler)
+
+/**
  * Webhook oficial Meta WhatsApp Cloud API.
  * GET: verificação (META_WHATSAPP_VERIFY_TOKEN no env da Function).
  * POST: persiste WAMID/wa_id/texto. Não envia mensagem e não inventa atendimento.
@@ -479,20 +492,26 @@ exports.metaWhatsAppWebhook = onRequest({
   const wamid = msg?.id || null
   const waId = contact?.wa_id || null
   const text = msg?.text?.body || null
-  await db.collection(`empresas/${empresaId}/mensagens`).add({
+  const referral = msg?.referral || body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.referral
+  const sourceType = String(referral?.source_type || referral?.source_url || '')
+  const origin = /ad|ads|advertisement/i.test(sourceType) ? 'trafego_pago' : 'whatsapp'
+  await db.collection(`empresas/${empresaId}/erpInbound`).add({
     empresaId,
-    canal: 'whatsapp',
-    wamid,
-    wa_id: waId,
-    texto: text,
-    status: 'recebida',
+    messageId: wamid,
+    phone: waId,
+    whatsapp: waId,
+    message: text,
+    messageType: msg?.type || 'texto',
+    source: 'whatsapp',
+    origin,
+    processado: false,
     criadoEm: admin.firestore.FieldValue.serverTimestamp(),
   })
   await db.collection(`empresas/${empresaId}/automacaoEventos`).add({
     empresaId,
     gatilho: 'nova_mensagem',
-    entidade: 'mensagens',
-    record: { wa_id: waId, wamid, texto: text, canal: 'whatsapp' },
+    entidade: 'erpInbound',
+    record: { wa_id: waId, wamid, texto: text, canal: 'whatsapp', origin },
     status: 'pendente',
     criadoEm: admin.firestore.FieldValue.serverTimestamp(),
   })

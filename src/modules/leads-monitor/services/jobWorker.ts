@@ -22,13 +22,15 @@ import {
   isSearchCancelledError,
   readExecutionFlags,
 } from '../search/searchCancel'
+import { loadRobotControl, skipJobTypesForPaused } from './robotControl'
 
 let loopTimer: ReturnType<typeof setInterval> | null = null
 let busy = false
 
 export async function processOneJob(empresaId: string): Promise<boolean> {
   bootstrapConnectors()
-  const job = await claimNextJob(empresaId)
+  const control = await loadRobotControl(empresaId)
+  const job = await claimNextJob(empresaId, undefined, { skipTypes: skipJobTypesForPaused(control) })
   if (!job) return false
 
   await markJobRunning(empresaId, job.id)

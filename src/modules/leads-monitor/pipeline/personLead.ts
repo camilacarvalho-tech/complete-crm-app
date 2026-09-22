@@ -176,6 +176,16 @@ export function toPersonLead(
     contactStatus: emptyIfMissing(extra.contactStatus),
     relationshipStatus: emptyIfMissing(extra.relationshipStatus),
     dataNascimento: emptyIfMissing(extra.dataNascimento),
+    pipelineStatus: emptyIfMissing(extra.pipelineStatus) || 'aguardando_enriquecimento',
+    atendimentoStatus: emptyIfMissing(extra.atendimentoStatus) || 'nao_enviado',
+    processRunId: emptyIfMissing(extra.processRunId),
+    valorLiberado: extra.valorLiberado == null || extra.valorLiberado === '' ? null : Number(extra.valorLiberado),
+    valorParcela: extra.valorParcela == null || extra.valorParcela === '' ? null : Number(extra.valorParcela),
+    quantidadeParcelas: extra.quantidadeParcelas == null || extra.quantidadeParcelas === '' ? null : Number(extra.quantidadeParcelas),
+    taxa: extra.taxa == null || extra.taxa === '' ? null : Number(extra.taxa),
+    bancoOferta: emptyIfMissing(extra.bancoOferta),
+    dataConsultaCredito: emptyIfMissing(extra.dataConsultaCredito),
+    statusConsultaCredito: emptyIfMissing(extra.statusConsultaCredito),
     originalData:
       extra.originalData && typeof extra.originalData === 'object'
         ? (extra.originalData as Record<string, string>)
@@ -247,6 +257,7 @@ export function personLeadExportRow(lead: PersonLead): Record<string, string | n
 export function personLeadToNxErpContact(lead: PersonLead): Record<string, string | number> {
   return {
     nome: lead.nome,
+    leadId: lead.id,
     telefone: lead.telefone,
     whatsapp: lead.whatsapp,
     email: lead.email,

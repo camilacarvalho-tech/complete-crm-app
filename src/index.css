@@ -2,7 +2,6 @@
 @import 'tw-animate-css';
 
 :root,
-html[data-theme='light'],
 html[data-theme='dark'],
 html.dark {
   color-scheme: dark;
@@ -37,6 +36,42 @@ html.dark {
   --code-chat-out: color-mix(in srgb, var(--code-blue) 35%, #111827);
   --code-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   --code-overlay: rgba(0, 0, 0, 0.65);
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+  --code-background: #f1f5f9;
+  --code-area: #f8fafc;
+  --code-sidebar: #0f172a;
+  --code-surface: #ffffff;
+  --code-surface-muted: #f8fafc;
+  --code-table-header: #f1f5f9;
+  --code-table-head-text: #334155;
+  --code-row-hover: #f8fafc;
+  --code-primary: #06b6d4;
+  --code-secondary: #7c3aed;
+  --code-cyan: #0891b2;
+  --code-blue: #2563eb;
+  --code-purple: #7c3aed;
+  --code-orange: #ea580c;
+  --code-yellow: #ca8a04;
+  --code-success: #15803d;
+  --code-danger: #dc2626;
+  --code-warning: #c2410c;
+  --code-text: #0f172a;
+  --code-text-body: #1e293b;
+  --code-muted: #475569;
+  --code-placeholder: #64748b;
+  --code-border: #e2e8f0;
+  --code-card-border: #e2e8f0;
+  --code-input-bg: #ffffff;
+  --code-input-border: #cbd5e1;
+  --code-focus: #0891b2;
+  --code-chat-in: #f1f5f9;
+  --code-chat-out: color-mix(in srgb, var(--code-blue) 12%, #ffffff);
+  --code-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --code-overlay: rgba(15, 23, 42, 0.45);
+  --code-bg: var(--code-background);
 }
 
 html.dark,

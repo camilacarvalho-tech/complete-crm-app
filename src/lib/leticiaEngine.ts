@@ -88,6 +88,20 @@ export async function runLeticiaFlow(
       } else if (acao === 'notificar') {
         await deps.notify(step.payload || flow.nome)
         executed.push('notify')
+      } else if (acao === 'transferir_atendente') {
+        await deps.notify(step.payload || 'Transferir para atendente')
+        executed.push('transferir')
+      } else if (acao === 'adicionar_fila') {
+        await deps.createTask(step.payload || 'Fila de atendimento', { origem: 'leticia', entidadeId: event.record.id })
+        executed.push('fila')
+      } else if (acao === 'alterar_status') {
+        await deps.movePipeline(String(event.record.id || ''), step.payload || 'em_atendimento')
+        executed.push('status')
+      } else if (acao === 'aguardar') {
+        executed.push(`aguardar:${step.payload || '0'}`)
+      } else if (acao === 'encerrar_atendimento') {
+        await deps.movePipeline(String(event.record.id || ''), 'finalizado')
+        executed.push('encerrar')
       } else {
         skipped.push(`acao_desconhecida:${acao}`)
       }
@@ -112,9 +126,44 @@ export const LETICIA_TRIGGERS = [
 ]
 
 export const LETICIA_ACTIONS = [
-  'enviar_whatsapp',
   'criar_tarefa',
+  'enviar_whatsapp',
+  'transferir_atendente',
+  'adicionar_fila',
+  'alterar_status',
+  'aguardar',
+  'encerrar_atendimento',
   'adicionar_tag',
   'mover_pipeline',
   'notificar',
+]
+
+export const LETICIA_ACTION_LABELS: Record<string, string> = {
+  criar_tarefa: 'Criar tarefa',
+  enviar_whatsapp: 'Enviar WhatsApp',
+  transferir_atendente: 'Transferir para atendente',
+  adicionar_fila: 'Adicionar à fila',
+  alterar_status: 'Alterar status',
+  aguardar: 'Aguardar',
+  encerrar_atendimento: 'Encerrar atendimento',
+  adicionar_tag: 'Adicionar tag',
+  mover_pipeline: 'Mover etapa',
+  notificar: 'Notificar',
+}
+
+export const LETICIA_FIELDS = [
+  { id: 'nome', label: 'Nome' },
+  { id: 'telefone', label: 'Telefone' },
+  { id: 'whatsapp', label: 'WhatsApp' },
+  { id: 'modalidade', label: 'Modalidade' },
+  { id: 'produto', label: 'Produto' },
+  { id: 'origem', label: 'Origem' },
+  { id: 'cidade', label: 'Cidade' },
+  { id: 'estado', label: 'Estado' },
+  { id: 'segmento', label: 'Segmento' },
+  { id: 'status', label: 'Status' },
+  { id: 'score', label: 'Score' },
+  { id: 'responsavel', label: 'Responsável' },
+  { id: 'campanha', label: 'Campanha' },
+  { id: 'pipelineStage', label: 'Etapa' },
 ]

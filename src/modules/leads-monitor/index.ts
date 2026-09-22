@@ -126,6 +126,17 @@ export { classifyLead } from './pipeline/classify'
 export { scoreLead } from './pipeline/score'
 export { writeLeadsMonitorAudit, sanitizeAuditPayload } from './services/auditTrail'
 export type { LeadsMonitorAuditEntry, AuditAction, AuditOrigem } from './services/auditTrail'
+export { ROBOS_MONITOR, robotStatusFromProcess } from './services/robotService'
+export {
+  loadRobotControl,
+  setRobotIntent,
+  subscribeRobotControl,
+  isRobotPaused,
+  ROBOT_LABEL,
+  type RobotControlKey,
+  type RobotControlState,
+} from './services/robotControl'
+export { buildRobotOpsView, formatRobotAiLines } from './services/robotSnapshot'
 export { enqueueJob, claimNextJob } from './services/jobQueue'
 export { processOneJob, startJobWorkerLoop } from './services/jobWorker'
 export { writeLeadsMonitorLog, moveToDlq, reprocessDlq } from './services/opsLogs'

@@ -134,6 +134,8 @@ export default function LeadsMonitor() {
     removeOportunidade,
     empresaId,
     fontesItems,
+    robotControl,
+    setRobotControl,
   } = useLeadsMonitor()
 
   const { usuario } = useAuth()
@@ -145,6 +147,7 @@ export default function LeadsMonitor() {
   const [cepMsg, setCepMsg] = useState('')
   const [lgpdOp, setLgpdOp] = useState<OportunidadeMonitor | null>(null)
   const [parando, setParando] = useState(false)
+  const [robotBusy, setRobotBusy] = useState<string | null>(null)
 
   const pesquisasAtivas = pesquisas.filter((p) => p.ativa).length
 
@@ -172,7 +175,6 @@ export default function LeadsMonitor() {
     const r = await executarBusca()
     if (r) {
       toast.success('Busca manual iniciada', 'Pesquisa pontual · campanha automática não foi ativada')
-      setView('leads')
     }
   }
 
@@ -418,7 +420,34 @@ export default function LeadsMonitor() {
         />
       )}
 
-      {view === 'robos' && <RobotCenter run={activeProcessRun} />}
+      {view === 'robos' && (
+        <RobotCenter
+          run={activeProcessRun}
+          processRuns={processRuns || []}
+          jobs={(jobs || []) as Array<Record<string, unknown> & { id: string }>}
+          people={peopleItems}
+          oportunidades={oportunidades}
+          pesquisas={pesquisas}
+          logs={robotLogs}
+          audit={(auditItems || []) as Array<Record<string, unknown> & { id: string }>}
+          control={robotControl}
+          busyKey={robotBusy as 'search' | 'enrichment' | 'classification' | 'crm' | 'followup' | null}
+          onControl={(key, intent) => {
+            setRobotBusy(key)
+            void setRobotControl(key, intent)
+              .then(() => toast.info(intent === 'paused' ? 'Robô pausado' : 'Robô retomado'))
+              .catch((e: { message?: string }) => toast.error('Controle do robô', e?.message))
+              .finally(() => setRobotBusy(null))
+          }}
+          onRerunSearch={() => void onBuscarManual()}
+          onRetry={() => activeProcessRun && void retentarErros(activeProcessRun)}
+          onOpenFila={() => setView('fila')}
+          onOpenLogs={() => setView('logs')}
+          onOpenLeads={() => setView('leads')}
+          onOpenPessoas={() => setView('pessoas')}
+          onConfigureFollowup={() => setView('fontes')}
+        />
+      )}
 
       {view === 'busca' && (
         <ManualSearch
@@ -428,7 +457,8 @@ export default function LeadsMonitor() {
           onCepMsg={setCepMsg}
           buscando={buscando}
           searchRunning={searchRunning}
-          progresso={searchRunning ? activeSearchRun?.progresso : undefined}
+          searchStatus={activeSearchRun?.status}
+          progresso={activeSearchRun?.progresso}
           erro={erro}
           nomeCampanha={nomePesquisa}
           onNomeCampanha={setNomePesquisa}
@@ -436,6 +466,8 @@ export default function LeadsMonitor() {
           onCancelar={() => void onCancelar()}
           onSalvarCampanha={() => void onSalvar()}
           ultimoResultado={ultimoResultado}
+          onVerLeads={() => setView('leads')}
+          onVerPessoas={() => setView('pessoas')}
         />
       )}
 

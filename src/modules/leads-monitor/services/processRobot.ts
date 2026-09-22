@@ -31,6 +31,7 @@ import { processRecordId } from './processRunStore'
 import type { ProcessRun } from '../types/processRun'
 import type { OportunidadeMonitor } from '../types'
 import { qualifyInssRecord, idadeFromDate } from '../pipeline/inssQualify'
+import { isRobotPaused } from './robotControl'
 
 function emailOk(v: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
@@ -269,8 +270,13 @@ export async function processBaseBatch(opts: {
 
       const enriched = await enrichLead(lead0, opts.empresaId)
       if (enriched.dadosEnriquecidos?.cnpjValidado) enriquecidos += 1
-      const classification = await classifyLead(enriched, filtros, opts.empresaId, { useLlm: false })
-      const scored = scoreLead(enriched, classification, filtros)
+      const classPaused = await isRobotPaused(opts.empresaId, 'classification')
+      const classification = classPaused
+        ? { categoria: 'qualificar' as const, label: 'aguardando_classificacao', motivo: 'Robô de classificação pausado', origem: 'nexus_ai_heuristica' as const }
+        : await classifyLead(enriched, filtros, opts.empresaId, { useLlm: false })
+      const scored = classPaused
+        ? { score: 0, temperatura: 'Frio' as const, classificacao: 'aguardando_classificacao', motivos: ['Robô de classificação pausado'], origemScore: 'nexus_ai_heuristica' as const }
+        : scoreLead(enriched, classification, filtros)
       if (scored.score >= 50) qualificados += 1
 
       const oppRef = await addDoc(
@@ -506,7 +512,7 @@ export async function processBaseBatch(opts: {
     })
   )
   if (remaining === 0) {
-    if (run.autoEnrich) {
+    if (run.autoEnrich && !(await isRobotPaused(opts.empresaId, 'enrichment'))) {
       try {
         const { getCallableEnrichmentProviders } = await import('../enrichment/enrichmentRegistry')
         const { runEnrichmentQueue } = await import('../enrichment/enrichmentQueue')

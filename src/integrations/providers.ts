@@ -128,6 +128,7 @@ export function getGoogleAdsProvider(): ChannelProvider {
 
 export { getNxErpCampaignAdapter, UnconfiguredNxErpCampaignAdapter } from './nxErpCampaign'
 export { personLeadToNxErpContact } from '../modules/leads-monitor/pipeline/personLead'
+export { sendLeadToCrm, addLeadToAttendanceQueue } from './crm/erpBridge'
 
 export async function collectProviderHealth() {
   const [bank, fiscal, wa, voip, ig, msg, sms, email, meta, gads] = await Promise.all([

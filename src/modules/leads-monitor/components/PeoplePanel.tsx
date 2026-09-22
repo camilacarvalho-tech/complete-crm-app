@@ -9,10 +9,39 @@ import {
   type EnrichmentExportMode,
 } from '../enrichment/enrichmentExport'
 
+function moneyBr(v: unknown) {
+  const n = Number(v)
+  if (!Number.isFinite(n) || n <= 0) return '—'
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
 function maskPhone(v?: string) {
   const d = String(v || '').replace(/\D/g, '')
   if (d.length < 4) return v || '—'
   return `***${d.slice(-4)}`
+}
+
+function extraPerson(p: CompanyPeopleResearch) {
+  return p as CompanyPeopleResearch & {
+    enrichmentStatus?: string
+    pipelineStatus?: string
+    atendimentoStatus?: string
+    source?: string
+    collectedAt?: { toDate?: () => Date } | string
+    updatedAt?: { toDate?: () => Date } | string
+    valorLiberado?: number | null
+    valorParcela?: number | null
+    quantidadeParcelas?: number | null
+  }
+}
+
+function when(v: unknown) {
+  if (!v) return '—'
+  if (typeof v === 'string') return v.slice(0, 19).replace('T', ' ')
+  if (typeof v === 'object' && v && 'toDate' in v && typeof (v as { toDate: () => Date }).toDate === 'function') {
+    return (v as { toDate: () => Date }).toDate().toLocaleString('pt-BR')
+  }
+  return '—'
 }
 
 export function PeoplePanel(props: {
@@ -175,7 +204,7 @@ export function PeoplePanel(props: {
                   }}
                 />
               </th>
-              {['Nome', 'Empresa', 'CNPJ', 'Cargo', 'Relação', 'Telefone', 'WhatsApp', 'Enrichment', 'Status', 'Ações'].map((h) => (
+              {['Nome', 'Empresa', 'Fonte', 'Importação', 'Atualização', 'Enrichment', 'Fila', 'Liberado', 'Parcela', 'Prazo', 'Atendimento', 'Ações'].map((h) => (
                 <th key={h} className="text-left px-3 py-2">
                   {h}
                 </th>
@@ -185,7 +214,8 @@ export function PeoplePanel(props: {
           <tbody>
             {props.people.map((p) => {
               const company = props.companies.find((o) => o.id === p.opportunityId)
-              const extra = p as CompanyPeopleResearch & { enrichmentStatus?: string }
+              const extra = extraPerson(p)
+              const pronto = extra.pipelineStatus === 'pronto_atendimento' || extra.pipelineStatus === 'aguardando_validacao'
               return (
                 <tr key={p.id} className="border-t border-slate-100 dark:border-slate-700">
                   <td className="px-3 py-2">
@@ -197,31 +227,53 @@ export function PeoplePanel(props: {
                   </td>
                   <td className="px-3 py-2">{p.personName}</td>
                   <td className="px-3 py-2">{p.companyName}</td>
-                  <td className="px-3 py-2">{p.companyCnpj}</td>
-                  <td className="px-3 py-2">{p.jobTitle}</td>
-                  <td className="px-3 py-2">{p.relationToCompany}</td>
-                  <td className="px-3 py-2">{maskPhone(p.phone)}</td>
-                  <td className="px-3 py-2">{maskPhone(p.whatsapp)}</td>
-                  <td className="px-3 py-2">{extra.enrichmentStatus || 'NOT_ENRICHED'}</td>
-                  <td className="px-3 py-2">{p.status}</td>
+                  <td className="px-3 py-2">{p.sourceName || p.source}</td>
+                  <td className="px-3 py-2">{when(p.foundAt || extra.collectedAt)}</td>
+                  <td className="px-3 py-2">{when(p.updatedAt || extra.updatedAt)}</td>
+                  <td className="px-3 py-2">{extra.enrichmentStatus || extra.pipelineStatus || '—'}</td>
+                  <td className="px-3 py-2">{extra.pipelineStatus || 'aguardando_enriquecimento'}</td>
+                  <td className="px-3 py-2">{moneyBr(extra.valorLiberado)}</td>
+                  <td className="px-3 py-2">{moneyBr(extra.valorParcela)}</td>
+                  <td className="px-3 py-2">{extra.quantidadeParcelas ? `${extra.quantidadeParcelas}x` : '—'}</td>
+                  <td className="px-3 py-2">{extra.atendimentoStatus || 'nao_enviado'}</td>
                   <td className="px-3 py-2">
                     <div className="flex gap-2 flex-wrap">
                       <button type="button" className="underline" onClick={() => void run([p])}>
                         Enriquecer
                       </button>
-                      <button type="button" className="underline" onClick={() => setHistoryId(p.id)}>
-                        Histórico
+                      <button type="button" className="underline" onClick={() => void run([p])}>
+                        Reprocessar
                       </button>
-                      {company && props.onAprovarEmpresa ? (
-                        <button type="button" className="underline" onClick={() => props.onAprovarEmpresa?.(company)}>
-                          Empresa→CRM
+                      <button type="button" className="underline" onClick={() => setHistoryId(p.id)}>
+                        Ver detalhes
+                      </button>
+                      {pronto ? (
+                        <button
+                          type="button"
+                          className="underline"
+                          onClick={() => {
+                            const stub = (company || {
+                              id: p.opportunityId || p.companyId || p.id,
+                              empresaId: props.empresaId,
+                              nome: p.companyName || p.personName,
+                              cnpj: p.companyCnpj,
+                              telefone: '',
+                              cidade: '',
+                              estado: '',
+                              tipo: 'pessoa',
+                              status: 'novo',
+                              score: 0,
+                              temperatura: 'Frio',
+                              metadados: {},
+                            }) as OportunidadeMonitor
+                            props.onAddCrm(p, stub)
+                          }}
+                        >
+                          Enviar atendimento
                         </button>
-                      ) : null}
-                      {company ? (
-                        <button type="button" className="underline" onClick={() => props.onAddCrm(p, company)}>
-                          CRM
-                        </button>
-                      ) : null}
+                      ) : (
+                        <span className="text-slate-500">Fora da fila Chat</span>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -229,7 +281,7 @@ export function PeoplePanel(props: {
             })}
             {!props.people.length ? (
               <tr>
-                <td colSpan={11} className="px-3 py-6 text-center text-slate-400">
+                <td colSpan={13} className="px-3 py-6 text-center text-slate-400">
                   Nenhuma pessoa publicamente associada foi encontrada nas fontes consultadas.
                 </td>
               </tr>

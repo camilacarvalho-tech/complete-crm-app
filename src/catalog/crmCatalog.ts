@@ -117,9 +117,7 @@ export function productSubs(code?: string): string[] {
   return found ? [...found.sub] : []
 }
 
-export const BANCOS_DIGITACAO = [
-  'ITAÚ', 'FACTA', 'SANTANDER', 'CAIXA', 'BRADESCO', 'C6 BANK', 'DAYCOVAL', 'BRB', 'BMG', 'PARIBAS', 'QI SOCIEDADE DE CRÉDITO', 'BMS SOCIEDADE', 'MONEY PLUS SOCIEDADE',
-] as const
+export const BANCOS_DIGITACAO = ['FACTA', 'NOVO SAQUE', 'ICRED', 'TOKE REAL'] as const
 
 export function originLabel(code?: string): string {
   const found = LEAD_ORIGINS.find((o) => o.code === code || o.label === String(code || '').toUpperCase())

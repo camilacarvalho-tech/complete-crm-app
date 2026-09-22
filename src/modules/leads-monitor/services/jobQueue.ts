@@ -134,8 +134,10 @@ export async function enqueueJob(opts: {
  */
 export async function claimNextJob(
   empresaId: string,
-  owner = workerId()
+  owner = workerId(),
+  opts?: { skipTypes?: JobType[] }
 ): Promise<LeadsMonitorJob | null> {
+  const skip = new Set(opts?.skipTypes || [])
   const q = query(
     collection(db, 'empresas', empresaId, COL_JOBS),
     where('status', 'in', ['queued', 'failed']),
@@ -147,6 +149,7 @@ export async function claimNextJob(
   for (const d of snap.docs) {
     const data = d.data() as Omit<LeadsMonitorJob, 'id'>
     if (data.empresaId !== empresaId) continue
+    if (skip.has(data.type)) continue
     if ((data.attempts || 0) >= (data.maxAttempts || JOB_MAX_ATTEMPTS)) continue
 
     try {

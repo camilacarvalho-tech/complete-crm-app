@@ -135,6 +135,17 @@ export interface NexusCliente extends Attribution {
   twitterUrl?: string
   leadsMonitorPersonId?: string
   leadsMonitorOpportunityId?: string
+  leadId?: string
+  erpId?: string | null
+  externalId?: string
+  origin?: string
+  valorLiberado?: number | null
+  valorParcela?: number | null
+  quantidadeParcelas?: number | null
+  taxa?: number | null
+  bancoOferta?: string
+  dataConsultaCredito?: string
+  statusConsultaCredito?: string
   camposExtras?: Record<string, unknown>
   criadoEm?: unknown
   atualizadoEm?: unknown

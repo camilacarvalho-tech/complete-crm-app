@@ -3,6 +3,7 @@ import { PageHeader, PrimaryButton } from '../components/nexus/kit'
 import { CONVENIOS_PADRAO } from '../catalog/crmCatalog'
 import { useNexusStore } from '../contexts/NexusStore'
 import { useToast } from '../components/ui/Toast'
+import { INSTITUTION_ADAPTERS } from '../integrations/banks/registry'
 
 export default function BancosConvenios() {
   const { convenios } = useNexusStore()
@@ -11,7 +12,7 @@ export default function BancosConvenios() {
     <div className="space-y-3">
       <PageHeader
         title="Bancos / Convênios"
-        subtitle="Cadastro de regras por banco. Cálculos ficam no provider. Convênios/público são cadastráveis pelo administrador."
+        subtitle="Instituições com adapter: FACTA, NOVO SAQUE, ICRED, TOKE REAL. INSS é produto, não banco."
         actions={
           <PrimaryButton onClick={async () => {
             for (const c of CONVENIOS_PADRAO) {
@@ -21,11 +22,20 @@ export default function BancosConvenios() {
           }}>Importar convênios padrão</PrimaryButton>
         }
       />
-      <p className="text-xs uppercase font-bold" style={{ color: 'var(--code-muted)' }}>Bancos · Convênios · Produtos · Regras · Compatibilidades · Configurações · Sincronização · Logs — credenciais somente no backend.</p>
+      <div className="nexus-card p-4 text-sm space-y-2 max-w-xl">
+        <p className="font-semibold">APIs das instituições</p>
+        {INSTITUTION_ADAPTERS.map((a) => (
+          <p key={a.id}>
+            {a.name}
+            <br />
+            <b>{a.isConfigured() ? '● API configurada' : '● API não configurada'}</b>
+          </p>
+        ))}
+      </div>
       <RecordsPage
         storeKey="convenios"
         title="Convênios / público"
-        subtitle="Servidor municipal, forças e governos. Cadastre novos sem limite."
+        subtitle="Cadastro de convênios. INSS como produto está em Produtos, não nesta lista de instituições."
         fields={[
           { key: 'codigo', label: 'Código' },
           { key: 'nome', label: 'Nome' },
@@ -36,7 +46,7 @@ export default function BancosConvenios() {
       <RecordsPage
         storeKey="bancos"
         title="Instituições"
-        subtitle="Ative um BankProvider real em Configurações quando a credencial existir."
+        subtitle="Somente Facta, Novo Saque, ICRED e Toke Real. Credenciais só no backend."
         fields={[
           { key: 'nome', label: 'Nome' },
           { key: 'codigo', label: 'Código' },

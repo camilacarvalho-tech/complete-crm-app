@@ -33,15 +33,19 @@ function load() {
   }
 }
 
-function resolve(_appearance: Appearance): 'light' | 'dark' {
+function resolve(appearance: Appearance): 'light' | 'dark' {
+  if (appearance === 'light' || appearance === 'dark') return appearance
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  }
   return 'dark'
 }
 
-function applyDom(_next: 'light' | 'dark', primary: string, secondary: string, density: string) {
+function applyDom(next: 'light' | 'dark', primary: string, secondary: string, density: string) {
   const root = document.documentElement
-  root.setAttribute('data-theme', 'dark')
-  root.classList.add('dark')
-  root.style.colorScheme = 'dark'
+  root.setAttribute('data-theme', next)
+  root.classList.toggle('dark', next === 'dark')
+  root.style.colorScheme = next
   root.style.setProperty('--code-primary', primary)
   root.style.setProperty('--code-cyan', primary)
   root.style.setProperty('--code-secondary', secondary)
@@ -51,14 +55,18 @@ function applyDom(_next: 'light' | 'dark', primary: string, secondary: string, d
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const initial = load()
-  const [appearance, setAppearance] = useState<Appearance>('dark')
+  const [appearance, setAppearance] = useState<Appearance>(() => {
+    const saved = initial.appearance
+    return saved === 'light' || saved === 'dark' || saved === 'system' ? saved : 'dark'
+  })
   const [primary, setPrimary] = useState(initial.primary || '#06b6d4')
   const [secondary, setSecondary] = useState(initial.secondary || '#7c3aed')
   const [density, setDensity] = useState<Density>(initial.density || 'confortavel')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(Boolean(initial.sidebarCollapsed))
   const [resolved, setResolved] = useState<'light' | 'dark'>(() => {
-    applyDom('dark', initial.primary || '#06b6d4', initial.secondary || '#7c3aed', initial.density || 'confortavel')
-    return 'dark'
+    const start = resolve(initial.appearance === 'light' || initial.appearance === 'dark' || initial.appearance === 'system' ? initial.appearance : 'dark')
+    applyDom(start, initial.primary || '#06b6d4', initial.secondary || '#7c3aed', initial.density || 'confortavel')
+    return start
   })
 
   useEffect(() => {

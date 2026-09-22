@@ -417,6 +417,16 @@ export async function persistCampaignWorkbook(opts: {
       legalBasis: 'base_autorizada',
       collectedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      pipelineStatus: 'aguardando_enriquecimento',
+      atendimentoStatus: 'nao_enviado',
+      enrichmentStatus: 'QUEUED',
+      processRunId: campaignId,
+      valorLiberado: null,
+      valorParcela: null,
+      quantidadeParcelas: null,
+      taxa: null,
+      bancoOferta: '',
+      statusConsultaCredito: '',
     }
 
     if (hit) {
@@ -432,6 +442,10 @@ export async function persistCampaignWorkbook(opts: {
         enrichmentCandidates: cur.enrichmentCandidates || [],
         campanhaId: campaignId,
         campanha: campanhaNome,
+        pipelineStatus: 'aguardando_enriquecimento',
+        atendimentoStatus: cur.atendimentoStatus === 'na_fila' ? cur.atendimentoStatus : 'nao_enviado',
+        enrichmentStatus: 'QUEUED',
+        processRunId: campaignId,
         updatedAt: serverTimestamp(),
       }
       fillEmpty(patch, {
@@ -458,7 +472,10 @@ export async function persistCampaignWorkbook(opts: {
           ...base,
           foundAt: serverTimestamp(),
           createdAt: serverTimestamp(),
-          enrichmentStatus: 'NOT_ENRICHED',
+          enrichmentStatus: 'QUEUED',
+          pipelineStatus: 'aguardando_enriquecimento',
+          atendimentoStatus: 'nao_enviado',
+          processRunId: campaignId,
           originalData,
           enrichedData: {},
           enrichmentHistory: [],
@@ -508,16 +525,17 @@ export async function persistCampaignWorkbook(opts: {
   if (!touchedPeople.length || falharam === pending.length) {
     enrichMessage = undefined
   } else if (!callable.length) {
-    enrichMessage = 'Importação concluída. Nenhuma fonte de enriquecimento está configurada.'
+    enrichMessage = 'Importação concluída. Nenhuma fonte de enriquecimento está configurada. Os PersonLeads ficaram em Pessoas, sem Chat.'
+    enfileirados = 0
   } else {
-    const progress = await runEnrichmentQueue({
+    enfileirados = touchedPeople.length
+    enrichMessage = `${enfileirados} na fila de enriquecimento. Não entram no Chat até validação.`
+    void runEnrichmentQueue({
       empresaId: opts.empresaId,
       people: touchedPeople,
       companies,
       actor: { usuarioId: opts.usuarioId, usuarioNome: opts.usuarioNome },
-    })
-    enfileirados = touchedPeople.length
-    enrichMessage = progress.message
+    }).catch(() => undefined)
   }
 
   return {

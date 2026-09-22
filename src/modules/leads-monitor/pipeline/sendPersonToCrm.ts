@@ -7,6 +7,7 @@ import { db } from '../../../firebase'
 import { writeAudit } from '../../../lib/audit'
 import { COL_PEOPLE_RESEARCH } from '../constants'
 import { writeLeadsMonitorAudit } from '../services/auditTrail'
+import { assertRobotNotPaused } from '../services/robotControl'
 import type { CompanyPeopleResearch } from '../types/peopleResearch'
 import type { OportunidadeMonitor } from '../types'
 import { garantirConversaFila } from '../../../lib/garantirConversaFila'
@@ -28,6 +29,7 @@ export async function enviarPessoaParaCrm(
   company: OportunidadeMonitor,
   actor?: { usuarioId?: string; usuarioNome?: string }
 ): Promise<EnviarPessoaCrmResult> {
+  await assertRobotNotPaused(empresaId, 'crm', 'Robô CRM pausado — retome na Central de Robôs para enviar.')
   const nome = asText(person.personName)
   if (!nome) throw new Error('Pessoa sem nome — não é possível enviar ao CRM.')
 
@@ -58,6 +60,8 @@ export async function enviarPessoaParaCrm(
   await updateDoc(doc(db, 'empresas', empresaId, COL_PEOPLE_RESEARCH, person.id), {
     status: 'enviado_crm',
     crmPersonId: clienteId,
+    atendimentoStatus: 'na_fila',
+    pipelineStatus: 'pronto_atendimento',
     atualizadoEm: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
@@ -106,6 +110,17 @@ export async function enviarPessoaParaCrm(
     entidade: 'pessoa',
     entidadeId: person.id,
     after: { status: 'enviado_crm', crmPersonId: clienteId, jaExistia },
+  })
+
+  const { afterCrmLeadSynced } = await import('../../../integrations/crm/crmSync')
+  await afterCrmLeadSynced({
+    empresaId,
+    leadId: person.id,
+    crmId: clienteId,
+    kind: 'pessoa',
+    jaExistia,
+    campaignId: asText(incoming.campanhaId),
+    origin: 'leads_monitor',
   })
 
   return { clienteId, jaExistia }

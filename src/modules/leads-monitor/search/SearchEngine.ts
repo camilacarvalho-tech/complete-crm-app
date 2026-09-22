@@ -207,8 +207,9 @@ export async function runSearchEngine(opts: {
         cidadeAtual?: string
         status?: string
       } | undefined
-      const cancelledNow = geo?.status === 'cancelado' || isSearchHardCancelled(ids)
-      const pausedNow = geo?.status === 'pausado'
+      const flagsNow = await readExecutionFlags(opts.empresaId, ids)
+      const cancelledNow = geo?.status === 'cancelado' || isSearchHardCancelled(ids) || flagsNow.cancelled
+      const pausedNow = geo?.status === 'pausado' || flagsNow.paused
       await updateDoc(runRef, {
         status: cancelledNow ? 'cancelled' : pausedNow ? 'paused' : adv.done ? 'succeeded' : 'running',
         resultadoResumo: { ...result, tempoMs },

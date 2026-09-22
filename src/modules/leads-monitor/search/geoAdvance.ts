@@ -61,7 +61,7 @@ export async function advanceGeoQueue(opts: {
   if (!snap.exists()) return { done: true }
   const run = { id: snap.id, ...snap.data() } as ProcessRun
   const { isSearchHardCancelled, readExecutionFlags } = await import('./searchCancel')
-  if (run.status === 'pausado' || run.status === 'cancelado') return { done: true }
+  if (run.status === 'cancelado') return { done: true }
   if (isSearchHardCancelled({ processRunId: opts.processRunId, searchRunId: opts.searchRunId })) {
     return { done: true }
   }
@@ -69,7 +69,8 @@ export async function advanceGeoQueue(opts: {
     processRunId: opts.processRunId,
     searchRunId: opts.searchRunId,
   })
-  if (live.cancelled || live.paused) return { done: true }
+  if (live.cancelled) return { done: true }
+  if (live.paused || run.status === 'pausado') return { done: false }
   const abrangencia = run.abrangenciaGeografica || resolveAbrangencia(opts.filtros)
 
   let ufIndex = run.geoUfIndex || 0
@@ -173,8 +174,11 @@ export async function advanceGeoQueue(opts: {
     processRunId: opts.processRunId,
     searchRunId: opts.searchRunId,
   })
-  if (stillGo.cancelled || stillGo.paused || isSearchHardCancelled({ processRunId: opts.processRunId, searchRunId: opts.searchRunId })) {
+  if (stillGo.cancelled || isSearchHardCancelled({ processRunId: opts.processRunId, searchRunId: opts.searchRunId })) {
     return { done: true }
+  }
+  if (stillGo.paused) {
+    return { done: false, nextCidade, nextEstado }
   }
   await enqueueJob({
     empresaId: opts.empresaId,

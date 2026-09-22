@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useNexusStore } from '../../contexts/NexusStore'
 import { CommandPalette } from '../nexus/CommandPalette'
+import { ThemeToggle } from './ThemeToggle'
 import { empresaVisivel } from '../../lib/uiPt'
 
 const QUICK = [
@@ -66,6 +67,7 @@ export function AppHeader({ onOpenSearch }: { onOpenSearch: () => void }) {
           ))}
         </div>
       )}
+      <ThemeToggle />
       <button type="button" className="p-2" aria-label="Ajuda" onClick={() => nav('/diagnostico')} style={{ color: 'var(--code-text)' }}><HelpCircle className="w-4 h-4" /></button>
       <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--code-text)' }}>
         <Building2 className="w-4 h-4" />

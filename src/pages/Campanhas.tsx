@@ -5,16 +5,11 @@ import { NexusModal } from '../components/nexus/Modal'
 import { useAuth } from '../contexts/AuthContext'
 import { useNexusStore } from '../contexts/NexusStore'
 import { useToast } from '../components/ui/Toast'
-import { originCode } from '../catalog/crmCatalog'
-import { garantirConversaFila } from '../lib/garantirConversaFila'
-import { agoraEntrada, eventoOrigem } from '../lib/origemLead'
-import { digits } from '../lib/nexusCore'
 import { parseImportedWorkbook } from '../modules/leads-monitor/pipeline/xlsxImport'
 import {
   applyMapping,
   CSV_FIELD_TO_PERSON_LEAD,
   inferMappingFromTable,
-  isLikelyPersonName,
 } from '../modules/leads-monitor/pipeline/csvImportMap'
 import { CSV_TARGET_FIELDS, type CsvTargetField } from '../modules/leads-monitor/types/processRun'
 import {
@@ -126,79 +121,6 @@ export default function Campanhas() {
         rawRows,
         onProgress: (info) => setProgressLabel(info.label),
       })
-
-      const peopleRows = mappedRows.filter((r) => isLikelyPersonName(r.nome))
-      for (const row of peopleRows) {
-        const personTel = digits(row.telefone)
-        const personWa = digits(row.whatsapp)
-        if (!personTel && !personWa && !digits(row.cpf)) continue
-        const origem = originCode(imp.origem || 'planilha_csv')
-        const campanhaNome = imp.campanha
-        const produto = row.produto || imp.produto
-        const entrada = agoraEntrada()
-        const evento = eventoOrigem({
-          origem,
-          origemDetalhe: campanhaNome || fileName,
-          campanha: campanhaNome,
-          fonte: 'planilha_csv',
-        })
-        const dup = clientes.items.find(
-          (c) =>
-            (digits(row.cpf) && digits(String(c.cpf || '')) === digits(row.cpf)) ||
-            (personWa && digits(String(c.whatsapp || '')) === personWa) ||
-            (personTel && digits(String(c.telefone || '')) === personTel)
-        )
-        let clienteId = dup?.id
-        if (dup) {
-          const hist = [...((dup.historicoOrigens as unknown[]) || []), evento]
-          await clientes.update(dup.id, {
-            historicoOrigens: hist,
-            campanhaNome: dup.campanhaNome || campanhaNome,
-            campanha: dup.campanha || campanhaNome,
-            produto: dup.produto || produto,
-          } as any)
-        } else {
-          clienteId = await clientes.create({
-            nome: row.nome,
-            telefone: personTel,
-            telefoneNormalizado: personTel,
-            whatsapp: personWa,
-            cpf: digits(row.cpf),
-            email: row.email || '',
-            origem,
-            origemLead: origem,
-            source: origem,
-            origemDetalhe: campanhaNome || fileName,
-            fonte: 'planilha_csv',
-            campanha: campanhaNome,
-            campanhaNome,
-            modalidade: imp.segmento || produto,
-            produto,
-            equipe: imp.equipe,
-            responsavel: row.vinculo || imp.responsavel,
-            pipelineStage: 'novo_lead',
-            status: 'NOVO LEAD',
-            historicoOrigens: [evento],
-            ...entrada,
-          } as any)
-        }
-        if (clienteId && (personWa || personTel)) {
-          await garantirConversaFila({
-            empresaId,
-            clienteId,
-            titulo: row.nome,
-            telefone: personWa || personTel,
-            origemLead: origem,
-            campanhaNome,
-            segmento: imp.segmento,
-            produto,
-            equipe: imp.equipe,
-            responsavel: imp.responsavel,
-            usuarioId: usuario?.id,
-            usuarioNome: usuario?.nome,
-          })
-        }
-      }
 
       setSummary(result)
       setPhase(result.partial ? 'partial' : 'done')

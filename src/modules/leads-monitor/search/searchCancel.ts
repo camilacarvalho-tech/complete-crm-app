@@ -77,6 +77,12 @@ export async function readExecutionFlags(
     if (st === 'cancelled') cancelled = true
     if (st === 'paused') paused = true
   }
+  try {
+    const { isRobotPaused } = await import('../services/robotControl')
+    if (await isRobotPaused(empresaId, 'search')) paused = true
+  } catch {
+    /* controle indisponível — segue flags do ProcessRun */
+  }
   if (cancelled) abortSearchExecution(ids)
   return { cancelled, paused }
 }

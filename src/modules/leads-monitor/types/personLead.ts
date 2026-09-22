@@ -118,6 +118,16 @@ export interface PersonLead {
   contactStatus: string
   relationshipStatus: string
   dataNascimento: string
+  pipelineStatus?: string
+  atendimentoStatus?: string
+  processRunId?: string
+  valorLiberado?: number | null
+  valorParcela?: number | null
+  quantidadeParcelas?: number | null
+  taxa?: number | null
+  bancoOferta?: string
+  dataConsultaCredito?: string
+  statusConsultaCredito?: string
   originalData?: Record<string, string>
   enrichedData?: Record<string, string>
   enrichmentHistory?: Array<{
