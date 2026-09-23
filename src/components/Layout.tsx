@@ -18,7 +18,7 @@ export default function Layout() {
         <Sidebar />
       </div>
       <div className={`flex-1 min-w-0 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-60'}`}>
-        <header className="md:hidden sticky top-0 z-30 flex items-center gap-3 px-3 py-3 text-white" style={{ background: 'var(--code-sidebar)' }}>
+        <header className="md:hidden sticky top-0 z-30 flex items-center gap-3 px-3 py-3" style={{ background: 'var(--code-sidebar)', color: 'var(--code-sidebar-text)' }}>
           <button type="button" onClick={() => setOpen((v) => !v)} aria-label="Menu">
             <Menu className="w-5 h-5" />
           </button>

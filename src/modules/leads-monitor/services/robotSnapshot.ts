@@ -199,12 +199,12 @@ export function buildRobotOpsView(input: {
   }
 
   const MODE_LABEL: Record<RobotUiMode, string> = {
-    running: 'Trabalhando',
+    running: 'Executando',
     paused: 'Pausado',
     idle: 'Aguardando',
     error: 'Erro',
-    completed: 'Concluído',
-    prepared: 'Preparado',
+    completed: 'Finalizado',
+    prepared: 'Parado',
   }
 
   const searchCompleted = Boolean(run && (run.status === 'concluido' || run.status === 'concluido_com_erros') && !searchRunning)

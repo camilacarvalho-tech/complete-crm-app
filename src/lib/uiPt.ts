@@ -47,13 +47,60 @@ export const STATUS_PT: Record<string, string> = {
   enviado: 'Enviada',
   entregue: 'Entregue',
   lida: 'Lida',
+  aguardando_cliente: 'Aguardando cliente',
+  documentacao_pendente: 'Documentação pendente',
   erro: 'Erro',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  meta_ads: 'Meta Ads',
+  google: 'Google',
+  google_ads: 'Google Ads',
+  trafego_pago: 'Tráfego pago',
+  whatsapp: 'WhatsApp',
+  manual: 'Manual',
+  interna: 'Interna',
+  campanha: 'Campanha',
+  receita: 'Receita',
+  despesa: 'Despesa',
+  receber: 'A receber',
+  pagar: 'A pagar',
+  transferencia: 'Transferência',
+  comissao: 'Comissão',
+  investimento: 'Investimento',
+  marketing: 'Marketing',
+  novo_lead: 'Novo lead',
+  novo_cliente: 'Novo cliente',
+  nova_mensagem: 'Nova mensagem',
+  proposta_criada: 'Proposta criada',
+  proposta_aprovada: 'Proposta aprovada',
+  proposta_recusada: 'Proposta recusada',
+  novo_lancamento_financeiro: 'Novo lançamento',
+  conta_vencida: 'Conta vencida',
+  nova_tarefa: 'Nova tarefa',
+  mudanca_pipeline: 'Mudança de etapa',
+  horario_agendado: 'Horário agendado',
+  'queue.entered': 'Entrou na fila',
+  'status.alterado': 'Status alterado',
+  'client.created': 'Cliente criado',
+  mover: 'Moveu no quadro',
+  criar: 'Criou',
+  atualizar: 'Atualizou',
+  excluir: 'Excluiu',
+}
+
+export function textoMisto(value?: string) {
+  const raw = String(value || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim()
+  if (!raw) return ''
+  const letters = raw.replace(/[^A-Za-zÀ-ÿ]/g, '')
+  const gritando = letters.length > 2 && letters === letters.toUpperCase()
+  const base = gritando ? raw.toLowerCase() : raw
+  return base.replace(/(^|[\s\-/])([a-zà-ÿ])/gi, (all, sep: string, ch: string) => `${sep}${ch.toUpperCase()}`)
 }
 
 export function labelPt(value?: string) {
   const v = String(value || '').trim()
   if (!v) return '—'
-  return STATUS_PT[v] || STATUS_PT[v.toLowerCase()] || v.replace(/_/g, ' ')
+  return STATUS_PT[v] || STATUS_PT[v.toLowerCase()] || textoMisto(v)
 }
 
 export function empresaVisivel(nome?: string | null, id?: string | null) {

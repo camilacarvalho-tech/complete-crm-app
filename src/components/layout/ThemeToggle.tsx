@@ -9,10 +9,13 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
       type="button"
       onClick={toggleTheme}
       className={`nexus-btn-secondary p-2 rounded-lg ${className}`}
-      aria-label={dark ? 'Ativar modo claro' : 'Ativar modo escuro'}
-      title={dark ? 'Modo claro' : 'Modo escuro'}
+      aria-label={dark ? 'Tema escuro. Clique para claro' : 'Tema claro. Clique para escuro'}
+      title={dark ? 'Escuro' : 'Claro'}
     >
-      {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+      <span className="inline-flex items-center gap-1 text-xs font-semibold">
+        {dark ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+        {dark ? 'Escuro' : 'Claro'}
+      </span>
     </button>
   )
 }

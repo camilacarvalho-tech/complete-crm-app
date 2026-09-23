@@ -16,7 +16,15 @@ function isNativeSelectTarget(target: EventTarget | null) {
 
 function onKeyDown(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
-  if (!layers.length) return
+  if (!layers.length) {
+    const closers = document.querySelectorAll<HTMLElement>('[data-nexus-esc]')
+    const last = closers[closers.length - 1]
+    if (!last) return
+    e.preventDefault()
+    e.stopPropagation()
+    last.click()
+    return
+  }
   if (isNativeSelectTarget(e.target) || document.activeElement?.tagName === 'SELECT') return
   e.preventDefault()
   e.stopPropagation()
@@ -25,10 +33,12 @@ function onKeyDown(e: KeyboardEvent) {
 }
 
 function ensureListener() {
-  if (listening) return
+  if (listening || typeof window === 'undefined') return
   listening = true
   window.addEventListener('keydown', onKeyDown, true)
 }
+
+ensureListener()
 
 export function pushEscLayer(close: () => void): () => void {
   const id = seq++

@@ -13,6 +13,7 @@ export function NexusModal({
   saving = false,
   saveDisabled = false,
   closeOnBackdrop = true,
+  compact = false,
 }: {
   title: string
   children: ReactNode
@@ -23,6 +24,7 @@ export function NexusModal({
   saving?: boolean
   saveDisabled?: boolean
   closeOnBackdrop?: boolean
+  compact?: boolean
 }) {
   useEscLayer(!saving, onClose)
 
@@ -38,12 +40,12 @@ export function NexusModal({
       aria-label={title}
     >
       <div
-        className="nexus-card w-full max-w-4xl flex flex-col overflow-hidden"
-        style={{ maxHeight: '90vh' }}
+        className={`nexus-card w-full flex flex-col overflow-hidden ${compact ? 'max-w-md' : 'max-w-4xl'}`}
+        style={{ maxHeight: compact ? '70vh' : '90vh' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-3 px-5 py-4 border-b shrink-0" style={{ borderColor: 'var(--code-border)' }}>
-          <h2 className="text-lg font-bold" style={{ color: 'var(--code-text)' }}>{title}</h2>
+        <div className={`flex items-center justify-between gap-3 border-b shrink-0 ${compact ? 'px-3 py-2' : 'px-5 py-4'}`} style={{ borderColor: 'var(--code-border)' }}>
+          <h2 className={compact ? 'text-sm font-semibold' : 'text-lg font-bold'} style={{ color: 'var(--code-text)' }}>{title}</h2>
           <button
             type="button"
             className="p-1 rounded"
@@ -55,7 +57,7 @@ export function NexusModal({
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="px-5 py-4 overflow-y-auto flex-1 min-h-0">
+        <div className={`overflow-y-auto flex-1 min-h-0 ${compact ? 'px-3 py-2 text-xs' : 'px-5 py-4'}`}>
           {children}
         </div>
         <div className="flex justify-end gap-2 px-5 py-3 border-t shrink-0" style={{ borderColor: 'var(--code-border)', background: 'var(--code-surface)' }}>

@@ -9,10 +9,24 @@
   font-weight: 700;
   margin: 0;
 }
-.digitacao-desk .desk-sub {
-  font-size: 13px;
-  color: var(--code-muted);
-  margin-top: 2px;
+.digitacao-desk .robinho {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 99px;
+  background: var(--code-orange);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.digitacao-desk .robinho svg {
+  animation: robinho-pisca 0.9s ease-in-out infinite;
+}
+@keyframes robinho-pisca {
+  50% { opacity: 0.35; }
 }
 .digitacao-desk .desk-label {
   font-size: 11px;
@@ -25,7 +39,7 @@
   color: var(--code-text);
 }
 .digitacao-desk .desk-table-wrap {
-  overflow-x: auto;
+  overflow-x: scroll;
   overflow-y: auto;
   max-height: min(64vh, 720px);
   scrollbar-gutter: stable;
@@ -45,8 +59,8 @@
   border: 2px solid var(--code-surface-muted);
 }
 .digitacao-desk table.desk-table {
-  width: 100%;
-  min-width: 860px;
+  width: max-content;
+  min-width: 2480px;
   table-layout: auto;
   border-collapse: collapse;
   font-size: 11px;
@@ -133,4 +147,148 @@
   border-radius: 8px;
   padding: 10px 12px;
   background: var(--code-surface);
+}
+.proposta-caixa-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: transparent;
+}
+.proposta-caixa {
+  position: fixed;
+  top: 96px;
+  right: 18px;
+  width: min(440px, calc(100vw - 24px));
+  max-height: min(78vh, 640px);
+  overflow: auto;
+  padding: 14px 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--code-border);
+  background: var(--code-surface);
+  color: var(--code-text);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+.icred-eventos {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.icred-eventos th,
+.icred-eventos td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--code-border);
+  white-space: nowrap;
+}
+.proposta-caixa.embedded {
+  position: relative;
+  top: auto;
+  right: auto;
+  width: 100%;
+  max-height: 70vh;
+  z-index: 1;
+}
+.digitacao-desk .desk-card:first-of-type {
+  position: relative;
+  z-index: 20;
+}
+.proposta-caixa-steps {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.proposta-caixa-step {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 10px;
+  line-height: 1.2;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.proposta-caixa-step.sel .dot {
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.45);
+}
+.proposta-etapa-painel {
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--code-surface-muted);
+  font-size: 12px;
+}
+.proposta-caixa-step .dot {
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 0 auto 6px;
+  border-radius: 99px;
+  border: 2px solid var(--code-border);
+  background: transparent;
+}
+.proposta-caixa-step .dot.on {
+  background: #16a34a;
+  border-color: #16a34a;
+}
+.proposta-caixa-step .line {
+  position: absolute;
+  top: 7px;
+  left: 58%;
+  width: 84%;
+  height: 2px;
+  background: var(--code-border);
+}
+.proposta-caixa-step .line.on {
+  background: #16a34a;
+}
+.proposta-caixa-step small {
+  display: block;
+  margin-top: 2px;
+  color: var(--code-muted);
+}
+.digitacao-desk .menu-linha { position: relative; }
+.digitacao-desk .menu-linha-btn {
+  border: 1px solid var(--code-border);
+  background: transparent;
+  color: var(--code-text);
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.digitacao-desk .menu-linha-pop {
+  position: fixed;
+  z-index: 80;
+  min-width: 240px;
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--code-border);
+  background: var(--code-surface);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.digitacao-desk .menu-linha-pop a,
+.digitacao-desk .menu-linha-pop span {
+  display: block;
+  font-size: 12px;
+  padding: 4px 6px;
+  color: var(--code-text);
+}
+.digitacao-desk .menu-linha-pop a { color: var(--code-orange); font-weight: 600; }
+.digitacao-desk .btn-detalhes {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: #16a34a;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
 }

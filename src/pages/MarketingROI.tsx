@@ -19,7 +19,7 @@ export default function MarketingROI() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Marketing ROI" subtitle="Investimento, receita e custos reais do tenant. Sem números fictícios." />
+      <PageHeader title="MKT ROI" subtitle="Investimento, receita, custo e ROI calculados com os lançamentos reais. Edite os lançamentos abaixo." />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <MetricCard label="Receita" value={money(receita)} />
         <MetricCard label="Custos" value={money(custos)} />
@@ -39,13 +39,13 @@ export default function MarketingROI() {
       <RecordsPage
         storeKey="transacoes"
         title="Lançamentos de marketing e operação"
-        subtitle="Classifique categoria = marketing para entrar no ROI."
+        subtitle="Classifique a categoria para entrar no ROI."
+        compact
         fields={[
           { key: 'descricao', label: 'Descrição' },
           { key: 'tipo', label: 'Tipo', options: ['receita', 'despesa'] },
           { key: 'categoria', label: 'Categoria', options: ['marketing', 'meta_ads', 'google_ads', 'whatsapp', 'sms', 'comissao', 'software', 'infra', 'outros'] },
-          { key: 'valor', label: 'Valor', type: 'number' },
-          { key: 'canal', label: 'Canal' },
+          { key: 'valor', label: 'Valor R$', type: 'number' },
           { key: 'campanhaId', label: 'Campanha' },
         ]}
       />

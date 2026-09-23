@@ -4,27 +4,24 @@ import { useAuth } from '../contexts/AuthContext'
 import { useNexusStore } from '../contexts/NexusStore'
 import { useAppearance } from '../contexts/ThemeContext'
 import { auth } from '../firebase'
-import { PIPELINE_STAGES, USER_ROLES } from '../types/nexus'
-import { CONVENIOS_PADRAO } from '../catalog/crmCatalog'
-import { INSTITUTION_ADAPTERS } from '../integrations/banks/registry'
+import { USER_ROLES } from '../types/nexus'
 import { GhostButton, PageHeader, PrimaryButton, SelectInput, TextInput } from '../components/nexus/kit'
 import { useToast } from '../components/ui/Toast'
-import { IntegrationsHub } from '../integrations/crm/IntegrationsHub'
+import { IntegrationsCenter } from './config/IntegrationsCenter'
 
-const TABS = ['Aparência', 'Perfil', 'Usuários', 'Origens e etapas', 'Convênios', 'Tags', 'Integrações', 'WhatsApp', 'Meta', 'VoIP', 'Bancos', 'IA', 'White Label', 'Auditoria', 'Segurança']
+const TABS = ['Aparência', 'Perfil', 'Usuários', 'Integrações', 'Segurança']
 
 export default function Configuracoes() {
   const { usuario } = useAuth()
-  const { usuariosEmpresa, auditoria, convenios, etiquetas } = useNexusStore()
+  const { usuariosEmpresa } = useNexusStore()
   const appearance = useAppearance()
   const toast = useToast()
   const [tab, setTab] = useState('Aparência')
   const [u, setU] = useState({ nome: '', email: '', telefone: '', cargo: '', perfil: 'VENDEDOR' })
-  const [conv, setConv] = useState({ codigo: '', nome: '' })
-  const [tag, setTag] = useState({ nome: '', cor: '#06b6d4' })
   const [senhaAtual, setSenhaAtual] = useState('')
   const [senhaNova, setSenhaNova] = useState('')
   const [senhaConfirma, setSenhaConfirma] = useState('')
+  const theme = appearance.appearance === 'system' ? appearance.resolved : appearance.appearance
 
   async function addUser() {
     await usuariosEmpresa.create(u as any)
@@ -33,7 +30,12 @@ export default function Configuracoes() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Configurações" subtitle="Painel administrativo. Tokens de WhatsApp/Meta não devem ser colados em código." />
+      <PageHeader title="Configurações" subtitle="Tema, equipe, integrações e segurança. Segredos ficam no backend." />
+      <div className="nexus-card p-3 flex flex-wrap gap-2 items-center">
+        <span className="text-xs font-semibold">Tema</span>
+        <button type="button" className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${theme === 'light' ? 'nexus-cta text-white' : 'nexus-btn-secondary'}`} onClick={() => appearance.setAppearance('light')}>☀ Claro</button>
+        <button type="button" className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${theme === 'dark' ? 'nexus-cta text-white' : 'nexus-btn-secondary'}`} onClick={() => appearance.setAppearance('dark')}>🌙 Escuro</button>
+      </div>
       <div className="flex flex-wrap gap-1">
         {TABS.map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${tab === t ? 'nexus-cta text-white' : 'nexus-btn-secondary'}`}>{t}</button>
@@ -41,36 +43,14 @@ export default function Configuracoes() {
       </div>
       {tab === 'Aparência' && (
         <div className="nexus-card p-4 space-y-4 text-sm">
-          <p className="font-bold uppercase text-xs" style={{ color: 'var(--code-muted)' }}>Personalização</p>
           <div className="grid md:grid-cols-3 gap-3">
-            <label>Tema
-              <SelectInput
-                className="w-full"
-                value={appearance.appearance === 'system' ? appearance.resolved : appearance.appearance}
-                onChange={(e) => appearance.setAppearance(e.target.value as 'light' | 'dark')}
-              >
-                <option value="dark">Escuro</option>
-                <option value="light">Claro</option>
-              </SelectInput>
-            </label>
-            <label>Cor principal
-              <input type="color" className="w-full h-10" value={appearance.primary} onChange={(e) => appearance.setPrimary(e.target.value)} />
-            </label>
-            <label>Cor secundária
-              <input type="color" className="w-full h-10" value={appearance.secondary} onChange={(e) => appearance.setSecondary(e.target.value)} />
-            </label>
             <label>Densidade
               <SelectInput className="w-full" value={appearance.density} onChange={(e) => appearance.setDensity(e.target.value as 'confortavel' | 'compacta')}>
                 <option value="confortavel">Confortável</option>
                 <option value="compacta">Compacta</option>
               </SelectInput>
             </label>
-            <label className="flex items-center gap-2 mt-6">
-              <input type="checkbox" checked={appearance.sidebarCollapsed} onChange={(e) => appearance.setSidebarCollapsed(e.target.checked)} />
-              Sidebar recolhida
-            </label>
           </div>
-          <p className="text-xs" style={{ color: 'var(--code-muted)' }}>Paleta padrão CODE. Preferência salva neste navegador; white-label por empresa usa os mesmos tokens.</p>
         </div>
       )}
       {tab === 'Perfil' && (
@@ -96,75 +76,13 @@ export default function Configuracoes() {
           <ul className="text-sm">{usuariosEmpresa.items.map((p) => <li key={p.id}>{String(p.nome)} · {String(p.perfil)}</li>)}</ul>
         </div>
       )}
-      {tab === 'Integrações' && <IntegrationsHub empresaId={usuario?.empresaId} />}
-      {tab === 'Bancos' && (
-        <div className="nexus-card p-4 text-sm space-y-2 max-w-xl">
-          <p className="font-semibold">Instituições (adapters)</p>
-          <p className="text-xs" style={{ color: 'var(--code-muted)' }}>INSS não é banco. Chaves só no backend.</p>
-          {INSTITUTION_ADAPTERS.map((a) => (
-            <p key={a.id}>
-              {a.name}
-              <br />
-              <b>{a.isConfigured() ? '● API configurada' : '● API não configurada'}</b>
-            </p>
-          ))}
-        </div>
-      )}
-      {(tab === 'WhatsApp' || tab === 'Meta' || tab === 'VoIP' || tab === 'IA') && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
-          Credenciais dessas integrações devem ficar em variáveis de ambiente / backend. Este painel só registra se o canal está ativo.
-          Campos: App ID, Phone Number ID, WABA ID — sem Access Token no frontend.
-        </div>
-      )}
-      {tab === 'Origens e etapas' && (
-        <div className="nexus-card p-4 text-sm space-y-2">
-          <p className="font-semibold">Etapas do atendimento (editáveis no pipeline e no cadastro)</p>
-          <ul>{PIPELINE_STAGES.map((s) => <li key={s.id}>{s.label}</li>)}</ul>
-        </div>
-      )}
-      {tab === 'Convênios' && (
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <TextInput placeholder="Código" value={conv.codigo} onChange={(e) => setConv({ ...conv, codigo: e.target.value })} />
-            <TextInput placeholder="Nome em maiúsculo" value={conv.nome} onChange={(e) => setConv({ ...conv, nome: e.target.value.toUpperCase() })} />
-            <PrimaryButton onClick={async () => { await convenios.create({ codigo: conv.codigo, nome: conv.nome.toUpperCase(), ativo: true } as any); toast.success('Convênio cadastrado') }}>Cadastrar</PrimaryButton>
-            <PrimaryButton onClick={async () => {
-              for (const c of CONVENIOS_PADRAO) {
-                if (!convenios.items.some((x) => x.codigo === c.code)) await convenios.create({ codigo: c.code, nome: c.label, ativo: true } as any)
-              }
-              toast.success('Convênios padrão importados')
-            }}>Importar padrão</PrimaryButton>
-          </div>
-          <ul className="text-sm">{convenios.items.map((c) => <li key={c.id}>{String(c.nome)}</li>)}</ul>
-        </div>
-      )}
-      {tab === 'Tags' && (
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <TextInput placeholder="Nome da tag" value={tag.nome} onChange={(e) => setTag({ ...tag, nome: e.target.value.toUpperCase() })} />
-            <input type="color" value={tag.cor} onChange={(e) => setTag({ ...tag, cor: e.target.value })} />
-            <PrimaryButton onClick={async () => { await etiquetas.create({ nome: tag.nome.toUpperCase(), cor: tag.cor } as any); toast.success('Tag criada') }}>Criar tag</PrimaryButton>
-          </div>
-          <ul className="text-sm">{etiquetas.items.map((t) => <li key={t.id} style={{ color: String(t.cor) }}>{String(t.nome)}</li>)}</ul>
-        </div>
-      )}
-      {tab === 'White Label' && (
-        <div className="nexus-card p-4 text-sm">Logo, cores, domínio e módulos habilitados por tenant. A tecnologia permanece Nexus/CODE.</div>
-      )}
-      {tab === 'Auditoria' && (
-        <ul className="text-sm nexus-card p-4 max-h-96 overflow-y-auto">
-          {auditoria.items.map((a) => (
-            <li key={a.id} className="border-b py-2">{String(a.usuarioNome)} · {String(a.modulo)} · {String(a.acao)} · {String(a.entidadeId || '')}</li>
-          ))}
-        </ul>
-      )}
+      {tab === 'Integrações' && <IntegrationsCenter />}
       {tab === 'Segurança' && (
         <div className="space-y-4">
           <ul className="text-sm list-disc pl-5 space-y-1">
             <li>Rotas protegidas por autenticação Firebase.</li>
-            <li>Dados isolados em empresas/{'{tenant}'}/coleção.</li>
-            <li>RBAC no menu e nas mutações (perfil CONSULTA).</li>
-            <li>Arquivos do Chat Clientes usam Firebase Storage do mesmo projeto.</li>
+            <li>Dados isolados por empresa.</li>
+            <li>Nexus AI Financeiro e integrações sensíveis exigem perfil financeiro ou administrador.</li>
           </ul>
           <div className="nexus-card p-4 space-y-2 text-sm max-w-md">
             <p className="font-semibold">Alterar senha</p>

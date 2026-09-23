@@ -21,7 +21,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     const out: { type: string; label: string; href: string }[] = []
     store.clientes.items.forEach((c) => {
       const blob = `${c.nome} ${c.cpf} ${c.telefone} ${c.whatsapp} ${c.email}`.toLowerCase()
-      if (blob.includes(term)) out.push({ type: 'Cliente', label: String(c.nome || c.id), href: `/clientes?id=${c.id}` })
+      if (blob.includes(term)) out.push({ type: 'Cliente', label: String(c.nome || c.id), href: '/whatsapp' })
     })
     store.propostas.items.forEach((p) => {
       if (JSON.stringify(p).toLowerCase().includes(term)) out.push({ type: 'Proposta', label: String(p.produto || p.id), href: '/propostas' })
@@ -31,9 +31,6 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     })
     store.conversas.items.forEach((p) => {
       if (JSON.stringify(p).toLowerCase().includes(term)) out.push({ type: 'Conversa', label: String(p.titulo || p.id), href: `/whatsapp?conversa=${p.id}` })
-    })
-    store.agenda.items.forEach((p) => {
-      if (JSON.stringify(p).toLowerCase().includes(term)) out.push({ type: 'Tarefa', label: String(p.titulo || p.id), href: '/tarefas' })
     })
     store.produtos.items.forEach((p) => {
       if (JSON.stringify(p).toLowerCase().includes(term)) out.push({ type: 'Produto', label: String(p.nome || p.codigo || p.id), href: '/produtos' })

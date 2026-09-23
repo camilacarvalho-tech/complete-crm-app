@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pause, Play, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import type { OportunidadeMonitor, PesquisaSalva } from '../types'
 import { FontesCapturaCheckboxes } from './FontesCapturaCheckboxes'
 import { FONTES_CAPTURA_CAMPANHA } from '../services/fontesCampanha'
@@ -84,7 +84,6 @@ function CampaignCard({
   onSalvarCrm,
   onExportExcel,
   onExportCsv,
-  onSyncErp,
 }: {
   pesquisa: PesquisaSalva
   oportunidades: OportunidadeMonitor[]
@@ -129,52 +128,21 @@ function CampaignCard({
         </>
       )}
       <div className="flex flex-wrap gap-1.5">
-        <button type="button" onClick={() => onEdit(p)} className="text-xs px-2 py-1 rounded-md bg-slate-700 text-white">
-          Editar
-        </button>
-        <button
-          type="button"
-          onClick={() => onToggleAuto(p)}
-          className="text-xs px-2 py-1 rounded-md bg-slate-800 text-slate-200 flex items-center gap-1"
-        >
-          {p.ativa ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-          {p.ativa ? 'Auto ON' : 'Auto OFF'}
-        </button>
-        <button
-          type="button"
-          disabled={buscando}
-          onClick={() => onRun(p)}
-          className="text-xs px-2 py-1 rounded-md bg-nexus-orange text-white flex items-center gap-1"
-        >
-          <RefreshCw className="w-3 h-3" /> Rodar
-        </button>
-        <button type="button" onClick={() => onSalvarCrm(p)} className="text-xs px-2 py-1 rounded-md bg-slate-700 text-white">
-          Salvar campanha
-        </button>
-        <button type="button" onClick={() => onExportExcel(p)} className="text-xs px-2 py-1 rounded-md bg-slate-800 text-slate-200">
-          Exportar Excel
-        </button>
-        <button type="button" onClick={() => onExportCsv(p)} className="text-xs px-2 py-1 rounded-md bg-slate-800 text-slate-200">
-          Exportar CSV
-        </button>
-        <a href="/whatsapp" className="text-xs px-2 py-1 rounded-md bg-slate-800 text-slate-200">
-          Abrir Chat Clientes
-        </a>
-        <a href="/campanhas" className="text-xs px-2 py-1 rounded-md bg-slate-800 text-slate-200">
-          Abrir NX ERP / Campanhas
-        </a>
-        <button type="button" onClick={() => onSyncErp(p)} className="text-xs px-2 py-1 rounded-md bg-slate-800 text-slate-200">
-          Sincronizar NX ERP
-        </button>
-        <button type="button" disabled title="Templates Meta ficam no NX ERP. Só dispara com template APPROVED após a API do ERP." className="text-xs px-2 py-1 rounded-md bg-slate-900 text-slate-500">
-          Selecionar template
-        </button>
-        <button type="button" disabled title="O disparo é executado pelo NX ERP, não por um segundo motor no CRM." className="text-xs px-2 py-1 rounded-md bg-slate-900 text-slate-500">
-          Disparar
-        </button>
-        <button type="button" onClick={() => onRemove(p)} className="text-xs px-2 py-1 rounded-md text-slate-400">
-          <Trash2 className="w-3 h-3" />
-        </button>
+        <button type="button" disabled={buscando} onClick={() => onRun(p)} className="text-xs px-2 py-1 rounded-md bg-nexus-orange text-white">▶ Play</button>
+        <button type="button" onClick={() => { if (p.ativa) onToggleAuto(p) }} className="text-xs px-2 py-1 rounded-md bg-slate-700 text-white">⏸ Pausar</button>
+        <button type="button" onClick={() => { if (p.ativa) onToggleAuto(p) }} className="text-xs px-2 py-1 rounded-md bg-slate-800 text-slate-200">■ Parar</button>
+        <button type="button" disabled={buscando} onClick={() => onRun(p)} className="text-xs px-2 py-1 rounded-md bg-slate-800 text-slate-200">↻ Executar novamente</button>
+        <button type="button" onClick={() => onEdit(p)} className="text-xs px-2 py-1 rounded-md bg-slate-700 text-white">✏ Editar</button>
+        <button type="button" onClick={() => onSalvarCrm(p)} className="text-xs px-2 py-1 rounded-md bg-slate-700 text-white">Salvar no CRM</button>
+        <a href="/whatsapp" className="text-xs px-2 py-1 rounded-md bg-slate-800 text-slate-200">Atendimento</a>
+        <button type="button" onClick={() => onRemove(p)} className="text-xs px-2 py-1 rounded-md text-slate-400"><Trash2 className="w-3 h-3" /></button>
+        <details className="text-xs">
+          <summary className="cursor-pointer px-2 py-1">⋮ Mais</summary>
+          <div className="flex flex-col gap-1 mt-1">
+            <button type="button" onClick={() => onExportExcel(p)}>Exportar Excel</button>
+            <button type="button" onClick={() => onExportCsv(p)}>Exportar CSV</button>
+          </div>
+        </details>
       </div>
     </article>
   )

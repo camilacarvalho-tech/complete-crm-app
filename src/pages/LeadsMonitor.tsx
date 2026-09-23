@@ -33,6 +33,7 @@ import {
 } from '../modules/leads-monitor/services/campaignWorkspace'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../contexts/AuthContext'
+import { useNexusStore } from '../contexts/NexusStore'
 import { FontesPesquisaGovernanca } from '../modules/leads-monitor/components/FontesPesquisaGovernanca'
 import { FontesEnrichmentPanel } from '../modules/leads-monitor/components/FontesEnrichmentPanel'
 import { FontesHub } from '../modules/leads-monitor/components/FontesHub'
@@ -43,6 +44,49 @@ import { NexusModal } from '../components/nexus/Modal'
 import type { FontePesquisa } from '../modules/leads-monitor'
 
 bootstrapConnectors()
+
+function LoteParaDigitacao() {
+  const { digitacoes } = useNexusStore()
+  const toast = useToast()
+  const [enviados, setEnviados] = useState<number | null>(null)
+
+  async function subir(file: File) {
+    const text = await file.text()
+    const rows = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+    const start = /nome|cpf/i.test(rows[0] || '') ? 1 : 0
+    let criados = 0
+    for (const line of rows.slice(start)) {
+      const [nome, cpf, produto, operacao, telefone] = line.split(/[;,]/).map((s) => s.trim())
+      if (!nome && !cpf) continue
+      await digitacoes.create({
+        clienteNome: nome || '',
+        cpf: cpf || '',
+        produto: produto || '',
+        operacao: operacao || '',
+        telefone: telefone || '',
+        status: 'em_andamento',
+        origem: 'lote_monitor',
+      } as any)
+      criados += 1
+    }
+    setEnviados(criados)
+    toast.success(criados ? `${criados} no lote da Digitação` : 'Nenhuma linha válida')
+  }
+
+  return (
+    <div className="rounded-xl border p-3 mb-3" style={{ borderColor: 'var(--code-border)', background: 'var(--code-surface)' }}>
+      <p className="text-sm font-semibold">Subir em lote para o robô digitar</p>
+      <p className="text-[12px] mt-1" style={{ color: 'var(--code-muted)' }}>
+        Depois do enriquecimento e da consulta na API, envie o CSV (nome, CPF, produto, operação, telefone). O lote entra na Digitação e a equipe só analisa.
+      </p>
+      <label className="inline-block mt-2 text-[12px] font-semibold cursor-pointer" style={{ color: 'var(--code-orange)' }}>
+        Escolher CSV
+        <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && void subir(e.target.files[0])} />
+      </label>
+      {enviados != null ? <p className="text-[12px] mt-1">{enviados} registro(s) na fila.</p> : null}
+    </div>
+  )
+}
 
 type MonitorView =
   | 'visao'
@@ -59,14 +103,12 @@ type MonitorView =
   | 'lgpd'
 
 const ABAS_PRINCIPAIS: Array<[MonitorView, string]> = [
-  ['visao', '📊 Visão geral'],
-  ['campanhas', '🎯 Campanhas'],
-  ['robos', '🤖 Robôs'],
-  ['busca', '🔎 Busca manual'],
-  ['leads', '👥 Leads'],
-  ['fila', '📋 Fila'],
-  ['fontes', '🔎 Fontes'],
-  ['logs', '📜 Logs'],
+  ['visao', 'Visão geral'],
+  ['campanhas', 'Campanhas'],
+  ['robos', 'Robôs'],
+  ['busca', 'Busca manual'],
+  ['fontes', 'Fontes'],
+  ['logs', 'Logs'],
 ]
 
 const ABAS_SECUNDARIAS: Array<[MonitorView, string]> = [
@@ -421,7 +463,9 @@ export default function LeadsMonitor() {
       )}
 
       {view === 'robos' && (
-        <RobotCenter
+        <>
+          <LoteParaDigitacao />
+          <RobotCenter
           run={activeProcessRun}
           processRuns={processRuns || []}
           jobs={(jobs || []) as Array<Record<string, unknown> & { id: string }>}
@@ -441,12 +485,13 @@ export default function LeadsMonitor() {
           }}
           onRerunSearch={() => void onBuscarManual()}
           onRetry={() => activeProcessRun && void retentarErros(activeProcessRun)}
-          onOpenFila={() => setView('fila')}
+          onOpenFila={() => { window.location.assign('/whatsapp?fila=novos') }}
           onOpenLogs={() => setView('logs')}
-          onOpenLeads={() => setView('leads')}
+          onOpenLeads={() => { window.location.assign('/whatsapp') }}
           onOpenPessoas={() => setView('pessoas')}
           onConfigureFollowup={() => setView('fontes')}
         />
+        </>
       )}
 
       {view === 'busca' && (
@@ -466,7 +511,7 @@ export default function LeadsMonitor() {
           onCancelar={() => void onCancelar()}
           onSalvarCampanha={() => void onSalvar()}
           ultimoResultado={ultimoResultado}
-          onVerLeads={() => setView('leads')}
+          onVerLeads={() => { window.location.assign('/whatsapp') }}
           onVerPessoas={() => setView('pessoas')}
         />
       )}

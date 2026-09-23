@@ -40,7 +40,7 @@ export function MonitorOverview(props: {
     { label: 'Cidades', value: `${run?.cidadesProcessadas || 0}/${run?.cidadesTotal || 0}` },
   ]
   return (
-    <div className="space-y-4">
+    <div className="leads-visao space-y-4 rounded-2xl p-4">
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {cards.map((c) => (
           <div

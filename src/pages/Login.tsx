@@ -91,21 +91,21 @@ export default function Login() {
     }
   }
 
+  const campo = 'w-full px-3 py-2.5 rounded-lg text-sm outline-none'
+  const campoStyle = { background: 'var(--code-bg)', color: 'var(--code-text)', border: '1px solid var(--code-border)' }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      <div className="w-full max-w-md p-8">
-        <div className="nexus-card rounded-2xl p-8">
-          {/* Logo */}
-          <div className="text-center mb-8">
-            <div className="inline-block bg-gradient-to-r from-orange-500 to-blue-600 rounded-xl p-4 mb-4">
-              <span className="text-4xl font-bold text-white">NX</span>
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'radial-gradient(circle at top, #1a2744 0%, #070b16 55%)' }}>
+      <div className="w-full max-w-sm">
+        <div className="rounded-2xl p-7" style={{ background: 'var(--code-surface)', border: '1px solid var(--code-border)', boxShadow: '0 24px 60px rgba(0,0,0,.35)' }}>
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-3" style={{ background: 'linear-gradient(135deg, #f97316, #2563eb)' }}>
+              <span className="text-xl font-black text-white">NX</span>
             </div>
-            <h1 className="text-3xl font-bold" style={{ color: 'var(--code-text)' }}>Nexus CRM</h1>
-            <p className="mt-2" style={{ color: 'var(--code-muted)' }}>CODE Tecnologia Empresarial</p>
+            <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--code-text)' }}>Nexus CRM</h1>
+            <p className="mt-1 text-sm" style={{ color: 'var(--code-muted)' }}>CODE Tecnologia</p>
             {destinoLeadsMonitor && (
-              <div className="mt-4 text-left text-sm rounded-lg px-3 py-2" style={{ border: '1px solid var(--code-border)', background: 'var(--code-surface-muted)' }}>
-                Faça login para abrir o <strong>Nexus Leads Monitor</strong> e validar o fluxo completo.
-              </div>
+              <p className="mt-2 text-xs" style={{ color: 'var(--code-muted)' }}>Entrada do Leads Monitor</p>
             )}
           </div>
 
@@ -124,15 +124,16 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition"
+                className={campo}
+                style={campoStyle}
                 placeholder="seu@email.com"
               />
             </div>
             {erro && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{erro}</div>
+              <div className="px-3 py-2 rounded-lg text-sm" style={{ color: '#fecaca', border: '1px solid #7f1d1d' }}>{erro}</div>
             )}
             {sucesso && (
-              <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">{sucesso}</div>
+              <div className="px-3 py-2 rounded-lg text-sm" style={{ color: '#bbf7d0', border: '1px solid #14532d' }}>{sucesso}</div>
             )}
             <button
               type="submit"
@@ -162,7 +163,8 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition"
+                className={campo}
+                style={campoStyle}
                 placeholder="seu@email.com"
               />
             </div>
@@ -177,19 +179,20 @@ export default function Login() {
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
                 required
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition"
+                className={campo}
+                style={campoStyle}
                 placeholder="••••••••"
               />
             </div>
 
             {erro && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+              <div className="px-3 py-2 rounded-lg text-sm" style={{ color: '#fecaca', border: '1px solid #7f1d1d' }}>
                 {erro}
               </div>
             )}
 
             {sucesso && (
-              <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">
+              <div className="px-3 py-2 rounded-lg text-sm" style={{ color: '#bbf7d0', border: '1px solid #14532d' }}>
                 {sucesso}
               </div>
             )}
@@ -210,24 +213,13 @@ export default function Login() {
               <LogIn className="w-5 h-5" />
               {loading ? 'Entrando...' : 'Entrar'}
             </button>
-            
-            {/* Botão de Teste */}
-            <button
-              type="button"
-              onClick={() => {
-                setEmail('carvalhoduraocamila@gmail.com')
-                setSenha('')
-              }}
-              className="w-full bg-slate-200 text-slate-700 py-2 rounded-lg font-semibold hover:bg-slate-300 transition text-sm"
-            >
-              Preencher e-mail Master
-            </button>
           </form>
           )}
 
-          {/* Footer */}
-          <div className="mt-8 text-center text-xs text-slate-500">
-            <p>Desenvolvido por <span className="font-semibold text-orange-600">CODE Tecnologia Empresarial</span></p>
+          <div className="mt-6 text-center text-[11px]" style={{ color: 'var(--code-muted)' }}>
+            <a href="https://codetechoficial.com.br/" target="_blank" rel="noreferrer" className="font-semibold" style={{ color: 'var(--code-orange)' }}>
+              codetechoficial.com.br
+            </a>
             <p className="mt-1">© 2026 Todos os direitos reservados</p>
           </div>
         </div>

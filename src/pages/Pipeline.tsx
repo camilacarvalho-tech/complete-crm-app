@@ -63,7 +63,7 @@ export default function Pipeline() {
                 {cards.map((c) => (
                   <a
                     key={c.id}
-                    href={`/clientes?id=${c.id}`}
+                    href="/whatsapp"
                     draggable
                     onDragStart={(e) => e.dataTransfer.setData('text/plain', c.id)}
                     className="block bg-white dark:bg-slate-700 rounded-lg p-3 shadow-sm border border-slate-200 dark:border-slate-600"

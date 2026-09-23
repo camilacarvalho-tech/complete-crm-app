@@ -39,7 +39,7 @@ test('Toke Real permanece preparado sem endpoint', async () => {
 
 test('produto INSS não é adapter de banco', () => {
   assert.equal(INSTITUTION_ADAPTERS.some((a) => a.id === 'inss' || a.name === 'INSS'), false)
-  assert.equal(INSTITUTION_ADAPTERS.length, 4)
+  assert.equal(INSTITUTION_ADAPTERS.length, 3)
 })
 
 test('entrada automática na Digitação', () => {

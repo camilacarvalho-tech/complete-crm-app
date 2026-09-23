@@ -139,7 +139,7 @@ export function LeadResults(props: {
                           </>
                         )}
                         {op.status === 'enviado_crm' && op.crmClienteId ? (
-                          <Link to={`/clientes?id=${op.crmClienteId}`} className="px-2 py-1 rounded bg-sky-600 text-white flex items-center gap-1">
+                          <Link to="/whatsapp" className="px-2 py-1 rounded bg-sky-600 text-white flex items-center gap-1">
                             <User className="w-3 h-3" /> CRM
                           </Link>
                         ) : null}

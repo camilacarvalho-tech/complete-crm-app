@@ -9,10 +9,8 @@ import Login from './pages/Login'
 import Onboarding from './pages/Onboarding'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
-import Clientes from './pages/Clientes'
 import Propostas from './pages/Propostas'
 import Agenda from './pages/Agenda'
-import Tarefas from './pages/Tarefas'
 import Relatorios from './pages/Relatorios'
 import Empresas from './pages/Empresas'
 import Financeiro from './pages/Financeiro'
@@ -20,7 +18,6 @@ import Biblioteca from './pages/Biblioteca'
 import Remarketing from './pages/Remarketing'
 import MarketingROI from './pages/MarketingROI'
 import ChatCenter from './pages/ChatCenter'
-import Campanhas from './pages/Campanhas'
 import IAProspeccao from './pages/IAProspeccao'
 import LeadsMonitor from './pages/LeadsMonitor'
 import FontesPesquisa from './pages/FontesPesquisa'
@@ -30,9 +27,7 @@ import Discadora from './pages/Discadora'
 import Configuracoes from './pages/Configuracoes'
 import ComunicacaoInterna from './pages/ComunicacaoInterna'
 import Digitacao from './pages/Digitacao'
-import Documentos from './pages/Documentos'
 import Automacoes from './pages/Automacoes'
-import BancosConvenios from './pages/BancosConvenios'
 import MonitorCODE from './pages/monitor/MonitorCODE'
 import NexusAIFinanceiro from './pages/NexusAIFinanceiro'
 import Diagnostico from './pages/Diagnostico'
@@ -42,7 +37,8 @@ import Fornecedores from './pages/Fornecedores'
 import Comissoes from './pages/Comissoes'
 import Contratos from './pages/Contratos'
 import Equipes from './pages/Equipes'
-import Leads from './pages/Leads'
+import Kanban from './pages/Kanban'
+import Auditoria from './pages/Auditoria'
 
 function AppRoutes() {
   const { user, loading } = useAuth()
@@ -75,9 +71,10 @@ function AppRoutes() {
           <Route path="/" element={<Layout />}>
             <Route index element={<Dashboard />} />
             <Route path="dashboard" element={<Dashboard />} />
-            <Route path="clientes" element={<Clientes />} />
-            <Route path="leads" element={<Leads />} />
+            <Route path="clientes" element={<Navigate to="/whatsapp" replace />} />
+            <Route path="leads" element={<Navigate to="/whatsapp" replace />} />
             <Route path="propostas" element={<Propostas />} />
+            <Route path="kanban" element={<Kanban />} />
             <Route path="panorama" element={<Navigate to="/propostas" replace />} />
             <Route path="pipeline" element={<Navigate to="/propostas" replace />} />
             <Route path="whatsapp" element={<ChatCenter />} />
@@ -85,7 +82,7 @@ function AppRoutes() {
             <Route path="chat-center" element={<Navigate to="/whatsapp" replace />} />
             <Route path="nexus-atendimento" element={<Navigate to="/whatsapp" replace />} />
             <Route path="chat-interno" element={<Navigate to="/comunicacao-interna" replace />} />
-            <Route path="campanhas" element={<Campanhas />} />
+            <Route path="campanhas" element={<Navigate to="/remarketing" replace />} />
             <Route path="ia-prospeccao" element={<IAProspeccao />} />
             <Route
               path="leads-monitor"
@@ -100,9 +97,9 @@ function AppRoutes() {
             <Route path="nexus-ai" element={<NexusAI />} />
             <Route path="nexus-ai-financeiro" element={<NexusAIFinanceiro />} />
             <Route path="discadora" element={<Discadora />} />
-            <Route path="tarefas" element={<Tarefas />} />
+            <Route path="tarefas" element={<Navigate to="/" replace />} />
             <Route path="agenda" element={<Agenda />} />
-            <Route path="documentos" element={<Documentos />} />
+            <Route path="documentos" element={<Navigate to="/whatsapp" replace />} />
             <Route path="fila-atendimento" element={<Navigate to="/whatsapp?fila=novos" replace />} />
             <Route path="automacoes" element={<Automacoes />} />
             <Route path="relatorios" element={<Relatorios />} />
@@ -126,8 +123,9 @@ function AppRoutes() {
             <Route path="remarketing" element={<Remarketing />} />
             <Route path="marketing-roi" element={<MarketingROI />} />
             <Route path="configuracoes" element={<Configuracoes />} />
+            <Route path="auditoria" element={<Auditoria />} />
+            <Route path="bancos-convenios" element={<Navigate to="/configuracoes" replace />} />
             <Route path="digitacao" element={<Digitacao />} />
-            <Route path="bancos-convenios" element={<BancosConvenios />} />
             <Route path="monitor-code" element={<MonitorCODE />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Route>

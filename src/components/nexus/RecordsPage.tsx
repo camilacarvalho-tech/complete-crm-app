@@ -9,6 +9,23 @@ import { ClienteLink } from './ClienteLink'
 import { labelPt } from '../../lib/uiPt'
 import type { NexusRecord } from '../../types/nexus'
 
+function optValue(o: string | { value: string; label: string }) {
+  return typeof o === 'string' ? o : o.value
+}
+
+function optLabel(o: string | { value: string; label: string }) {
+  return typeof o === 'string' ? labelPt(o) : o.label
+}
+
+function mostrarCampo(f: { options?: Array<string | { value: string; label: string }> }, raw: unknown) {
+  const text = String(raw ?? '').trim()
+  if (!text) return '—'
+  const hit = f.options?.find((o) => optValue(o) === text)
+  if (hit) return optLabel(hit)
+  if (/^[a-z0-9_.]+$/.test(text) || text === text.toUpperCase()) return labelPt(text)
+  return text
+}
+
 type StoreKey =
   | 'propostas'
   | 'digitacoes'
@@ -39,13 +56,19 @@ export function RecordsPage({
   fields,
   tabs,
   statusField = 'status',
+  compact = false,
+  scroll = false,
+  editable = false,
 }: {
   storeKey: StoreKey
   title: string
   subtitle: string
-  fields: { key: string; label: string; type?: string; options?: string[] }[]
+  fields: { key: string; label: string; type?: string; options?: Array<string | { value: string; label: string }> }[]
   tabs?: string[]
   statusField?: string
+  compact?: boolean
+  scroll?: boolean
+  editable?: boolean
 }) {
   const store = useNexusStore()
   const col = store[storeKey]
@@ -55,6 +78,7 @@ export function RecordsPage({
   const [tab, setTab] = useState(tabs?.[0] || 'todas')
   const [q, setQ] = useState(params.get('q') || '')
   const [open, setOpen] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
 
@@ -68,9 +92,11 @@ export function RecordsPage({
     if (saving) return
     setSaving(true)
     try {
-      await col.create({ ...form, criadoPor: usuario?.nome } as Omit<NexusRecord, 'id'>)
-      toast.success('Registro criado')
+      if (editId) await col.update(editId, form)
+      else await col.create({ ...form, criadoPor: usuario?.nome } as Omit<NexusRecord, 'id'>)
+      toast.success(editId ? 'Registro atualizado' : 'Registro criado')
       setOpen(false)
+      setEditId(null)
       setForm({})
     } catch (err) {
       toast.error('Não foi possível salvar', err instanceof Error ? err.message : '')
@@ -94,23 +120,35 @@ export function RecordsPage({
       {items.length === 0 ? (
         <EmptyState title="Nenhum registro" description="Os dados desta tela são os da empresa logada. Nada aqui é inventado." />
       ) : (
-        <div className="nexus-card overflow-auto">
-          <table className="w-full text-sm">
+        <div className={`nexus-card ${scroll ? 'overflow-x-auto' : 'overflow-auto'}`}>
+          <table className="text-sm" style={{ width: '100%', minWidth: scroll ? 1100 : undefined }}>
             <thead>
               <tr className="text-left text-slate-500 border-b">
-                {fields.slice(0, 6).map((f) => <th key={f.key} className="p-3">{f.label}</th>)}
+                {(scroll ? fields : fields.slice(0, 6)).map((f) => <th key={f.key} className="p-3">{f.label}</th>)}
+                {editable ? <th className="p-3" /> : null}
               </tr>
             </thead>
             <tbody>
               {items.map((item) => (
                 <tr key={item.id} className="border-b">
-                  {fields.slice(0, 6).map((f) => (
+                  {(scroll ? fields : fields.slice(0, 6)).map((f) => (
                     <td key={f.key} className="p-3">
                       {f.key === 'clienteNome' || f.key === 'clienteId'
                         ? <ClienteLink id={item.clienteId || item[f.key]} nome={item.clienteNome || item[f.key]} />
-                        : String(item[f.key] ?? '—')}
+                        : mostrarCampo(f, item[f.key])}
                     </td>
                   ))}
+                  {editable ? (
+                    <td className="p-3">
+                      <button type="button" className="text-xs font-semibold" style={{ color: 'var(--code-orange)' }} onClick={() => {
+                        const next: Record<string, string> = {}
+                        fields.forEach((f) => { next[f.key] = String(item[f.key] || '') })
+                        setForm(next)
+                        setEditId(item.id)
+                        setOpen(true)
+                      }}>Editar</button>
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -118,14 +156,14 @@ export function RecordsPage({
         </div>
       )}
       {open && (
-        <NexusModal title="Novo registro" onClose={() => !saving && setOpen(false)} onSave={() => void onSubmit()} saving={saving} closeOnBackdrop={false}>
+        <NexusModal compact={compact} title={editId ? 'Editar' : 'Novo registro'} onClose={() => { if (saving) return; setOpen(false); setEditId(null) }} onSave={() => void onSubmit()} saving={saving} closeOnBackdrop={false}>
           {fields.map((f) => (
             <label key={f.key} className="text-xs font-semibold block mb-2" style={{ color: 'var(--code-muted)' }}>
               {f.label}
               {f.options ? (
                 <SelectInput className="w-full" value={form[f.key] || ''} onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}>
                   <option value="">Selecione</option>
-                  {f.options.map((o) => <option key={o}>{o}</option>)}
+                  {f.options.map((o) => <option key={optValue(o)} value={optValue(o)}>{optLabel(o)}</option>)}
                 </SelectInput>
               ) : (
                 <TextInput type={f.type || 'text'} value={form[f.key] || ''} onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))} />

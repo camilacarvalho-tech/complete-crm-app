@@ -15,17 +15,17 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { Filter, MoreVertical, Plus } from 'lucide-react'
+import { Filter, MoreVertical } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNexusStore } from '../contexts/NexusStore'
 import { createdOf, inRange, money, pct, periodRange, previousRange, type PeriodKey } from '../lib/nexusCore'
 import { PIPELINE_STAGES } from '../types/nexus'
-import { LEAD_ORIGINS, originCode, originLabel } from '../catalog/crmCatalog'
-import { ErrorBanner, GhostButton, PageHeader, PrimaryButton } from '../components/nexus/kit'
-import { FilterSelect, FilterDateRange } from '../components/nexus/Filters'
-import { StateCityFields } from '../components/nexus/StateCityFields'
-import { NexusModal } from '../components/nexus/Modal'
+import { originCode, originLabel } from '../catalog/crmCatalog'
+import { CREDIT_PRODUCTS, productCatalogLabel } from '../catalog/productCatalog'
+import { ErrorBanner, GhostButton, PageHeader } from '../components/nexus/kit'
+import { FilterDateRange } from '../components/nexus/Filters'
 import { useToast } from '../components/ui/Toast'
+import { useEscLayer } from '../hooks/useEscLayer'
 import {
   colorFor,
   countBy,
@@ -40,6 +40,28 @@ import {
 } from '../lib/dashboardAnalytics'
 import { DEFAULT_WIDGETS, REPORT_CATALOG, layoutStorageKey, type DashWidget, type ReportId } from '../lib/dashboardReports'
 import type { NexusCliente, NexusRecord } from '../types/nexus'
+
+const ORIGENS_PAINEL = [
+  { code: 'trafego_pago', label: 'Tráfego pago' },
+  { code: 'facebook', label: 'Facebook' },
+  { code: 'instagram', label: 'Instagram' },
+  { code: 'whatsapp', label: 'WhatsApp' },
+  { code: 'indicacao', label: 'Indicação' },
+  { code: 'sms', label: 'SMS' },
+  { code: 'planilha', label: 'Planilha' },
+] as const
+
+function origemPainel(c: NexusCliente): string {
+  const raw = `${c.source || ''} ${c.origem || ''} ${c.origemLead || ''} ${c.utm_source || ''}`.toLowerCase()
+  if (raw.includes('instagram')) return 'instagram'
+  if (raw.includes('facebook') || raw.includes('meta')) return 'facebook'
+  if (raw.includes('whats')) return 'whatsapp'
+  if (raw.includes('indic')) return 'indicacao'
+  if (raw.includes('sms')) return 'sms'
+  if (raw.includes('planilha') || raw.includes('csv') || raw.includes('excel')) return 'planilha'
+  if (raw.includes('trafego') || raw.includes('tráfego') || raw.includes('google') || raw.includes('ads')) return 'trafego_pago'
+  return originCode(raw)
+}
 
 const PERIODS: { id: PeriodKey; label: string }[] = [
   { id: 'hoje', label: 'Hoje' },
@@ -76,10 +98,16 @@ export default function Dashboard() {
   const [campanha, setCampanha] = useState('')
   const [banco, setBanco] = useState('')
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const [addOpen, setAddOpen] = useState(false)
+  useEscLayer(filtersOpen, () => setFiltersOpen(false))
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
+  const [agora, setAgora] = useState(() => new Date())
   const [headerMenu, setHeaderMenu] = useState(false)
   const [widgets, setWidgets] = useState<DashWidget[]>(DEFAULT_WIDGETS)
+
+  useEffect(() => {
+    const t = window.setInterval(() => setAgora(new Date()), 30000)
+    return () => window.clearInterval(t)
+  }, [])
 
   const range = periodRange(period, { from, to })
   const prev = previousRange(range)
@@ -110,7 +138,7 @@ export default function Dashboard() {
     const created = createdOf(c)
     if (created && !inRange(created, range.from, range.to)) return false
     if (!created && period === 'hoje') return false
-    if (origem && originCode(String(c.source || c.origem || '')) !== origem) return false
+    if (origem && origemPainel(c) !== origem) return false
     if (responsavel && String(c.responsavel || c.atendente || '') !== responsavel) return false
     if (equipe && String(c.equipe || '') !== equipe) return false
     if (produto && productOf(c) !== produto && String(c.modalidade || '') !== produto && !(c.modalidades || []).includes(produto)) return false
@@ -156,7 +184,6 @@ export default function Dashboard() {
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
         <PageHeader title="Dashboard" subtitle="Visão geral da operação, vendas, atendimento, marketing e financeiro." />
         <div className="flex flex-wrap gap-2">
-          <PrimaryButton type="button" onClick={() => setAddOpen(true)}><span className="inline-flex items-center gap-1"><Plus className="w-4 h-4" /> Adicionar relatório</span></PrimaryButton>
           <GhostButton type="button" onClick={() => setFiltersOpen(true)}>
             <span className="inline-flex items-center gap-1"><Filter className="w-4 h-4" /> Filtros{activeFilters ? ` (${activeFilters})` : ''}</span>
           </GhostButton>
@@ -172,6 +199,7 @@ export default function Dashboard() {
         </div>
       </div>
       <ErrorBanner message={store.clientes.error} />
+      <p className="text-sm" style={{ color: 'var(--code-muted)' }}>{agora.toLocaleDateString('pt-BR')} · {agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
 
       <div className="flex flex-wrap gap-2 items-center">
         {PERIODS.map((p) => (
@@ -221,69 +249,23 @@ export default function Dashboard() {
       {filtersOpen && (
         <aside className="fixed inset-0 z-40" onClick={() => setFiltersOpen(false)}>
           <div className="nexus-modal-overlay absolute inset-0" />
-          <div className="absolute right-0 top-0 h-full w-full max-w-md overflow-y-auto p-5 nexus-card rounded-none" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute right-0 top-0 h-full w-full max-w-sm overflow-y-auto p-5 nexus-card rounded-none" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h2 className="font-bold">Filtros avançados</h2>
-              <GhostButton type="button" onClick={() => setFiltersOpen(false)}>Fechar</GhostButton>
+              <GhostButton type="button" data-nexus-esc onClick={() => setFiltersOpen(false)}>Fechar</GhostButton>
             </div>
-            <div className="grid gap-3">
-              <FilterSelect label="Origem" value={origem} onChange={(e) => setOrigem(e.target.value)}>
-                <option value="">Todas</option>
-                {LEAD_ORIGINS.map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}
-              </FilterSelect>
-              <FilterSelect label="Funcionário" value={responsavel} onChange={(e) => setResponsavel(e.target.value)}>
-                <option value="">Todos</option>
-                {resps.map((o) => <option key={o}>{o}</option>)}
-              </FilterSelect>
-              <FilterSelect label="Equipe" value={equipe} onChange={(e) => setEquipe(e.target.value)}>
-                <option value="">Todas</option>
-                {equipes.map((o) => <option key={o}>{o}</option>)}
-              </FilterSelect>
-              <FilterSelect label="Produto" value={produto} onChange={(e) => setProduto(e.target.value)}>
-                <option value="">Todos</option>
-                {produtosFiltro.map((o) => <option key={o}>{o}</option>)}
-              </FilterSelect>
-              <FilterSelect label="Status" value={status} onChange={(e) => setStatus(e.target.value)}>
-                <option value="">Todos</option>
-                {statuses.map((o) => <option key={o}>{o}</option>)}
-              </FilterSelect>
-              <FilterSelect label="Etapa" value={etapa} onChange={(e) => setEtapa(e.target.value)}>
-                <option value="">Todas</option>
-                {PIPELINE_STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-              </FilterSelect>
-              <FilterSelect label="Campanha" value={campanha} onChange={(e) => setCampanha(e.target.value)}>
-                <option value="">Todas</option>
-                {campanhasNomes.map((o) => <option key={o}>{o}</option>)}
-              </FilterSelect>
-              <FilterSelect label="Banco" value={banco} onChange={(e) => setBanco(e.target.value)}>
-                <option value="">Todos</option>
-                {bancos.map((o) => <option key={o}>{o}</option>)}
-              </FilterSelect>
-              <StateCityFields uf={estado} cidade={cidade} onUf={setEstado} onCidade={setCidade} />
-              <p className="text-xs" style={{ color: 'var(--code-muted)' }}>Convênio e modalidade continuam no cadastro e nos relatórios; não ocupam o topo do dashboard.</p>
-              <GhostButton type="button" onClick={() => { setOrigem(''); setResponsavel(''); setEquipe(''); setProduto(''); setStatus(''); setEtapa(''); setCidade(''); setEstado(''); setCampanha(''); setBanco('') }}>Limpar filtros</GhostButton>
+            <p className="text-xs font-semibold mb-2">Origem</p>
+            <div className="filtros-origem rounded-lg border p-1" style={{ borderColor: 'var(--code-border)' }}>
+              <button type="button" className={`block w-full text-left px-3 py-2 rounded text-sm ${origem === '' ? 'nexus-cta text-white' : ''}`} onClick={() => setOrigem('')}>Todas</button>
+              {ORIGENS_PAINEL.map((o) => (
+                <button key={o.code} type="button" className={`block w-full text-left px-3 py-2 rounded text-sm ${origem === o.code ? 'nexus-cta text-white' : ''}`} onClick={() => setOrigem(o.code)}>{o.label}</button>
+              ))}
             </div>
+            <GhostButton type="button" className="mt-3" onClick={() => setOrigem('')}>Limpar filtros</GhostButton>
           </div>
         </aside>
       )}
 
-      {addOpen && (
-        <NexusModal title="Adicionar relatório" onClose={() => setAddOpen(false)} closeOnBackdrop>
-          <p className="text-sm mb-3" style={{ color: 'var(--code-muted)' }}>Os relatórios usam dados reais da empresa. Sem movimento, o bloco fica vazio.</p>
-          {(['CRM', 'MARKETING', 'ATENDIMENTO', 'VENDAS', 'FINANCEIRO', 'PRODUÇÃO'] as const).map((cat) => (
-            <div key={cat} className="mb-4">
-              <p className="text-xs font-bold uppercase mb-2" style={{ color: 'var(--code-muted)' }}>{cat}</p>
-              <div className="flex flex-wrap gap-2">
-                {REPORT_CATALOG.filter((r) => r.category === cat).map((r) => (
-                  <GhostButton key={r.id} type="button" onClick={() => { persist([...widgets, { id: `${r.id}-${Date.now()}`, reportId: r.id, span: 1 }]); setAddOpen(false) }}>
-                    {r.title} · {r.type}
-                  </GhostButton>
-                ))}
-              </div>
-            </div>
-          ))}
-        </NexusModal>
-      )}
     </div>
   )
 }
@@ -333,24 +315,40 @@ function buildData(args: {
     receita: receitaPrev,
   }
   const origem = countBy(clientes.map((c) => originLabel(originCode(String(c.source || c.origem || 'manual')))))
-  const produtos = countBy(clientes.map(productOf))
+  const creditNames = CREDIT_PRODUCTS.map((p) => p.label)
+  const creditTotal = clientes.filter((c) => creditNames.includes(productCatalogLabel(productOf(c)))).length
+  const produtos = creditNames.map((name) => {
+    const value = clientes.filter((c) => productCatalogLabel(productOf(c)) === name).length
+    return { name, value, total: creditTotal, pct: creditTotal ? (value / creditTotal) * 100 : 0 }
+  })
   const status = countBy(clientes.map((c) => PIPELINE_STAGES.find((s) => s.id === stageOf(c))?.label || stageOf(c).toUpperCase()))
   const cidades = countBy(clientes.map((c) => [c.cidade || c.cidadeOrigem, c.estado || c.estadoOrigem].filter(Boolean).join(' - '))).slice(0, 12)
   const funnelDefs = [
-    { key: 'leads', label: 'LEADS', qtd: clientes.length },
-    { key: 'atend', label: 'ATENDIMENTO', qtd: clientes.filter((c) => !['novo_lead', 'triagem'].includes(stageOf(c))).length },
-    { key: 'qual', label: 'QUALIFICADOS', qtd: clientes.filter((c) => ['qualificado', 'simulacao', 'proposta', 'documentacao', 'em_analise', 'aprovado', 'contrato', 'finalizado'].includes(stageOf(c))).length },
-    { key: 'sim', label: 'SIMULAÇÕES', qtd: clientes.filter((c) => ['simulacao', 'proposta', 'documentacao', 'em_analise', 'aprovado', 'contrato', 'finalizado'].includes(stageOf(c))).length },
-    { key: 'prop', label: 'PROPOSTAS', qtd: propostas.length },
-    { key: 'apr', label: 'APROVADAS', qtd: propOk.length },
-    { key: 'ctr', label: 'CONTRATOS', qtd: prodPaga.length },
-    { key: 'prd', label: 'PRODUÇÃO', qtd: digitacoes.length },
+    { key: 'leads', label: 'Leads', qtd: clientes.length },
+    { key: 'atend', label: 'Atendimento', qtd: clientes.filter((c) => !['novo_lead', 'triagem'].includes(stageOf(c))).length },
+    { key: 'qual', label: 'Qualificados', qtd: clientes.filter((c) => ['qualificado', 'simulacao', 'proposta', 'documentacao', 'em_analise', 'aprovado', 'contrato', 'finalizado'].includes(stageOf(c))).length },
+    { key: 'sim', label: 'Simulações', qtd: clientes.filter((c) => ['simulacao', 'proposta', 'documentacao', 'em_analise', 'aprovado', 'contrato', 'finalizado'].includes(stageOf(c))).length },
+    { key: 'prop', label: 'Propostas', qtd: propostas.length },
+    { key: 'apr', label: 'Aprovadas', qtd: propOk.length },
+    { key: 'ctr', label: 'Contratos', qtd: prodPaga.length },
+    { key: 'prd', label: 'Produção', qtd: digitacoes.length },
   ].filter((s) => s.qtd > 0)
-  const convProduto = produtos.map((p) => {
-    const list = clientes.filter((c) => productOf(c) === p.name)
-    const props = propostas.filter((x) => String(x.produto || '') === p.name)
-    const apr = props.filter((x) => ['aprovada', 'aprovado'].includes(String(x.status || '').toLowerCase()))
-    return { name: p.name, Leads: list.length, Propostas: props.length, Aprovadas: apr.length, Conversao: list.length ? Number(((apr.length / list.length) * 100).toFixed(1)) : 0 }
+  const convProduto = CREDIT_PRODUCTS.map((prod) => {
+    const same = (raw: unknown) => productCatalogLabel(String(raw || '')) === prod.label
+    const leads = clientes.filter((c) => productCatalogLabel(productOf(c)) === prod.label)
+    const sims = digitacoes.filter((d) => same(d.produto))
+    const props = propostas.filter((x) => same(x.produto))
+    const apr = props.filter((x) => String(x.status || '').toLowerCase().includes('aprov'))
+    const formal = [...props, ...sims].filter((x) => String(x.status || '').toLowerCase().includes('formal'))
+    return {
+      name: prod.label,
+      Leads: leads.length,
+      Simulacoes: sims.length,
+      Propostas: props.length,
+      Aprovados: apr.length,
+      Formalizados: formal.length,
+      Conversao: leads.length ? Number(((apr.length / leads.length) * 100).toFixed(1)) : 0,
+    }
   })
   const equipeMap = new Map<string, { leads: number; atend: number; prop: number; apr: number; ctr: number }>()
   clientes.forEach((c) => {
@@ -571,15 +569,28 @@ function ReportBody({ id, data, onNavigate }: { id: ReportId; data: DashData; on
       </ResponsiveContainer>
     )
   }
-  if (id === 'origem') return <Donut data={data.origem} onSlice={(name) => {
-    const code = LEAD_ORIGINS.find((o) => o.label === name)?.code || ''
-    onNavigate(`/clientes?origem=${encodeURIComponent(code)}`)
-  }} />
-  if (id === 'produtos') return <Donut data={data.produtos} onSlice={(name) => onNavigate(`/clientes?produto=${encodeURIComponent(name)}`)} />
+  if (id === 'origem') return <Donut data={data.origem} onSlice={() => onNavigate('/whatsapp')} />
+  if (id === 'produtos') {
+    const slices = data.produtos.filter((p) => p.value > 0)
+    return (
+      <div className="space-y-3">
+        {slices.length ? <Donut data={slices} onSlice={(name) => onNavigate(`/leads?produto=${encodeURIComponent(name)}`)} /> : <EmptyChart />}
+        <div>
+          <table className="w-full text-xs">
+            <thead><tr><th className="p-1 text-left">Produto</th><th className="p-1 text-right">Leads</th></tr></thead>
+            <tbody>
+              {data.produtos.map((p) => (
+                <tr key={p.name}><td className="p-1">{p.name}</td><td className="p-1 text-right">{p.value}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
   if (id === 'status') return <Donut data={data.status} onSlice={(name) => {
-    const idStage = PIPELINE_STAGES.find((s) => s.label === name)?.id || ''
     if (name.toLowerCase().includes('proposta') || name === 'APROVADO') onNavigate('/propostas')
-    else onNavigate(`/clientes?etapa=${encodeURIComponent(idStage)}`)
+    else onNavigate('/whatsapp')
   }} />
   if (id === 'cidades') {
     if (!data.cidades.length) return <EmptyChart />
@@ -634,20 +645,35 @@ function ReportBody({ id, data, onNavigate }: { id: ReportId; data: DashData; on
     )
   }
   if (id === 'conversao_produto') {
-    if (!data.convProduto.length) return <EmptyChart />
     return (
-      <ResponsiveContainer width="100%" height={280}>
-        <BarChart data={data.convProduto}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--code-border)" />
-          <XAxis dataKey="name" fontSize={11} stroke="var(--code-muted)" />
-          <YAxis allowDecimals={false} stroke="var(--code-muted)" />
-          <Tooltip {...TT} />
-          <Legend />
-          <Bar dataKey="Leads" fill="#2563eb" />
-          <Bar dataKey="Propostas" fill="#7c3aed" />
-          <Bar dataKey="Aprovadas" fill="#16a34a" />
-        </BarChart>
-      </ResponsiveContainer>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs min-w-[640px]">
+          <thead>
+            <tr>
+              <th className="p-2 text-left">Produto</th>
+              <th className="p-2">Leads</th>
+              <th className="p-2">Simulações</th>
+              <th className="p-2">Propostas</th>
+              <th className="p-2">Aprovados</th>
+              <th className="p-2">Formalizados</th>
+              <th className="p-2">Conversão %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.convProduto.map((r) => (
+              <tr key={r.name}>
+                <td className="p-2">{r.name}</td>
+                <td className="p-2 text-center">{r.Leads}</td>
+                <td className="p-2 text-center">{r.Simulacoes}</td>
+                <td className="p-2 text-center">{r.Propostas}</td>
+                <td className="p-2 text-center">{r.Aprovados}</td>
+                <td className="p-2 text-center">{r.Formalizados}</td>
+                <td className="p-2 text-center">{r.Conversao}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     )
   }
   if (id === 'equipe') {
@@ -688,13 +714,13 @@ function ReportBody({ id, data, onNavigate }: { id: ReportId; data: DashData; on
       <div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm mb-3">
           <p>Investimento <strong>{money(data.kpis.investimento)}</strong></p>
+          <p>Resultado <strong>{money(data.kpis.receita)}</strong></p>
+          <p>ROI <strong>{data.kpis.roi.toFixed(1)}%</strong></p>
+          <p>Período <strong>{data.mktBar[0]?.name || 'Período'}</strong></p>
           <p>Leads <strong>{data.kpis.leads}</strong></p>
           <p>CPL <strong>{money(data.kpis.cpl)}</strong></p>
           <p>CAC <strong>{money(data.kpis.cac)}</strong></p>
-          <p>CPA <strong>{money(data.kpis.cpa)}</strong></p>
           <p>Conversões <strong>{data.kpis.conversoes}</strong></p>
-          <p>Receita <strong>{money(data.kpis.receita)}</strong></p>
-          <p>ROI <strong>{data.kpis.roi.toFixed(1)}%</strong></p>
         </div>
         {data.kpis.investimento || data.kpis.receita ? (
           <ResponsiveContainer width="100%" height={220}>
@@ -733,9 +759,9 @@ function ReportBody({ id, data, onNavigate }: { id: ReportId; data: DashData; on
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm mb-3">
           <p>Receita <strong>{money(data.kpis.receita)}</strong></p>
           <p>Custos <strong>{money(data.kpis.custos)}</strong></p>
-          <p>Lucro <strong>{money(data.kpis.lucro)}</strong></p>
-          <p>Comissão prevista <strong>{money(data.kpis.comPrev)}</strong></p>
-          <p>Comissão recebida <strong>{money(data.kpis.comRec)}</strong></p>
+          <p>Resultado líquido <strong>{money(data.kpis.lucro)}</strong></p>
+          <p>Margem <strong>{data.kpis.receita ? `${((data.kpis.lucro / data.kpis.receita) * 100).toFixed(1)}%` : '—'}</strong></p>
+          <p>Período <strong>{data.financeBar[0]?.name || 'Período'}</strong></p>
         </div>
         {data.kpis.receita || data.kpis.custos ? (
           <div role="button" tabIndex={0} onClick={() => onNavigate('/financeiro')} onKeyDown={(e) => e.key === 'Enter' && onNavigate('/financeiro')}>
@@ -748,7 +774,7 @@ function ReportBody({ id, data, onNavigate }: { id: ReportId; data: DashData; on
               <Legend />
               <Bar dataKey="Receita" fill="#16a34a" cursor="pointer" />
               <Bar dataKey="Custos" fill="#dc2626" cursor="pointer" />
-              <Bar dataKey="Lucro" fill="#f97316" />
+              <Bar dataKey="Lucro" name="Resultado líquido" fill="#f97316" />
             </BarChart>
           </ResponsiveContainer>
           </div>

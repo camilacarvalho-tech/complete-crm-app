@@ -1,10 +1,12 @@
 ﻿import { useMemo, useRef, useState } from 'react'
 import { RecordsPage } from '../components/nexus/RecordsPage'
+import { PRODUCT_CATALOG } from '../catalog/productCatalog'
 import { PageHeader, PrimaryButton, SelectInput, TextInput } from '../components/nexus/kit'
 import { NexusModal } from '../components/nexus/Modal'
 import { useAuth } from '../contexts/AuthContext'
 import { useNexusStore } from '../contexts/NexusStore'
 import { useToast } from '../components/ui/Toast'
+import { labelPt } from '../lib/uiPt'
 import { parseImportedWorkbook } from '../modules/leads-monitor/pipeline/xlsxImport'
 import {
   applyMapping,
@@ -30,7 +32,7 @@ type Phase = 'idle' | 'processing' | 'ready' | 'empty' | 'error' | 'done' | 'par
 export default function Campanhas() {
   const toast = useToast()
   const { usuario } = useAuth()
-  const { clientes } = useNexusStore()
+  const { clientes, campanhas } = useNexusStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -150,20 +152,42 @@ export default function Campanhas() {
           </PrimaryButton>
         }
       />
+      <div className="grid md:grid-cols-2 gap-2">
+        {campanhas.items.map((c) => (
+          <article key={c.id} className="nexus-card p-3 text-sm space-y-2">
+            <button type="button" className="text-left w-full" onClick={() => toast.info(String(c.nome || 'Campanha'), `Status ${c.status || '—'} · leads ${c.leads ?? '—'} · enviados ${c.enviados ?? '—'} · respostas ${c.respostas ?? '—'} · conversões ${c.conversoes ?? '—'} · erros ${c.erros ?? '—'}`)}>
+              <p className="font-semibold">{String(c.nome || 'Campanha')}</p>
+              <p className="text-xs" style={{ color: 'var(--code-muted)' }}>
+                {labelPt(String(c.status || 'rascunho'))} · leads {String(c.leads ?? '—')} · enviados {String(c.enviados ?? '—')} · respostas {String(c.respostas ?? '—')} · conversões {String(c.conversoes ?? '—')} · erros {String(c.erros ?? '—')}
+              </p>
+            </button>
+            <div className="flex flex-wrap gap-1">
+              <button type="button" className="nexus-btn-secondary text-xs px-2 py-1 rounded" onClick={() => void campanhas.update(c.id, { status: 'em_execucao' })}>▶ Play</button>
+              <button type="button" className="nexus-btn-secondary text-xs px-2 py-1 rounded" onClick={() => void campanhas.update(c.id, { status: 'pausada' })}>⏸ Pausar</button>
+              <button type="button" className="nexus-btn-secondary text-xs px-2 py-1 rounded" onClick={() => toast.info('Edição', 'Use o cadastro abaixo para alterar nome, canal e mensagem.')}>✏ Editar</button>
+              <details className="text-xs">
+                <summary className="cursor-pointer px-2 py-1">⋮ Mais</summary>
+                <button type="button" className="block" onClick={() => void campanhas.create({ ...c, id: undefined, nome: `${c.nome || 'Campanha'} cópia`, status: 'rascunho' } as any)}>Duplicar</button>
+              </details>
+            </div>
+          </article>
+        ))}
+      </div>
       <RecordsPage
         storeKey="campanhas"
         title="Campanhas"
-        subtitle="Canais: Facebook, Instagram, Meta Ads, Google, tráfego pago, manuais, Leads Monitor e internas. Disparo WhatsApp e templates Meta ficam no NX ERP — este CRM não duplica o motor de envio."
+        subtitle="Nome, status, público, origem, produto e mensagem."
+        compact
+        scroll
+        editable
         tabs={['todas', 'rascunho', 'agendada', 'em_execucao', 'pausada', 'finalizada']}
         fields={[
           { key: 'nome', label: 'Nome' },
-          { key: 'canal', label: 'Canal', options: ['facebook', 'instagram', 'meta_ads', 'google', 'trafego_pago', 'whatsapp', 'manual', 'interna'] },
           { key: 'status', label: 'Status', options: ['rascunho', 'agendada', 'em_execucao', 'pausada', 'finalizada'] },
           { key: 'publico', label: 'Público' },
-          { key: 'origem', label: 'Origem', options: ['trafego_pago', 'facebook', 'instagram', 'google', 'whatsapp', 'campanha', 'manual'] },
-          { key: 'produto', label: 'Produto' },
+          { key: 'origem', label: 'Origem', options: ['trafego_pago', 'facebook', 'instagram', 'google', 'whatsapp', 'campanha', 'manual', 'leads_monitor'] },
+          { key: 'produto', label: 'Produto', options: PRODUCT_CATALOG.map((p) => ({ value: p.code, label: p.label })) },
           { key: 'mensagem', label: 'Mensagem' },
-          { key: 'template', label: 'Modelo' },
           { key: 'responsavel', label: 'Responsável' },
         ]}
       />

@@ -26,6 +26,7 @@ export interface LeticiaDeps {
   movePipeline: (entityId: string, stage: string) => Promise<void>
   notify: (message: string) => Promise<void>
   log: (entry: Record<string, unknown>) => Promise<void>
+  followupPaused?: boolean
 }
 
 function match(record: Record<string, unknown>, step: LeticiaStep): boolean {
@@ -41,8 +42,9 @@ function match(record: Record<string, unknown>, step: LeticiaStep): boolean {
 export async function runLeticiaFlow(
   flow: LeticiaFlow,
   event: { gatilho: string; record: Record<string, unknown> },
-  deps: LeticiaDeps
-): Promise<{ executed: string[]; skipped: string[] }> {
+  deps: LeticiaDeps,
+  startIndex = 0,
+): Promise<{ executed: string[]; skipped: string[]; waitMinutes?: number; nextIndex?: number }> {
   const executed: string[] = []
   const skipped: string[] = []
   const trigger = flow.passos.find((p) => p.tipo === 'trigger')
@@ -52,7 +54,8 @@ export async function runLeticiaFlow(
   }
 
   let branch = true
-  for (const step of flow.passos) {
+  for (let i = startIndex; i < flow.passos.length; i++) {
+    const step = flow.passos[i]
     if (step.tipo === 'trigger') continue
     if (step.tipo === 'condition') {
       branch = match(event.record, step)
@@ -68,15 +71,39 @@ export async function runLeticiaFlow(
       continue
     }
     if (step.tipo === 'delay') {
-      executed.push(`delay:${step.delayMinutos || 0}`)
-      continue
+      const n = Number(step.delayMinutos || 0)
+      const unidade = step.payload || 'minutos'
+      const minutos = unidade === 'horas' ? n * 60 : unidade === 'dias' ? n * 1440 : n
+      executed.push(`delay:${minutos}`)
+      await deps.log({
+        flowId: flow.id,
+        flowNome: flow.nome,
+        gatilho: event.gatilho,
+        executed,
+        skipped,
+        modoTeste: !!flow.modoTeste,
+        status: 'WAITING',
+        resumeAt: Date.now() + minutos * 60000,
+        nextIndex: i + 1,
+        record: event.record,
+      })
+      return { executed, skipped, waitMinutes: minutos, nextIndex: i + 1 }
     }
     if (step.tipo === 'action') {
       const acao = step.acao || ''
+      const humano = String(event.record.statusAtendimento || '') === 'HUMANO' || event.record.roboPausado === true || event.record.clienteRespondeu === true
+      if (acao === 'enviar_whatsapp' && (humano || deps.followupPaused)) {
+        skipped.push(humano ? 'followup_pausado_humano' : 'followup_robo_pausado')
+        continue
+      }
+      if (acao === 'enviar_whatsapp' && flow.modoTeste) {
+        executed.push(`[TESTE] Mensagem que seria enviada: ${step.payload || ''}`)
+        continue
+      }
       if (acao === 'enviar_whatsapp') {
         const r = await deps.sendWhatsApp(String(event.record.whatsapp || event.record.telefone || ''), step.payload || '')
-        executed.push(r.ok ? 'whatsapp' : `whatsapp:${r.message}`)
-      } else if (acao === 'criar_tarefa') {
+        executed.push(r.skipped ? `whatsapp:${r.message}` : r.ok ? 'whatsapp' : `whatsapp:${r.message}`)
+      } else if (acao === 'criar_tarefa' || acao === 'iniciar_followup') {
         await deps.createTask(step.payload || 'Tarefa Letícia', { origem: 'leticia', entidadeId: event.record.id })
         executed.push('tarefa')
       } else if (acao === 'adicionar_tag') {
@@ -91,9 +118,15 @@ export async function runLeticiaFlow(
       } else if (acao === 'transferir_atendente') {
         await deps.notify(step.payload || 'Transferir para atendente')
         executed.push('transferir')
-      } else if (acao === 'adicionar_fila') {
+      } else if (acao === 'adicionar_fila' || acao === 'colocar_fila') {
         await deps.createTask(step.payload || 'Fila de atendimento', { origem: 'leticia', entidadeId: event.record.id })
         executed.push('fila')
+      } else if (acao === 'criar_cliente' || acao === 'atualizar_cliente' || acao === 'atribuir_funcionario') {
+        await deps.notify(step.payload || acao)
+        executed.push(acao)
+      } else if (acao === 'encerrar_fluxo') {
+        executed.push('fluxo_encerrado')
+        break
       } else if (acao === 'alterar_status') {
         await deps.movePipeline(String(event.record.id || ''), step.payload || 'em_atendimento')
         executed.push('status')
@@ -113,6 +146,7 @@ export async function runLeticiaFlow(
 
 export const LETICIA_TRIGGERS = [
   'novo_lead',
+  'cliente_respondeu',
   'novo_cliente',
   'nova_mensagem',
   'proposta_criada',
@@ -126,29 +160,40 @@ export const LETICIA_TRIGGERS = [
 ]
 
 export const LETICIA_ACTIONS = [
+  'criar_cliente',
+  'atualizar_cliente',
   'criar_tarefa',
+  'colocar_fila',
+  'atribuir_funcionario',
   'enviar_whatsapp',
-  'transferir_atendente',
-  'adicionar_fila',
-  'alterar_status',
   'aguardar',
-  'encerrar_atendimento',
+  'alterar_status',
   'adicionar_tag',
+  'iniciar_followup',
+  'encerrar_fluxo',
+  'transferir_atendente',
+  'encerrar_atendimento',
   'mover_pipeline',
   'notificar',
 ]
 
 export const LETICIA_ACTION_LABELS: Record<string, string> = {
+  criar_cliente: 'Criar cliente',
+  atualizar_cliente: 'Atualizar cliente',
   criar_tarefa: 'Criar tarefa',
+  colocar_fila: 'Entrar na fila',
+  atribuir_funcionario: 'Atribuir funcionário',
   enviar_whatsapp: 'Enviar WhatsApp',
-  transferir_atendente: 'Transferir para atendente',
-  adicionar_fila: 'Adicionar à fila',
-  alterar_status: 'Alterar status',
   aguardar: 'Aguardar',
+  alterar_status: 'Alterar status',
+  adicionar_tag: 'Adicionar etiqueta',
+  iniciar_followup: 'Iniciar follow-up',
+  encerrar_fluxo: 'Encerrar fluxo',
+  transferir_atendente: 'Transferir atendimento',
   encerrar_atendimento: 'Encerrar atendimento',
-  adicionar_tag: 'Adicionar tag',
   mover_pipeline: 'Mover etapa',
   notificar: 'Notificar',
+  adicionar_fila: 'Entrar na fila',
 }
 
 export const LETICIA_FIELDS = [

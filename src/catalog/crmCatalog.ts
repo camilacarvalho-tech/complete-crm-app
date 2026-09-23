@@ -1,3 +1,13 @@
+import {
+  CANONICAL_ORIGINS,
+  PRODUCT_CATALOG,
+  canonicalOrigin,
+  canonicalOriginLabel,
+  findProduct,
+  operationLabel,
+  operationsFor,
+} from './productCatalog.ts'
+
 export const UFS_BRASIL = [
   { uf: 'AC', nome: 'ACRE' },
   { uf: 'AL', nome: 'ALAGOAS' },
@@ -28,29 +38,7 @@ export const UFS_BRASIL = [
   { uf: 'TO', nome: 'TOCANTINS' },
 ] as const
 
-export const LEAD_ORIGINS = [
-  { code: 'trafego_pago', label: 'TRÁFEGO PAGO' },
-  { code: 'facebook', label: 'FACEBOOK' },
-  { code: 'follow_up', label: 'FOLLOW-UP' },
-  { code: 'instagram', label: 'INSTAGRAM' },
-  { code: 'whatsapp', label: 'WHATSAPP' },
-  { code: 'indicacao', label: 'INDICAÇÃO' },
-  { code: 'landing_page', label: 'LANDING PAGE' },
-  { code: 'leads_monitor', label: 'LEADS MONITOR' },
-  { code: 'site', label: 'SITE' },
-  { code: 'organico', label: 'ORGÂNICO' },
-  { code: 'google', label: 'GOOGLE' },
-  { code: 'campanha', label: 'CAMPANHA' },
-  { code: 'api', label: 'API' },
-  { code: 'disparo_massa', label: 'DISPARO EM MASSA' },
-  { code: 'planilha', label: 'PLANILHA' },
-  { code: 'planilha_csv', label: 'PLANILHA CSV' },
-  { code: 'formulario', label: 'FORMULÁRIO' },
-  { code: 'webhook', label: 'WEBHOOK' },
-  { code: 'importacao', label: 'IMPORTAÇÃO' },
-  { code: 'manual', label: 'MANUAL' },
-  { code: 'outros', label: 'OUTROS' },
-] as const
+export const LEAD_ORIGINS = CANONICAL_ORIGINS
 
 export const ATTENDANCE_STAGES = [
   { id: 'novo_lead', label: 'NOVO LEAD' },
@@ -86,57 +74,34 @@ export const CONVENIOS_PADRAO = [
   { code: 'clt', label: 'CLT' },
 ] as const
 
-export const INSS_OPERACOES = [
-  'PORTABILIDADE',
-  'REDUÇÃO DE PARCELA',
-  'MARGEM NOVA',
-  'REFINANCIAMENTO',
-  'SAQUE DE CARTÃO',
-  'CARTÃO',
-] as const
+export const INSS_OPERACOES = operationsFor('INSS').map((o) => o.label)
 
-export const PRODUCT_TREE = [
-  { code: 'CLT', nome: 'CRÉDITO CLT', categoria: 'credito', sub: [] as string[] },
-  { code: 'FGTS', nome: 'SAQUE FGTS', categoria: 'credito', sub: [] as string[] },
-  { code: 'INSS', nome: 'INSS', categoria: 'consignado', sub: [...INSS_OPERACOES] },
-  { code: 'GOVERNO', nome: 'GOVERNO', categoria: 'consignado', sub: ['SERVIDOR FEDERAL', 'SIAPE'] },
-  { code: 'MUNICIPAL', nome: 'SERVIDOR MUNICIPAL', categoria: 'consignado', sub: [] as string[] },
-  { code: 'ESTADUAL', nome: 'SERVIDOR ESTADUAL', categoria: 'consignado', sub: [] as string[] },
-  { code: 'REFIN_CARRO', nome: 'REFIN CARRO', categoria: 'refinanciamento', sub: [] as string[] },
-  { code: 'CASA', nome: 'CASA', categoria: 'refinanciamento', sub: [] as string[] },
-  { code: 'SOLAR', nome: 'PLACA SOLAR', categoria: 'credito', sub: [] as string[] },
-] as const
+export const PRODUCT_TREE = PRODUCT_CATALOG.map((p) => ({
+  code: p.code,
+  nome: p.label,
+  categoria: p.categoria,
+  sub: p.operations.map((o) => o.label),
+}))
 
 export function productLabel(code?: string): string {
-  const found = PRODUCT_TREE.find((p) => p.code === code || p.nome === String(code || '').toUpperCase())
-  return found?.nome || String(code || '').toUpperCase() || '—'
+  const found = findProduct(code)
+  if (found) return found.label
+  const op = operationLabel(code)
+  if (op && op !== String(code || '').trim()) return op
+  const raw = String(code || '').trim()
+  return raw || '—'
 }
 
 export function productSubs(code?: string): string[] {
-  const found = PRODUCT_TREE.find((p) => p.code === code)
-  return found ? [...found.sub] : []
+  return operationsFor(code).map((o) => o.label)
 }
 
-export const BANCOS_DIGITACAO = ['FACTA', 'NOVO SAQUE', 'ICRED', 'TOKE REAL'] as const
+export const BANCOS_DIGITACAO = ['FACTA', 'NOVO SAQUE', 'ICRED'] as const
 
 export function originLabel(code?: string): string {
-  const found = LEAD_ORIGINS.find((o) => o.code === code || o.label === String(code || '').toUpperCase())
-  return found?.label || String(code || '').toUpperCase() || '—'
+  return canonicalOriginLabel(code)
 }
 
 export function originCode(value?: string): string {
-  const v = String(value || '').trim().toLowerCase().replace(/\s+/g, '_')
-  const found = LEAD_ORIGINS.find((o) => o.code === v || o.label.toLowerCase().replace(/\s+/g, '_') === v)
-  if (found) return found.code
-  if (v.includes('meta') || v.includes('ads')) return 'trafego_pago'
-  if (v.includes('monitor')) return 'leads_monitor'
-  if (v.includes('facebook')) return 'facebook'
-  if (v === 'campaign' || v.includes('campanha')) return 'campanha'
-  if (v.includes('disparo')) return 'disparo_massa'
-  if (v === 'csv' || v.includes('planilha')) return 'planilha_csv'
-  if (v.includes('import')) return 'importacao'
-  if (v.includes('form')) return 'formulario'
-  if (v.includes('webhook')) return 'webhook'
-  if (v === 'outra' || v === 'outro') return 'outros'
-  return v || 'manual'
+  return canonicalOrigin(value)
 }

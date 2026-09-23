@@ -5,6 +5,7 @@ import { getFiscalProvider } from '../integrations/providers'
 import { money } from '../lib/nexusCore'
 import { buildDre, groupByCategoria } from '../lib/finance'
 import { MetricCard, PageHeader, PrimaryButton } from '../components/nexus/kit'
+import { PRODUCT_CATALOG } from '../catalog/productCatalog'
 import { RecordsPage } from '../components/nexus/RecordsPage'
 import { useToast } from '../components/ui/Toast'
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -44,7 +45,7 @@ export default function Financeiro() {
       <PageHeader title="Financeiro / ERP" subtitle="Fluxo interno da empresa. Emissão fiscal só via FiscalProvider." />
       <div className="flex flex-wrap gap-2">
         {TABS.map((t) => (
-          <a key={t.id} href={t.path} className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${tab === t.id ? 'bg-orange-500 text-white' : 'bg-slate-100'}`}>{t.label}</a>
+          <a key={t.id} href={t.path} className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${tab === t.id ? 'nexus-cta text-white' : 'nexus-btn-secondary'}`}>{t.label}</a>
         ))}
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -105,13 +106,14 @@ export default function Financeiro() {
       <RecordsPage
         storeKey="transacoes"
         title="Lançamentos"
-        subtitle="Receber, pagar, receita, despesa, comissão, marketing e transferência."
+        subtitle="Receber, pagar, receita, despesa, comissão e transferência. A categoria é o produto."
         tabs={['todas', 'receita', 'despesa', 'receber', 'pagar', 'comissao']}
         statusField="tipo"
+        compact
         fields={[
           { key: 'descricao', label: 'Descrição' },
           { key: 'tipo', label: 'Tipo', options: ['receita', 'despesa', 'receber', 'pagar', 'transferencia', 'comissao', 'investimento'] },
-          { key: 'categoria', label: 'Categoria' },
+          { key: 'categoria', label: 'Categoria', options: PRODUCT_CATALOG.map((p) => ({ value: p.code, label: p.label })) },
           { key: 'centroCusto', label: 'Centro de custo' },
           { key: 'valor', label: 'Valor', type: 'number' },
           { key: 'clienteId', label: 'Cliente' },

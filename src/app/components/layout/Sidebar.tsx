@@ -15,12 +15,8 @@ function SidebarLink({ item, collapsed }: { item: MenuItem; collapsed: boolean }
       end={item.path === '/'}
       title={collapsed ? item.label : undefined}
       className={({ isActive }) =>
-        `flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-[13px] font-medium ${
-          isActive
-            ? 'text-white bg-white/10'
-            : item.featured
-              ? 'text-white/80 hover:text-white hover:bg-white/5'
-              : 'text-white/55 hover:text-white hover:bg-white/5'
+        `side-link flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-[13px] font-medium ${
+          isActive ? 'active' : ''
         }`
       }
     >
@@ -47,19 +43,19 @@ export function Sidebar() {
 
   return (
     <div className={`${sidebarCollapsed ? 'w-16' : 'w-60'} h-screen fixed left-0 top-0 flex flex-col nexus-sidebar z-20 transition-[width]`}>
-      <div className="px-3 py-4 border-b border-white/10">
+      <div className="px-3 py-4 border-b side-line">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 nexus-cta">
             <span className="text-white font-black text-sm">NX</span>
           </div>
           {!sidebarCollapsed && (
             <div>
-              <h1 className="text-sm font-black text-white leading-tight">Nexus CRM</h1>
+              <h1 className="text-sm font-black leading-tight">Nexus CRM</h1>
               <p className="text-[11px] font-semibold text-orange-400">CODE Tecnologia</p>
             </div>
           )}
         </div>
-        <button type="button" className="mt-3 text-white/50 hover:text-white" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} aria-label={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}>
+        <button type="button" className="mt-3 side-muted" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} aria-label={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}>
           {sidebarCollapsed ? <ChevronsRight className="w-4 h-4" /> : <ChevronsLeft className="w-4 h-4" />}
         </button>
       </div>
@@ -70,7 +66,7 @@ export function Sidebar() {
           if (!items.length) return null
           return (
             <div key={section.title} className="mb-3">
-                    {!sidebarCollapsed && <p className="px-3 mb-1 text-[10px] font-bold uppercase tracking-wider text-white/35">{section.title}</p>}
+                    {!sidebarCollapsed && <p className="px-3 mb-1 text-[10px] font-bold uppercase tracking-wider side-muted">{section.title}</p>}
               {items.map((item) => {
                 const badge = item.path === '/whatsapp' && unreadChat ? String(unreadChat) : item.path === '/tarefas' && overdueTasks ? String(overdueTasks) : item.badge
                 return <SidebarLink key={item.path} item={{ ...item, badge }} collapsed={sidebarCollapsed} />
@@ -80,12 +76,12 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="px-3 py-4 border-t border-white/10">
-        {!sidebarCollapsed && <p className="px-3 mb-2 text-[11px] text-white/40 truncate">{usuario?.nome || usuario?.email}</p>}
+      <div className="px-3 py-4 border-t side-line">
+        {!sidebarCollapsed && <p className="px-3 mb-2 text-[11px] side-muted truncate">{usuario?.nome || usuario?.email}</p>}
         <button
           onClick={handleLogout}
           title="Sair"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/40 hover:text-white/80 hover:bg-white/5 transition-all w-full text-[13px] font-medium"
+          className="side-link flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all w-full text-[13px] font-medium"
         >
           <LogOut className="w-4 h-4" />
           {!sidebarCollapsed && <span>Sair</span>}

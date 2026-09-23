@@ -111,7 +111,7 @@ export function PersonResultCard({
             <div className="text-xs text-slate-500">Cliente CRM: {person.personName}</div>
             {person.crmPersonId ? (
               <Link
-                to={`/clientes?id=${person.crmPersonId}`}
+                to="/whatsapp"
                 className="px-2 py-1 rounded-lg bg-sky-600 text-white text-xs inline-flex items-center gap-1"
               >
                 <UserRound className="w-3 h-3" /> Abrir no CRM
@@ -163,7 +163,7 @@ export function PersonResultCard({
             <div className="flex flex-wrap gap-2 mt-4">
               {person.whatsapp ? <a className="px-2 py-1 rounded bg-emerald-600 text-white" href={`https://wa.me/${person.whatsapp.replace(/\D/g, '')}`}>WhatsApp</a> : null}
               {person.phone ? <a className="px-2 py-1 rounded bg-slate-700 text-white" href={`tel:${person.phone}`}>Telefone</a> : null}
-              {person.crmPersonId ? <Link className="px-2 py-1 rounded bg-sky-600 text-white" to={`/clientes?id=${person.crmPersonId}`}>Abrir CRM</Link> : null}
+              {person.crmPersonId ? <Link className="px-2 py-1 rounded bg-sky-600 text-white" to="/whatsapp">Abrir atendimento</Link> : null}
               <button type="button" className="px-2 py-1 rounded border text-xs" onClick={() => setOpen(false)}>Fechar</button>
             </div>
           </aside>

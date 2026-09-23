@@ -1,22 +1,24 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import { useAuth } from '../contexts/AuthContext'
 import { useNexusStore } from '../contexts/NexusStore'
 import { storage } from '../firebase'
 import { EmptyState, ErrorBanner, GhostButton, LoadingBlock, PrimaryButton, SelectInput, TextArea, TextInput } from '../components/nexus/kit'
+import { NexusModal } from '../components/nexus/Modal'
 import { useToast } from '../components/ui/Toast'
 import { writeAudit } from '../lib/audit'
-import { DOCUMENT_PASTAS, inferCategoriaDocumento } from '../lib/documentCategoria'
+import { inferCategoriaDocumento } from '../lib/documentCategoria'
 import { origemMarca, origemPrincipalDe, origemTexto } from '../lib/origemLead'
 import { produtoLabel } from '../modules/leads-monitor/catalog/produtosMonitor'
 import { drainErpInbound } from '../lib/inboundErpMessage'
 import { drainErpToCrmEvents } from '../integrations/events/eventHandlers'
 import { getWhatsAppProvider } from '../integrations/providers'
-import { labelPt } from '../lib/uiPt'
+import { labelPt, textoMisto } from '../lib/uiPt'
 import { ClienteLink } from '../components/nexus/ClienteLink'
 import type { NexusCliente } from '../types/nexus'
-import { digits, redactCpf, maskPhone } from '../lib/format'
+import { digits, maskCpf, maskPhone } from '../lib/format'
+import './chatInterno.css'
 
 const FILA = [
   { id: 'todas', label: 'Todas' },
@@ -62,8 +64,29 @@ function displayPhone(value?: string) {
 
 function displayCpfSidebar(value?: string) {
   const d = digits(value)
-  if (d.length === 11) return `***.***.${d.slice(6, 9)}-${d.slice(9)}`
-  return redactCpf(value) || ''
+  if (!d) return ''
+  return maskCpf(d)
+}
+
+function lerNascimento(obj?: object | null) {
+  if (!obj) return ''
+  const rec = obj as Record<string, unknown>
+  for (const key of ['dataNascimento', 'nascimento', 'dtNascimento', 'data_nascimento', 'birthDate', 'dataNasc']) {
+    const v = String(rec[key] ?? '').trim()
+    if (v) return v
+  }
+  return ''
+}
+
+function displayNascimento(value?: string) {
+  const raw = String(value || '').trim()
+  if (!raw) return '—'
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`
+  const compacto = digits(raw)
+  if (compacto.length === 8) return `${compacto.slice(0, 2)}/${compacto.slice(2, 4)}/${compacto.slice(4)}`
+  const d = asDate(value)
+  return d ? d.toLocaleDateString('pt-BR') : raw
 }
 
 function moneyOrEmpty(v: unknown) {
@@ -73,10 +96,21 @@ function moneyOrEmpty(v: unknown) {
 }
 
 function statusAtendimentoLabel(status?: string) {
-  const st = String(status || '')
-  if (st === 'finalizado') return { label: 'Finalizado', color: '#94a3b8' }
-  if (st === 'em_atendimento') return { label: 'Em atendimento', color: '#22c55e' }
-  return { label: 'Novo', color: '#f59e0b' }
+  const mapa: Record<string, string> = {
+    aguardando_triagem: 'Novos',
+    novos: 'Novos',
+    aguardando_funcionario: 'Aguardando',
+    aguardando: 'Aguardando',
+    em_atendimento: 'Em atendimento',
+    remarketing: 'Remarketing',
+    aguardando_cliente: 'Aguardando cliente',
+    documentacao: 'Documentação',
+    proposta: 'Proposta',
+    contrato: 'Contrato',
+    finalizado: 'Finalizado',
+    finalizados: 'Finalizado',
+  }
+  return { label: mapa[String(status || '')] || 'Novos', color: 'var(--code-orange)' }
 }
 
 function slotFila(c: { status?: unknown }, cli?: NexusCliente): string {
@@ -95,7 +129,7 @@ function slotFila(c: { status?: unknown }, cli?: NexusCliente): string {
 export default function ChatCenter() {
   const { usuario } = useAuth()
   const toast = useToast()
-  const { conversas, mensagens, clientes, documentos, propostas, contratos, usuariosEmpresa } = useNexusStore()
+  const { conversas, mensagens, clientes, documentos, propostas, digitacoes, contratos, usuariosEmpresa } = useNexusStore()
   const [params, setParams] = useSearchParams()
   const clientePref = params.get('cliente')
   const modalidade = params.get('modalidade')
@@ -110,8 +144,14 @@ export default function ChatCenter() {
   const [produtoF, setProdutoF] = useState('')
   const [respF, setRespF] = useState('')
   const [texto, setTexto] = useState('')
-  const [interno, setInterno] = useState(false)
+  const [gravando, setGravando] = useState(false)
+  const recorderRef = useRef<MediaRecorder | null>(null)
   const [busca, setBusca] = useState('')
+  const [novoCli, setNovoCli] = useState(false)
+  const [obsAberta, setObsAberta] = useState(false)
+  const [obsTexto, setObsTexto] = useState('')
+  const [pastaLocal, setPastaLocal] = useState<{ id: string; clienteId: string; nome: string; url: string; tipo: string }[]>([])
+  const [manual, setManual] = useState({ nome: '', cpf: '', telefone: '' })
   const [waReady, setWaReady] = useState<boolean | null>(null)
   const [painel, setPainel] = useState<'lista' | 'chat' | 'ficha'>(params.get('conversa') ? 'chat' : 'lista')
   const selectedId = params.get('conversa')
@@ -124,6 +164,16 @@ export default function ChatCenter() {
   }, [usuario?.empresaId])
 
   const externas = useMemo(() => conversas.items.filter((c) => c.canal !== 'interno'), [conversas.items])
+
+  useEffect(() => {
+    if (conversas.loading || sessionStorage.getItem('nexus-chat-so-camila')) return
+    const falsas = externas.filter((c) => {
+      const cli = clientes.items.find((x) => x.id === c.clienteId)
+      return !/camila/i.test(`${c.titulo || ''} ${cli?.nome || ''}`)
+    })
+    sessionStorage.setItem('nexus-chat-so-camila', '1')
+    if (falsas.length) void Promise.all(falsas.map((c) => conversas.remove(c.id)))
+  }, [conversas.loading, externas, clientes.items, conversas.remove])
 
   const contagem = useMemo(() => {
     const map: Record<string, number> = { todas: 0 }
@@ -167,14 +217,77 @@ export default function ChatCenter() {
 
   const selected = conversas.items.find((c) => c.id === selectedId)
   const cliente = clientes.items.find((c) => c.id === selected?.clienteId || c.id === clientePref)
+  const nascimentoCliente = (() => {
+    const direto = lerNascimento(cliente)
+    if (direto || !cliente) return direto
+    const cpf = String(cliente.cpf || '').replace(/\D/g, '')
+    const hit = [...digitacoes.items, ...propostas.items, ...contratos.items].find((r) => {
+      const mesmoId = String(r.clienteId || '') === cliente.id
+      const mesmoCpf = cpf.length === 11 && String(r.cpf || '').replace(/\D/g, '') === cpf
+      return (mesmoId || mesmoCpf) && lerNascimento(r)
+    })
+    return hit ? lerNascimento(hit) : ''
+  })()
   const origemCode = origemPrincipalDe(cliente)
   const marca = origemMarca(origemCode)
   const msgs = mensagens.items
     .filter((m) => m.conversaId === selected?.id)
     .sort((a, b) => String(a.criadoEm || '').localeCompare(String(b.criadoEm || '')))
-  const docsCli = documentos.items.filter((d) => d.clienteId === cliente?.id)
+  const docsCli = documentos.items.filter((d) => d.clienteId === cliente?.id || (selected && d.conversaId === selected.id))
+  const pastaCliente = [
+    ...pastaLocal.filter((d) => d.clienteId === cliente?.id),
+    ...docsCli.map((d) => ({ id: d.id, clienteId: String(d.clienteId || ''), nome: String(d.nome || d.categoria || 'Arquivo'), url: String(d.arquivoUrl || ''), tipo: String(d.tipoArquivo || '') })),
+  ].filter((d, i, arr) => arr.findIndex((x) => x.id === d.id || (x.nome === d.nome && x.url && x.url === d.url)) === i)
   const propsCli = propostas.items.filter((p) => p.clienteId === cliente?.id)
   const contrCli = contratos.items.filter((p) => p.clienteId === cliente?.id)
+
+  function fecharConversa() {
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop()
+    const next = new URLSearchParams(params)
+    next.delete('conversa')
+    setParams(next, { replace: true })
+    setPainel('lista')
+  }
+
+  useEffect(() => {
+    if (!selectedId) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') fecharConversa()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedId, params])
+
+  async function adicionarCliente() {
+    const nome = manual.nome.trim()
+    if (!nome) {
+      toast.error('Informe o nome do cliente')
+      return
+    }
+    const id = await clientes.create({
+      nome,
+      cpf: manual.cpf.trim(),
+      telefone: manual.telefone.trim(),
+      whatsapp: manual.telefone.trim(),
+      status: 'novo',
+      origem: 'manual',
+      origemLead: 'manual',
+    } as any)
+    const cid = await conversas.create({
+      clienteId: id,
+      canal: 'whatsapp',
+      channel: 'WHATSAPP',
+      titulo: nome,
+      status: 'em_atendimento',
+      origemLead: 'manual',
+      assignedTo: usuario?.nome,
+      assignedToId: usuario?.id,
+    } as any)
+    setManual({ nome: '', cpf: '', telefone: '' })
+    setNovoCli(false)
+    abrirConversa(cid, id)
+    toast.success('Cliente na fila')
+  }
 
   function abrirConversa(id: string, clienteId: string) {
     setPainel('chat')
@@ -223,41 +336,39 @@ export default function ChatCenter() {
   async function send() {
     const cid = await ensureConversa()
     if (!cid || !texto.trim()) return
-    let statusMsg = interno ? 'enviada' : 'enviando'
-    if (!interno) {
-      const health = await getWhatsAppProvider().healthCheck()
-      setWaReady(health.status === 'online')
-      if (health.status !== 'online') {
+    let statusMsg = 'enviando'
+    const health = await getWhatsAppProvider().healthCheck()
+    setWaReady(health.status === 'online')
+    if (health.status !== 'online') {
+      statusMsg = 'nao_enviada'
+      toast.error('Registrada no Nexus. WhatsApp oficial: não configurado — não enviada ao cliente.')
+    } else {
+      const sent = await getWhatsAppProvider().sendMessage(String(cliente?.whatsapp || cliente?.telefone || ''), texto.trim())
+      if (!sent.ok) {
         statusMsg = 'nao_enviada'
-        toast.error('Registrada no Nexus. WhatsApp oficial: não configurado — não enviada ao cliente.')
-      } else {
-        const sent = await getWhatsAppProvider().sendMessage(String(cliente?.whatsapp || cliente?.telefone || ''), texto.trim())
-        if (!sent.ok) {
-          statusMsg = 'nao_enviada'
-          toast.error(sent.message || 'WhatsApp ainda não configurado.')
-        }
+        toast.error(sent.message || 'WhatsApp ainda não configurado.')
       }
     }
     await mensagens.create({
       conversaId: cid,
       texto: texto.trim(),
-      tipo: interno ? 'nota_interna' : 'texto',
-      interno,
+      tipo: 'texto',
+      interno: false,
       autorId: usuario?.id,
       autorNome: usuario?.nome,
       status: statusMsg,
       channel: selected?.canal || 'whatsapp',
     } as any)
-    await conversas.update(cid, { lastMessage: texto.trim(), status: interno ? selected?.status : 'aguardando_cliente', lastAssignedTo: selected?.assignedTo })
+    await conversas.update(cid, { lastMessage: texto.trim(), status: 'aguardando_cliente', lastAssignedTo: selected?.assignedTo })
     setTexto('')
   }
 
   async function attach(file: File) {
     const cid = await ensureConversa()
     if (!cid || !cliente) return
-    const allowed = /^(image\/(jpeg|jpg|png|webp)|application\/pdf)$/i.test(file.type) || /\.(pdf|jpe?g|png|webp)$/i.test(file.name)
+    const allowed = /^(image\/(jpeg|jpg|png|webp)|application\/pdf|audio\/(webm|ogg|mpeg|mp4|wav)|video\/(mp4|webm|quicktime))$/i.test(file.type) || /\.(pdf|jpe?g|png|webp|webm|ogg|mp3|m4a|wav|mp4|mov)$/i.test(file.name)
     if (!allowed) {
-      toast.error('Use PDF, JPG, JPEG, PNG ou WEBP.')
+      toast.error('Use imagem, PDF, vídeo ou áudio.')
       return
     }
     const empresaId = documentos.empresaId
@@ -276,7 +387,7 @@ export default function ChatCenter() {
       toast.error('Storage recusou o upload. O metadado ainda pode ser registrado.', e instanceof Error ? e.message : '')
     }
     const categoria = inferCategoriaDocumento(file.name, file.type)
-    await documentos.create({
+    const docId = await documentos.create({
       clienteId: cliente.id,
       clienteNome: cliente.nome,
       conversaId: cid,
@@ -290,16 +401,27 @@ export default function ChatCenter() {
       arquivoUrl,
       storagePath: path,
     } as any)
+    setPastaLocal((cur) => [
+      { id: docId || `local-${Date.now()}`, clienteId: cliente.id, nome: file.name, url: arquivoUrl || URL.createObjectURL(file), tipo: file.type },
+      ...cur,
+    ])
+    const tipo = file.type.startsWith('image/')
+      ? 'imagem'
+      : file.type.startsWith('audio/') || /^audio-/i.test(file.name) || /\.(ogg|mp3|m4a|wav)$/i.test(file.name)
+        ? 'audio'
+        : file.type.startsWith('video/') || /\.(mp4|mov)$/i.test(file.name)
+          ? 'video'
+          : 'documento'
     await mensagens.create({
       conversaId: cid,
       texto: file.name,
-      tipo: file.type.startsWith('image/') ? 'imagem' : 'documento',
+      tipo,
       autorNome: usuario?.nome || 'Atendente',
       origem: 'chat_clientes',
       status: 'recebida',
       arquivoUrl,
     } as any)
-    await conversas.update(cid, { lastMessage: `📎 ${file.name}`, status: 'documentacao' })
+    await conversas.update(cid, { lastMessage: tipo === 'audio' ? 'Áudio' : `📎 ${file.name}`, status: 'aguardando_cliente' })
     await writeAudit({
       empresaId,
       usuarioNome: usuario?.nome,
@@ -308,7 +430,37 @@ export default function ChatCenter() {
       entidadeId: cliente.id,
       depois: { conversaId: cid, categoria, nome: file.name },
     })
-    toast.success('Documento salvo na pasta do cliente e na conversa.')
+    toast.success(tipo === 'audio' ? 'Áudio gravado na conversa para o cliente.' : 'Arquivo salvo na conversa.')
+  }
+
+  async function gravarAudio() {
+    if (gravando && recorderRef.current) {
+      recorderRef.current.stop()
+      return
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error('Este navegador não libera o microfone.')
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg'
+      const rec = new MediaRecorder(stream)
+      const chunks: Blob[] = []
+      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data) }
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop())
+        setGravando(false)
+        const blob = new Blob(chunks, { type: mime })
+        const file = new File([blob], `audio-${Date.now()}.webm`, { type: mime })
+        void attach(file)
+      }
+      recorderRef.current = rec
+      rec.start()
+      setGravando(true)
+    } catch {
+      toast.error('Permita o microfone para enviar áudio ao cliente.')
+    }
   }
 
   async function transferir(paraId: string) {
@@ -337,6 +489,19 @@ export default function ChatCenter() {
     toast.success(`Atendimento transferido para ${String(u.nome)}`)
   }
 
+  async function mudarStatus(status: string) {
+    if (!selected) return
+    await conversas.update(selected.id, { status })
+    if (status === 'remarketing' && cliente) {
+      await clientes.update(cliente.id, {
+        remarketingStatus: 'novo',
+        pipelineStage: 'remarketing',
+        proximaAcao: 'Fila de remarketing',
+      } as never)
+      toast.success('Cliente entrou no remarketing')
+    }
+  }
+
   async function assumir() {
     if (!selected) return
     await conversas.update(selected.id, {
@@ -344,6 +509,7 @@ export default function ChatCenter() {
       assignedToId: usuario?.id,
       lastAssignedTo: selected.assignedTo,
       status: 'em_atendimento',
+      statusAtendimento: 'HUMANO',
       roboPausado: true,
       triagemStatus: 'humano',
     })
@@ -351,10 +517,16 @@ export default function ChatCenter() {
       empresaId: conversas.empresaId,
       usuarioId: usuario?.id,
       usuarioNome: usuario?.nome,
-      modulo: 'atendimento',
-      acao: 'robot.paused',
+      modulo: 'Chat Clientes',
+      submodulo: 'Atendimento',
+      acao: 'ATENDIMENTO_ASSUMIDO',
+      descricao: 'Funcionário assumiu atendimento',
+      origem: 'FUNCIONÁRIO',
       entidade: 'conversa',
       entidadeId: selected.id,
+      clienteId: String(selected.clienteId || ''),
+      clienteNome: String(cliente?.nome || selected.titulo || ''),
+      cpfCliente: String(cliente?.cpf || ''),
       depois: { de: 'robo', para: usuario?.nome },
     })
     toast.success('Atendimento assumido. Robô pausado nesta conversa.')
@@ -383,7 +555,7 @@ export default function ChatCenter() {
       <div className="p-2 border-b space-y-2" style={{ borderColor: 'var(--code-border)' }}>
         <div className="flex items-center justify-between gap-2">
           <h1 className="text-sm font-bold">Chat Clientes</h1>
-          <span className="text-[10px]" style={{ color: 'var(--code-muted)' }}>WhatsApp oficial: não configurado</span>
+          <button type="button" className="text-[11px] font-semibold" style={{ color: 'var(--code-orange)' }} onClick={() => setNovoCli(true)}>Cliente</button>
         </div>
         <TextInput placeholder="Buscar cliente ou telefone" value={busca} onChange={(e) => setBusca(e.target.value)} />
         <button type="button" className="text-[11px] font-semibold" style={{ color: 'var(--code-orange)' }} onClick={() => setFiltrosAbertos((v) => !v)}>
@@ -476,27 +648,21 @@ export default function ChatCenter() {
               <div>
                 <div className="flex items-center gap-2">
                   <button type="button" className="lg:hidden text-xs font-semibold" onClick={() => setPainel('lista')}>← Fila</button>
-                  <p className="font-bold text-sm">{cliente?.nome || selected.titulo}</p>
+                  <p className="font-bold text-sm">{textoMisto(String(cliente?.nome || selected.titulo || ''))}</p>
                 </div>
-                <p className="text-[11px]" style={{ color: 'var(--code-muted)' }}>📱 {String(cliente?.whatsapp || cliente?.telefone || '—')} · {labelPt(String(selected.status))} · 👤 {String(selected.assignedTo || cliente?.responsavel || '—')}</p>
-                <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>
-                  Robô: {String((selected as { robotState?: string }).robotState || 'NEW')}
-                  {(selected as { robotPaused?: boolean }).robotPaused ? ' · pausado (humano)' : ' · preparado (não dispara sem WhatsApp conectado)'}
-                </p>
-                <p className="text-[11px] font-semibold" style={{ color: marca.cor }}>{marca.emoji} {origemTexto(origemCode)}</p>
+                <p className="text-[11px]" style={{ color: 'var(--code-muted)' }}>{displayCpfSidebar(cliente?.cpf) ? `CPF ${displayCpfSidebar(cliente?.cpf)}` : 'CPF —'} · {displayPhone(String(cliente?.whatsapp || cliente?.telefone || '')) || 'Telefone —'}</p>
                 {(cliente?.produto || cliente?.modalidade || selected.produto) && (
                   <p className="text-[11px] font-semibold" style={{ color: 'var(--code-orange)' }}>
                     {produtoLabel(String(cliente?.produto || cliente?.modalidade || selected.produto || selected.operacao || ''))}
                   </p>
                 )}
-                {(cliente?.campanhaNome || cliente?.campanha) && <p className="text-[11px]">🎯 {String(cliente.campanhaNome || cliente.campanha)}</p>}
-                {(cliente?.fonte || cliente?.fontePesquisa) && <p className="text-[11px]">🔎 {String(cliente.fonte || cliente.fontePesquisa)}</p>}
-                <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>Entrada {cliente?.dataEntrada || '—'} {cliente?.horaEntrada || ''}</p>
+                {(cliente?.campanhaNome || cliente?.campanha) && <p className="text-[11px]">{String(cliente.campanhaNome || cliente.campanha)}</p>}
               </div>
               <div className="flex flex-wrap gap-1 justify-end">
                 <GhostButton className="text-xs" onClick={() => void assumir()}>Assumir</GhostButton>
+                <GhostButton className="text-xs" aria-label="Fechar" data-nexus-esc onClick={fecharConversa}>X</GhostButton>
                 <GhostButton className="text-xs lg:hidden" onClick={() => setPainel('ficha')}>Cliente</GhostButton>
-                <SelectInput value={String(selected.status || '')} onChange={(e) => conversas.update(selected.id, { status: e.target.value })}>
+                <SelectInput value={String(selected.status || '')} onChange={(e) => void mudarStatus(e.target.value)}>
                   <option value="aguardando_triagem">Novos</option>
                   <option value="aguardando_funcionario">Aguardando</option>
                   <option value="em_atendimento">Em atendimento</option>
@@ -505,6 +671,7 @@ export default function ChatCenter() {
                   <option value="proposta">Proposta</option>
                   <option value="contrato">Contrato</option>
                   <option value="finalizado">Finalizado</option>
+                  <option value="remarketing">Remarketing</option>
                 </SelectInput>
               </div>
             </div>
@@ -516,17 +683,20 @@ export default function ChatCenter() {
             </div>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {waReady === false && <p className="text-[11px] text-center" style={{ color: 'var(--code-muted)' }}>WhatsApp oficial: não configurado. Mensagens ficam no Nexus.</p>}
-            {selected.roboPausado ? <p className="text-[11px] text-center font-semibold">🤖 Robô pausado — atendimento humano</p> : <p className="text-[11px] text-center" style={{ color: 'var(--code-muted)' }}>🤖 Nexus AI pode iniciar triagem quando a automação estiver ativa.</p>}
+            {selected.roboPausado ? null : null}
+            <div className="chat-wa">
             {msgs.map((m) => (
-              <div key={m.id} className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${m.interno ? 'chat-msg-note ml-auto' : m.autorId === usuario?.id ? 'chat-msg-out ml-auto' : 'chat-msg-in'}`}>
-                <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>{String(m.autorNome || '')} · {horaCurta(m.criadoEm)} · {labelPt(String(m.status || ''))}{m.interno ? ' · NOTA INTERNA' : ''}</p>
+              <div key={m.id} className={`bolha ${m.autorId === usuario?.id ? 'sai' : 'entra'}`}>
+                <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>{textoMisto(String(m.autorNome || ''))} · {horaCurta(m.criadoEm)}</p>
                 {String(m.tipo) === 'imagem' && (m.arquivoUrl ? <img src={String(m.arquivoUrl)} alt="" className="max-h-40 rounded mt-1" /> : <p>Imagem: {String(m.texto)}</p>)}
+                {String(m.tipo) === 'audio' && (m.arquivoUrl ? <audio controls src={String(m.arquivoUrl)} className="mt-1" /> : <p>Áudio: {String(m.texto)}</p>)}
+                {String(m.tipo) === 'video' && (m.arquivoUrl ? <video controls src={String(m.arquivoUrl)} className="max-h-40 rounded mt-1" /> : <p>Vídeo: {String(m.texto)}</p>)}
                 {String(m.tipo) === 'documento' && <p>📎 {String(m.texto)}</p>}
                 {!['imagem', 'documento', 'audio', 'video'].includes(String(m.tipo)) && <p>{String(m.texto || '')}</p>}
               </div>
             ))}
-            {msgs.length === 0 && <p className="text-sm text-center" style={{ color: 'var(--code-muted)' }}>Nenhuma mensagem ainda. A conversa já está vinculada ao cliente.</p>}
+            {msgs.length === 0 && <p className="text-sm text-center" style={{ color: 'var(--code-muted)' }}>Nenhuma mensagem ainda.</p>}
+            </div>
           </div>
           <div className="p-2 border-t shrink-0" style={{ borderColor: 'var(--code-border)', background: 'var(--code-surface)' }}>
             <div className="flex gap-2">
@@ -540,30 +710,26 @@ export default function ChatCenter() {
                     void send()
                   }
                 }}
-                placeholder={interno ? 'Nota interna (não vai ao cliente)' : 'Digite uma mensagem...'}
+                placeholder="Digite uma mensagem..."
               />
               <PrimaryButton onClick={() => void send()}>Enviar</PrimaryButton>
             </div>
-            <div className="flex flex-wrap gap-2 items-center text-[11px] mt-1">
-              <label className="flex items-center gap-1"><input type="checkbox" checked={interno} onChange={(e) => setInterno(e.target.checked)} /> Nota interna</label>
+            <div className="flex flex-wrap gap-3 items-center text-[11px] mt-1">
               <label className="cursor-pointer font-semibold" style={{ color: 'var(--code-orange)' }}>
-                📎 Anexar
-                <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*" className="hidden" onChange={(e) => e.target.files?.[0] && attach(e.target.files[0])} />
+                Imagem
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => e.target.files?.[0] && attach(e.target.files[0])} />
               </label>
               <label className="cursor-pointer font-semibold">
-                📄 Documento
-                <input type="file" accept=".pdf,application/pdf" className="hidden" onChange={(e) => e.target.files?.[0] && attach(e.target.files[0])} />
+                Documento
+                <input type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => e.target.files?.[0] && attach(e.target.files[0])} />
               </label>
               <label className="cursor-pointer font-semibold">
-                🖼️ Imagem
-                <input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" className="hidden" onChange={(e) => e.target.files?.[0] && attach(e.target.files[0])} />
+                Vídeo
+                <input type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.mov" className="hidden" onChange={(e) => e.target.files?.[0] && attach(e.target.files[0])} />
               </label>
-              <label className="cursor-pointer font-semibold">
-                📸 Print
-                <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && attach(e.target.files[0])} />
-              </label>
-              <GhostButton type="button" className="text-xs" onClick={() => setTexto((t) => `${t}😊`)}>Emoji</GhostButton>
-              <GhostButton type="button" className="text-xs" onClick={() => conversas.update(selected.id, { status: 'finalizado' })}>Finalizar</GhostButton>
+              <button type="button" className="font-semibold" style={{ color: gravando ? 'var(--code-orange)' : 'inherit' }} onClick={() => void gravarAudio()}>
+                {gravando ? 'Parar e enviar áudio' : 'Áudio'}
+              </button>
             </div>
           </div>
         </>
@@ -592,127 +758,53 @@ export default function ChatCenter() {
             return (
               <>
                 <header className="pb-2" style={{ borderBottom: '1px solid var(--code-border)' }}>
-                  <p className="font-semibold text-[15px] leading-snug tracking-tight break-words">
-                    <ClienteLink id={cliente.id} nome={cliente.nome} />
-                  </p>
-                  {phone ? <p className="text-[12px] mt-1" style={{ color: 'var(--code-muted)' }}>📱 {phone}</p> : null}
-                  <p className="flex items-center gap-1.5 text-[11px] mt-1.5" style={{ color: st.color }}>
-                    <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: st.color }} />
-                    {st.label}
-                  </p>
+                  <p className="font-semibold text-[15px] leading-snug">{textoMisto(cliente.nome)}</p>
+                  <p className="text-[12px] mt-1 font-semibold" style={{ color: 'var(--code-orange)' }}>{statusAtendimentoLabel(String(selected?.status || '')).label}</p>
+                  <p className="text-[12px] mt-1">CPF {displayCpfSidebar(cliente.cpf) || '—'}</p>
+                  <p className="text-[12px]" style={{ color: 'var(--code-muted)' }}>{phone || 'Telefone não informado'}</p>
                 </header>
 
-                <section className="rounded-lg px-2.5 py-2" style={{ background: 'var(--code-surface-muted)', border: '1px solid var(--code-border)' }}>
-                  <p className="text-[10px] font-semibold tracking-wide" style={{ color: 'var(--code-orange)' }}>💰 CRÉDITO</p>
-                  {hasCredit ? (
-                    <div className="mt-1.5">
-                      <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>Valor liberado</p>
-                      <p className="text-[16px] font-semibold leading-tight">{credLiberado || '—'}</p>
-                      <div className="grid grid-cols-2 gap-2 mt-2">
-                        <div>
-                          <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>Parcela</p>
-                          <p className="text-[13px] font-semibold">{credParcela || '—'}</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>Prazo</p>
-                          <p className="text-[13px] font-semibold">{credPrazo || '—'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-[11px] mt-1" style={{ color: 'var(--code-muted)' }}>Crédito ainda não consultado</p>
-                  )}
+                <section className="rounded-lg px-2.5 py-2 text-[12px]" style={{ border: '1px solid var(--code-border)' }}>
+                  <p>Nascimento {displayNascimento(nascimentoCliente)}</p>
+                  {hasAddr ? <p className="mt-1">{[rua, cliente.bairro, cliente.cidade, cliente.estado].filter(Boolean).join(' · ')}</p> : null}
                 </section>
 
-                <details open className="rounded-lg px-2.5 py-1.5" style={{ border: '1px solid var(--code-border)' }}>
-                  <summary className="cursor-pointer text-[11px] font-semibold" style={{ color: 'var(--code-text)' }}>👤 Dados pessoais</summary>
-                  <div className="mt-2 space-y-1.5 text-[12px]">
-                    <div>
-                      <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>CPF</p>
-                      <p>{displayCpfSidebar(cliente.cpf) || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>Nascimento</p>
-                      <p>{cliente.dataNascimento || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>Telefone</p>
-                      <p>{phone || '—'}</p>
-                    </div>
+                <section className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--code-border)' }}>
+                  <div className="flex items-center justify-between gap-2 px-2 py-1.5" style={{ background: 'var(--code-surface-muted)' }}>
+                    <p className="text-[11px] font-semibold">Documentos do cliente</p>
+                    <label className="text-[11px] font-semibold cursor-pointer" style={{ color: 'var(--code-orange)' }}>
+                      Anexar
+                      <input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf,.pdf,video/mp4,audio/*" className="hidden" onChange={(e) => { Array.from(e.target.files || []).forEach((f) => void attach(f)); e.target.value = '' }} />
+                    </label>
                   </div>
-                </details>
+                  {pastaCliente.length === 0 && <p className="px-2 py-2 text-[11px]" style={{ color: 'var(--code-muted)' }}>Nenhum arquivo salvo nesta pasta.</p>}
+                  {pastaCliente.map((d) => {
+                    const url = String(d.url || '')
+                    return (
+                      <a key={d.id} href={url || undefined} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-2 py-1.5 border-t min-w-0" style={{ borderColor: 'var(--code-border)' }}>
+                        <span className="text-[10px] font-semibold shrink-0" style={{ color: 'var(--code-orange)' }}>DOC</span>
+                        <span className="text-[11px] truncate">{String(d.nome || 'Arquivo')}</span>
+                        <span className="ml-auto text-[10px] shrink-0" style={{ color: 'var(--code-muted)' }}>Salvo</span>
+                      </a>
+                    )
+                  })}
+                </section>
 
-                <section className="rounded-lg px-2.5 py-2" style={{ border: '1px solid var(--code-border)' }}>
-                  <p className="text-[11px] font-semibold">📍 Endereço</p>
-                  {hasAddr ? (
-                    <div className="mt-1 text-[12px] leading-snug space-y-0.5">
-                      {rua ? <p>{rua}{cliente.complemento ? `, ${cliente.complemento}` : ''}</p> : null}
-                      {cliente.bairro ? <p>{String(cliente.bairro)}</p> : null}
-                      {cliente.cidade || cliente.estado ? <p>{[cliente.cidade, cliente.estado].filter(Boolean).join(' - ')}</p> : null}
-                      {cliente.cep ? <p>CEP {String(cliente.cep)}</p> : null}
+                <section className="pt-0.5">
+                  <Link className="text-[12px] font-semibold" to={`/propostas?cliente=${cliente.id}`}>Proposta</Link>
+                  <button
+                    type="button"
+                    className="block mt-1 text-[12px] font-semibold text-left"
+                    style={{ color: 'var(--code-orange)' }}
+                    onClick={() => { setObsTexto(String(cliente.observacoes || '')); setObsAberta(true) }}
+                  >
+                    Obs{cliente.observacoes ? ` · ${String(cliente.observacoes).slice(0, 42)}` : ''}
+                  </button>
+                  {obsAberta && (
+                    <div className="mt-1 rounded-lg p-2" style={{ border: '1px solid var(--code-border)' }}>
+                      <textarea className="nexus-input w-full text-xs" rows={3} value={obsTexto} onChange={(e) => setObsTexto(e.target.value)} placeholder="Observação" />
+                      <button type="button" className="text-[11px] font-semibold mt-1" style={{ color: 'var(--code-orange)' }} onClick={() => { void clientes.update(cliente.id, { observacoes: obsTexto }); setObsAberta(false) }}>Guardar</button>
                     </div>
-                  ) : (
-                    <p className="text-[11px] mt-1" style={{ color: 'var(--code-muted)' }}>Endereço ainda não enriquecido</p>
-                  )}
-                </section>
-
-                <details className="rounded-lg px-2.5 py-1.5" style={{ border: '1px solid var(--code-border)' }}>
-                  <summary className="cursor-pointer text-[11px] font-semibold" style={{ color: 'var(--code-muted)' }}>⚙ Informações técnicas</summary>
-                  <div className="mt-2 space-y-0.5 text-[11px] break-words" style={{ color: 'var(--code-muted)' }}>
-                    <p>Origem: {origemTexto(origemCode)}</p>
-                    <p>Canal: {String(cliente.canalEntrada || selected?.canalEntrada || '')}</p>
-                    <p>Campanha: {String(cliente.campanhaNome || cliente.campanha || '')}</p>
-                    <p>Fonte: {String(cliente.fonte || cliente.fontePesquisa || '')}</p>
-                    <p>API: {String(cliente.statusConsultaCredito || '')}</p>
-                    <p>Consulta: {String(cliente.dataConsultaCredito || '')}</p>
-                    <p>Entrada: {cliente.dataEntrada || ''} {cliente.horaEntrada || ''}</p>
-                    <p>ID cliente: {cliente.id}</p>
-                    <p>ID conversa: {selected?.id || ''}</p>
-                    <p>PersonLead: {String(cliente.leadsMonitorPersonId || '')}</p>
-                    <p>Status: {String(selected?.status || cliente.status || '')}</p>
-                    {Array.isArray(cliente.historicoOrigens) && cliente.historicoOrigens.map((h, i) => (
-                      <p key={i}>{origemTexto(String(h.origem))} · {String(h.campanha || h.fonte || h.canal || '')}</p>
-                    ))}
-                    {timeline.slice(-8).map((ev, i) => (
-                      <p key={`t${i}`}>{horaCurta(ev.t) || dataHora(ev.t)} — {ev.label}</p>
-                    ))}
-                  </div>
-                </details>
-
-                <section>
-                  <p className="text-[11px] font-semibold mb-1">📁 Documentos</p>
-                  <div className="divide-y rounded-lg overflow-hidden" style={{ border: '1px solid var(--code-border)', borderColor: 'var(--code-border)' }}>
-                    {DOCUMENT_PASTAS.map((pasta) => {
-                      const items = docsCli.filter((d) => (pasta.cats as readonly string[]).includes(String(d.categoria)))
-                      return (
-                        <Link
-                          key={pasta.id}
-                          to={`/documentos?q=${encodeURIComponent(String(cliente.nome || ''))}`}
-                          className="flex items-center justify-between px-2 py-1.5 text-[11px] hover:opacity-90"
-                          style={{ borderColor: 'var(--code-border)' }}
-                        >
-                          <span>{pasta.label}</span>
-                          <span style={{ color: 'var(--code-muted)' }}>{items.length ? items.length : ''}</span>
-                        </Link>
-                      )
-                    })}
-                  </div>
-                </section>
-
-                <section className="pt-0.5" style={{ borderTop: '1px solid var(--code-border)' }}>
-                  <p className="text-[10px] font-semibold tracking-wide" style={{ color: 'var(--code-muted)' }}>📄 PROPOSTA</p>
-                  {propsCli.length ? (
-                    <Link className="text-[12px] font-semibold" to={`/propostas?cliente=${cliente.id}`}>Ver proposta</Link>
-                  ) : (
-                    <Link className="text-[12px] font-semibold" to={`/propostas?cliente=${cliente.id}`}>+ Nova proposta</Link>
-                  )}
-                </section>
-                <section>
-                  <p className="text-[10px] font-semibold tracking-wide" style={{ color: 'var(--code-muted)' }}>📑 CONTRATO</p>
-                  {contrCli.length ? (
-                    <Link className="text-[12px] font-semibold" to="/contratos">Ver contrato</Link>
-                  ) : (
-                    <Link className="text-[12px] font-semibold" to="/contratos">+ Novo contrato</Link>
                   )}
                 </section>
               </>
@@ -728,6 +820,19 @@ export default function ChatCenter() {
   return (
     <div className="-m-3 md:-m-4 h-[calc(100vh-3.5rem)] md:h-[calc(100vh-4.5rem)] flex flex-col">
       <ErrorBanner message={conversas.error} />
+      {novoCli && (
+        <NexusModal compact title="Cliente manual" onClose={() => setNovoCli(false)} onSave={() => void adicionarCliente()} closeOnBackdrop={false}>
+          <label className="text-xs font-semibold block mb-2">Nome
+            <TextInput placeholder="Nome completo" value={manual.nome} onChange={(e) => setManual({ ...manual, nome: e.target.value })} />
+          </label>
+          <label className="text-xs font-semibold block mb-2">CPF
+            <TextInput placeholder="CPF" value={manual.cpf} onChange={(e) => setManual({ ...manual, cpf: e.target.value })} />
+          </label>
+          <label className="text-xs font-semibold block mb-2">Telefone
+            <TextInput placeholder="WhatsApp" value={manual.telefone} onChange={(e) => setManual({ ...manual, telefone: e.target.value })} />
+          </label>
+        </NexusModal>
+      )}
       <div className="flex-1 min-h-0 grid lg:grid-cols-[300px_1fr_280px]">
         <div className={`${painel === 'lista' ? 'block' : 'hidden'} lg:block h-full min-h-0`}>{listaCol}</div>
         <div className={`${painel === 'chat' ? 'block' : 'hidden'} lg:block h-full min-h-0`}>{chatCol}</div>

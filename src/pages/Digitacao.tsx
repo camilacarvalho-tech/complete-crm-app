@@ -1,11 +1,14 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { MoreHorizontal, X } from 'lucide-react'
-import { INSS_OPERACOES, PRODUCT_TREE } from '../catalog/crmCatalog'
+import { Bot, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { PRODUCT_TREE, UFS_BRASIL } from '../catalog/crmCatalog'
+import { DIGITACAO_STATUSES, digitacaoStatusId, digitacaoStatusLabel, findProduct, operationLabel, operationsFor, productCatalogLabel } from '../catalog/productCatalog'
 import { ErrorBanner, GhostButton, LoadingBlock, SelectInput, TextInput } from '../components/nexus/kit'
-import { ClienteLink } from '../components/nexus/ClienteLink'
+import { DetalhesPropostaBox } from '../components/nexus/DetalhesPropostaBox'
+import { textoMisto } from '../lib/uiPt'
+import { maskCpf } from '../lib/format'
 import { useNexusStore } from '../contexts/NexusStore'
 import { useToast } from '../components/ui/Toast'
-import { useClickOutside, useEscLayer } from '../hooks/useEscLayer'
+import { useEscLayer } from '../hooks/useEscLayer'
 import { toDate } from '../lib/nexusCore'
 import { simulateAllInstitutions } from '../integrations/banks/registry'
 import { ingestSimulationResult } from '../modules/digitacao/simulationToDigitacao'
@@ -20,7 +23,6 @@ import {
   formatPrazo,
   hasSignatureBlock,
   isCompleteCpf,
-  matchClientes,
   proposalsForCliente,
   docsForProposal,
   documentOpenUrl,
@@ -28,7 +30,6 @@ import {
   waitingInstitution,
   type DeskRecord,
 } from '../modules/digitacao/digitacaoDesk'
-import { labelPt } from '../lib/uiPt'
 import type { NexusCliente } from '../types/nexus'
 import './digitacaoDesk.css'
 
@@ -54,24 +55,62 @@ function moneyOrMissing(v: unknown) {
   return formatMoney(v)
 }
 
+function urlBanco(...vals: unknown[]): string {
+  for (const v of vals) {
+    const s = String(v || '').trim()
+    if (/^https?:\/\//i.test(s)) return s
+  }
+  return ''
+}
+
+function nomeHomolog(v: unknown) {
+  return /lead\s+homolog/i.test(String(v || ''))
+}
+
+function bancoToke(v: unknown) {
+  return /toke\s*real/i.test(String(v || ''))
+}
+
+const FILTROS_ICRED = [
+  { id: 'todas', label: 'Todos' },
+  { id: 'analise', label: 'Análise documental' },
+  { id: 'video', label: 'Vídeo chamada' },
+  { id: 'averbacao', label: 'Averbação/Reserva' },
+  { id: 'assinatura', label: 'Assinatura' },
+  { id: 'pagamento', label: 'Pagamento' },
+]
+
+function grupoDigitacao(item: DeskRecord) {
+  const blob = `${item.status || ''} ${item.operacao || ''} ${item.ultimoHistorico || ''} ${item.mensagemSimulacao || ''}`.toLowerCase()
+  if (/video|v[ií]deo/.test(blob)) return 'video'
+  if (/pagamento|pago|paga|liquid/.test(blob)) return 'pagamento'
+  if (/assin|formaliz/.test(blob)) return 'assinatura'
+  if (/averb|reserva|desbloque/.test(blob)) return 'averbacao'
+  if (/document|an[aá]lise/.test(blob)) return 'analise'
+  return ''
+}
+
 export default function Digitacao() {
   const { propostas, digitacoes, clientes, documentos, contratos, auditoria, campanhas } = useNexusStore()
   const toast = useToast()
   const [q, setQ] = useState('')
-  const [suggestOpen, setSuggestOpen] = useState(false)
   const [produto, setProduto] = useState('INSS')
   const [operacao, setOperacao] = useState('PORTABILIDADE')
+  const [estado, setEstado] = useState('')
+  const [municipio, setMunicipio] = useState('')
   const [busy, setBusy] = useState(false)
   const [resultados, setResultados] = useState<Awaited<ReturnType<typeof simulateAllInstitutions>>>([])
   const [clienteId, setClienteId] = useState<string | null>(null)
   const [ficha, setFicha] = useState<{ rec: DeskRecord; tab: 'proposta' | 'documentos' | 'historico' } | null>(null)
+  const [caixa, setCaixa] = useState<DeskRecord | null>(null)
   const [menuId, setMenuId] = useState<string | null>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
   const [tabFila, setTabFila] = useState('todas')
-  const suggestRef = useRef<HTMLDivElement>(null)
-  useClickOutside(suggestOpen, suggestRef, () => setSuggestOpen(false))
+  const tableRef = useRef<HTMLDivElement>(null)
 
+  const catalogProduct = findProduct(produto)
+  const ops = operationsFor(produto)
   const cliente = clientes.items.find((c) => c.id === clienteId) || null
-  const suggestions = useMemo(() => matchClientes(clientes.items, q, 8), [clientes.items, q])
 
   useEffect(() => {
     if (!isCompleteCpf(q)) return
@@ -85,22 +124,37 @@ export default function Digitacao() {
   }, [cliente, digitacoes.items, propostas.items])
 
   const fila = useMemo(() => {
-    let items = digitacoes.items as DeskRecord[]
+    let items = (digitacoes.items as DeskRecord[]).filter((d) => !nomeHomolog(d.clienteNome) && !bancoToke(`${d.banco || ''} ${d.instituicao || ''} ${d.produto || ''}`))
+    const alvo = findProduct(produto)
+    if (alvo) {
+      items = items.filter((d) => {
+        const atual = findProduct(String(d.produto || ''))
+        return atual ? atual.code === alvo.code : false
+      })
+    }
+    if (operacao) {
+      items = items.filter((d) => {
+        const op = String(d.operacao || '')
+        return op.toUpperCase() === operacao.toUpperCase() || operationLabel(op).toLowerCase() === operationLabel(operacao).toLowerCase()
+      })
+    }
+    const digitos = q.replace(/\D/g, '')
+    if (digitos.length >= 3 && !cliente) {
+      items = items.filter((d) => {
+        const numero = `${d.protocolo || ''} ${d.numeroProposta || ''}`.replace(/\D/g, '')
+        const cpf = String(d.cpf || '').replace(/\D/g, '')
+        return numero.includes(digitos) || cpf.includes(digitos)
+      })
+    }
     if (cliente) {
       const ids = new Set(propostasCliente.map((p) => p.id))
       items = items.filter((d) => ids.has(d.id) || String(d.clienteId) === cliente.id)
     }
-    if (tabFila !== 'todas') {
-      items = items.filter((d) => displayOperationalStatus(d).toLowerCase().replace(/\s+/g, '_') === tabFila || String(d.status || '').toLowerCase() === tabFila)
+    if (tabFila !== 'todas' && FILTROS_ICRED.some((t) => t.id === tabFila)) {
+      items = items.filter((d) => grupoDigitacao(d) === tabFila)
     }
     return items
-  }, [digitacoes.items, cliente, propostasCliente, tabFila])
-
-  function selectCliente(c: NexusCliente) {
-    setClienteId(c.id)
-    setQ(formatCpfDisplay(c.cpf) || c.nome || '')
-    setSuggestOpen(false)
-  }
+  }, [digitacoes.items, cliente, propostasCliente, tabFila, produto, operacao, q])
 
   async function simularEEnviar() {
     setBusy(true)
@@ -139,7 +193,7 @@ export default function Digitacao() {
         })
         if (packed.reused) continue
         await propostas.create(packed.proposta as any)
-        await digitacoes.create(packed.digitacao as any)
+        await digitacoes.create({ ...packed.digitacao, estado, municipio } as any)
         criadas += 1
       }
       toast.success(criadas ? `${criadas} proposta(s) na Digitação` : 'Já existiam na Digitação (idempotente)')
@@ -154,63 +208,70 @@ export default function Digitacao() {
 
   return (
     <div className="digitacao-desk space-y-3">
-      <div>
+      <div className="flex items-center gap-2">
         <h1>Digitação</h1>
-        <p className="desk-sub">Central operacional. Busque o CPF, abra a proposta e acompanhe o que o robô já preencheu.</p>
+        {busy && (
+          <span className="robinho" role="status">
+            <Bot className="w-3.5 h-3.5" />
+            Robinho
+          </span>
+        )}
       </div>
       <ErrorBanner message={digitacoes.error || clientes.error} />
 
       <div className="desk-card p-3 space-y-2">
         <div className="flex flex-wrap gap-2 items-end">
-          <div className="relative min-w-[240px] flex-1" ref={suggestRef}>
-            <span className="desk-label">CPF / Cliente</span>
+          <div className="relative min-w-[240px] flex-1">
+            <span className="desk-label">CPF / Proposta</span>
             <TextInput
               value={q}
-              placeholder="Digite o CPF ou nome..."
+              inputMode="numeric"
+              placeholder="CPF ou número da proposta"
               className="!py-1.5 !text-xs"
-              onFocus={() => setSuggestOpen(true)}
               onChange={(e) => {
-                setQ(e.target.value)
-                setSuggestOpen(true)
-                if (!e.target.value.trim()) setClienteId(null)
+                const digits = e.target.value.replace(/\D/g, '')
+                const next = digits.length > 11 ? digits : maskCpf(digits)
+                setQ(next)
+                if (!digits) setClienteId(null)
               }}
             />
-            {suggestOpen && (
-              <div className="suggest">
-                {suggestions.length === 0 ? (
-                  <p className="px-3 py-2 text-[12px]" style={{ color: 'var(--code-muted)' }}>Nenhum cliente existente para este filtro.</p>
-                ) : (
-                  suggestions.map((c) => (
-                    <button
-                      type="button"
-                      key={c.id}
-                      className="w-full text-left px-3 py-2 hover:bg-[color:var(--code-surface-muted)]"
-                      onClick={() => selectCliente(c)}
-                    >
-                      <div className="font-semibold text-[13px]">{c.nome || 'Sem nome'}</div>
-                      <div className="text-[11px]" style={{ color: 'var(--code-muted)' }}>
-                        CPF: {c.cpf ? formatCpfDisplay(c.cpf) : 'Não informado'}
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
           </div>
           <label className="desk-label">Produto
-            <SelectInput className="!py-1.5 !text-xs" value={produto} onChange={(e) => setProduto(e.target.value)}>
+            <SelectInput className="!py-1.5 !text-xs" value={produto} onChange={(e) => {
+              const next = e.target.value
+              setProduto(next)
+              const nextOps = operationsFor(next)
+              setOperacao(nextOps[0]?.code || '')
+              if (!findProduct(next)?.needsState) setEstado('')
+              if (!findProduct(next)?.needsCity) setMunicipio('')
+            }}>
               {PRODUCT_TREE.map((p) => (
                 <option key={p.code} value={p.code}>{p.nome}</option>
               ))}
             </SelectInput>
           </label>
-          <label className="desk-label">Operação
-            <SelectInput className="!py-1.5 !text-xs" value={operacao} onChange={(e) => setOperacao(e.target.value)}>
-              {INSS_OPERACOES.map((o) => (
-                <option key={o}>{o}</option>
-              ))}
-            </SelectInput>
-          </label>
+          {ops.length > 0 && (
+            <label className="desk-label">Operação
+              <SelectInput className="!py-1.5 !text-xs" value={operacao} onChange={(e) => setOperacao(e.target.value)}>
+                {ops.map((o) => (
+                  <option key={o.code} value={o.code}>{o.label}</option>
+                ))}
+              </SelectInput>
+            </label>
+          )}
+          {catalogProduct?.needsState && (
+            <label className="desk-label">Estado
+              <SelectInput className="!py-1.5 !text-xs" value={estado} onChange={(e) => setEstado(e.target.value)}>
+                <option value="">Selecione</option>
+                {UFS_BRASIL.map((u) => <option key={u.uf} value={u.uf}>{u.nome}</option>)}
+              </SelectInput>
+            </label>
+          )}
+          {catalogProduct?.needsCity && (
+            <label className="desk-label">Município
+              <TextInput className="!py-1.5 !text-xs" value={municipio} placeholder="Município" onChange={(e) => setMunicipio(e.target.value)} />
+            </label>
+          )}
           <GhostButton type="button" className="!py-1.5 !text-xs" disabled={busy} onClick={() => void simularEEnviar()}>
             {busy ? 'Consultando…' : 'Consultar instituições'}
           </GhostButton>
@@ -236,11 +297,11 @@ export default function Digitacao() {
       {cliente && (
         <div className="space-y-2">
           <div className="desk-label">Propostas do cliente</div>
-          {propostasCliente.length === 0 ? (
+          {propostasCliente.filter((p) => !bancoToke(`${p.banco || ''} ${p.instituicao || ''} ${p.produto || ''}`)).length === 0 ? (
             <p className="text-[12px]" style={{ color: 'var(--code-muted)' }}>Nenhuma proposta existente para este cliente.</p>
           ) : (
             <div className="grid gap-2 md:grid-cols-2">
-              {propostasCliente.map((p) => (
+              {propostasCliente.filter((p) => !bancoToke(`${p.banco || ''} ${p.instituicao || ''} ${p.produto || ''}`)).map((p) => (
                 <div key={p.id} className="desk-card p-3 space-y-1">
                   <div className="font-semibold text-[13px]">{emptyLabel(p.produto)} · {emptyLabel(p.operacao)} · {emptyLabel(p.banco || p.instituicao)}</div>
                   <div className="status-pill">{displayOperationalStatus(p)}</div>
@@ -260,7 +321,7 @@ export default function Digitacao() {
         <div className="desk-card p-3 space-y-2">
           <div className="desk-label">Resultados das instituições</div>
           <div className="grid gap-2 md:grid-cols-2">
-            {resultados.map((o) => (
+            {resultados.filter((o) => !bancoToke(o.banco)).map((o) => (
               <div key={o.bancoId} className="rounded border p-2" style={{ borderColor: 'var(--code-border)' }}>
                 <div className="font-semibold text-[13px]">{o.banco}</div>
                 <div className="status-pill mt-1">{o.status}</div>
@@ -274,65 +335,136 @@ export default function Digitacao() {
         </div>
       )}
 
+      {caixa && (
+        <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+        <DetalhesPropostaBox
+          embedded
+          rec={caixa}
+          clienteNome={nomeHomolog(caixa.clienteNome) ? 'Cliente' : String(caixa.clienteNome || clientes.items.find((c) => c.id === caixa.clienteId)?.nome || 'Cliente')}
+          historico={buildHistory({ rec: caixa, auditoria: auditoria.items as DeskRecord[] })}
+          onClose={() => setCaixa(null)}
+          onOpenFull={() => {
+            setFicha({ rec: caixa, tab: 'proposta' })
+            setCaixa(null)
+          }}
+        />
+        </div>
+      )}
+
       <div className="desk-card">
         <div className="flex flex-wrap gap-1 p-2 border-b" style={{ borderColor: 'var(--code-border)' }}>
-          {['todas', 'nova', 'em_digitacao', 'enviada', 'em_analise', 'pendencia', 'aprovada', 'reprovada', 'paga', 'cancelada'].map((t) => (
+          {FILTROS_ICRED.map((t) => (
             <button
-              key={t}
+              key={t.id}
               type="button"
-              onClick={() => setTabFila(t)}
-              className={`px-2 py-0.5 rounded text-[11px] ${tabFila === t ? 'nexus-cta text-white' : 'nexus-btn-secondary'}`}
+              onClick={() => setTabFila(t.id)}
+              className={`px-2 py-0.5 rounded text-[11px] ${(tabFila === t.id || (t.id === 'todas' && !FILTROS_ICRED.some((f) => f.id === tabFila))) ? 'nexus-cta text-white' : 'nexus-btn-secondary'}`}
             >
-              {labelPt(t)}
+              {t.label}
             </button>
           ))}
         </div>
-        <div className="desk-table-wrap">
+        <div className="flex items-center justify-end gap-1 px-2 py-1">
+          <button type="button" className="nexus-btn-secondary p-1 rounded" aria-label="Rolar para a esquerda" onClick={() => tableRef.current?.scrollBy({ left: -240, behavior: 'smooth' })}><ChevronLeft className="w-4 h-4" /></button>
+          <button type="button" className="nexus-btn-secondary p-1 rounded" aria-label="Rolar para a direita" onClick={() => tableRef.current?.scrollBy({ left: 240, behavior: 'smooth' })}><ChevronRight className="w-4 h-4" /></button>
+        </div>
+        <div className="desk-table-wrap" ref={tableRef}>
           {fila.length === 0 ? (
             <p className="p-4 text-[12px]" style={{ color: 'var(--code-muted)' }}>Nenhum registro nesta fila.</p>
           ) : (
             <table className="desk-table">
               <thead>
                 <tr>
-                  <th>Cliente</th>
+                  <th>Menu</th>
+                  <th>Inclusão</th>
+                  <th>Proposta</th>
                   <th>CPF</th>
-                  <th>Produto</th>
-                  <th>Operação</th>
-                  <th>Instituição</th>
-                  <th>Contrato</th>
-                  <th>Parcela</th>
+                  <th>Nome</th>
+                  <th>Tipo</th>
+                  <th>Bruto</th>
+                  <th>Líquido</th>
                   <th>Prazo</th>
-                  <th>Status</th>
-                  <th>Ação</th>
+                  <th>Parcela</th>
+                  <th>Situação</th>
+                  <th>Averbação</th>
+                  <th>Data</th>
+                  <th>Último histórico</th>
+                  <th>Produto</th>
+                  <th>Instituição</th>
+                  <th>Vendedor</th>
+                  <th>Contrato</th>
+                  <th>Pagamento</th>
+                  <th>Telefone</th>
                 </tr>
               </thead>
               <tbody>
-                {fila.map((item) => (
-                  <tr key={item.id} onClick={() => setFicha({ rec: item, tab: 'proposta' })}>
-                    <td><ClienteLink id={item.clienteId} nome={item.clienteNome || item.clienteId} /></td>
-                    <td>{item.cpf ? formatCpfDisplay(String(item.cpf)) : 'Não informado'}</td>
-                    <td>{emptyLabel(item.produto, '—')}</td>
-                    <td>{emptyLabel(item.operacao, '—')}</td>
-                    <td>{emptyLabel(item.banco || item.instituicao, '—')}</td>
-                    <td>{emptyLabel(item.contrato, '—')}</td>
-                    <td>{moneyOrMissing(item.parcela)}</td>
-                    <td>{formatPrazo(item.prazo)}</td>
-                    <td><span className="status-pill">{displayOperationalStatus(item)}</span></td>
-                    <td className="relative" onClick={(e) => e.stopPropagation()}>
-                      <button type="button" className="p-1 align-middle" aria-label="Mais ações" onClick={() => setMenuId(menuId === item.id ? null : item.id)}>
-                        <MoreHorizontal className="w-4 h-4" />
-                      </button>
-                      {menuId === item.id && (
-                        <div className="absolute right-0 z-20 desk-card p-1 min-w-[160px]">
-                          <button type="button" className="block w-full text-left px-2 py-1 text-[12px]" onClick={() => { setFicha({ rec: item, tab: 'proposta' }); setMenuId(null) }}>Ver proposta</button>
-                          <button type="button" className="block w-full text-left px-2 py-1 text-[12px]" onClick={() => { setFicha({ rec: item, tab: 'proposta' }); setMenuId(null) }}>Ver detalhes</button>
-                          <button type="button" className="block w-full text-left px-2 py-1 text-[12px]" onClick={() => { setFicha({ rec: item, tab: 'documentos' }); setMenuId(null) }}>Ver documentos</button>
-                          <button type="button" className="block w-full text-left px-2 py-1 text-[12px]" onClick={() => { setFicha({ rec: item, tab: 'historico' }); setMenuId(null) }}>Ver histórico</button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {fila.map((item) => {
+                  const averb = digitacaoStatusId(String(item.status || ''))
+                  const nome = textoMisto(String(item.clienteNome || '')) || 'Cliente'
+                  const formalizacao = urlBanco(item.linkFormalizacao, item.formalizacaoUrl, item.linkAssinatura, item.assinaturaUrl)
+                  const pdfContrato = urlBanco(item.contratoPdf, item.pdfUrl, item.linkContrato, item.contratoUrl, item.arquivoContrato)
+                  return (
+                    <tr key={item.id} onClick={() => setCaixa(item)}>
+                      <td
+                        className="menu-linha"
+                        onMouseEnter={(e) => {
+                          const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                          setMenuPos({ top: r.bottom + 4, left: r.left })
+                          setMenuId(item.id)
+                        }}
+                        onMouseLeave={() => setMenuId((cur) => (cur === item.id ? null : cur))}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button type="button" className="menu-linha-btn" aria-label="Menu da proposta">≡</button>
+                        {menuId === item.id && menuPos && (
+                          <div className="menu-linha-pop" style={{ top: menuPos.top, left: menuPos.left }}>
+                            {formalizacao ? (
+                              <a href={formalizacao} target="_blank" rel="noreferrer">Link de formalização</a>
+                            ) : (
+                              <span>A API ainda não retornou o link de formalização.</span>
+                            )}
+                            {pdfContrato ? (
+                              <a href={pdfContrato} target="_blank" rel="noreferrer">Contrato em PDF</a>
+                            ) : (
+                              <span>A API ainda não retornou o PDF do contrato.</span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td>{toDate(item.criadoEm)?.toLocaleDateString('pt-BR') || '—'}</td>
+                      <td>
+                        <div>{emptyLabel(item.protocolo || item.numeroProposta || item.id, '—')}</div>
+                        {formalizacao ? (
+                          <a className="text-[11px] font-semibold" style={{ color: 'var(--code-orange)' }} href={formalizacao} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Formalização</a>
+                        ) : null}
+                      </td>
+                      <td>{item.cpf ? formatCpfDisplay(String(item.cpf)) : '—'}</td>
+                      <td>
+                        <button type="button" className="font-semibold underline" style={{ color: 'var(--code-cyan)' }} onClick={(e) => { e.stopPropagation(); setCaixa(item) }}>
+                          {nome}
+                        </button>
+                      </td>
+                      <td>{emptyLabel(operationLabel(String(item.operacao || '')), '—')}</td>
+                      <td>{moneyOrMissing(item.valorBruto ?? item.valor)}</td>
+                      <td>{moneyOrMissing(item.valorLiberado)}</td>
+                      <td>{formatPrazo(item.prazo)}</td>
+                      <td>{moneyOrMissing(item.parcela)}</td>
+                      <td>
+                        <button type="button" className="btn-detalhes" onClick={(e) => { e.stopPropagation(); setCaixa(item) }}>Detalhes</button>
+                        {digitacaoStatusLabel(String(item.status || '')) || displayOperationalStatus(item)}
+                      </td>
+                      <td>{averb === 'averbado' ? 'Averbado' : averb === 'nao_averbado' ? 'Não averbado' : '—'}</td>
+                      <td>{toDate(item.dataAverbacao)?.toLocaleDateString('pt-BR') || '—'}</td>
+                      <td>{emptyLabel(item.mensagemSimulacao || item.ultimoHistorico, '—')}</td>
+                      <td>{productCatalogLabel(String(item.produto || '')) || emptyLabel(item.produto, '—')}</td>
+                      <td>{emptyLabel(item.banco || item.instituicao, '—')}</td>
+                      <td>{emptyLabel(item.responsavel, '—')}</td>
+                      <td>{emptyLabel(item.contrato || item.numeroContrato, '—')}</td>
+                      <td>{emptyLabel(item.statusPagamento || item.pagamento, '—')}</td>
+                      <td>{emptyLabel(item.telefone || item.whatsapp, '—')}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}
@@ -357,6 +489,21 @@ export default function Digitacao() {
       )}
     </div>
   )
+}
+
+const ETAPAS_FICHA = [
+  { id: 'formalizado', label: 'Formalizado' },
+  { id: 'nao_formalizado', label: 'Não formalizado' },
+  { id: 'averbado', label: 'Averbado' },
+  { id: 'nao_averbado', label: 'Não averbado' },
+  { id: 'finalizado', label: 'Finalizado' },
+] as const
+
+function etapaAtual(rec: DeskRecord) {
+  const id = digitacaoStatusId(String(rec.status || ''))
+  if (id === 'formalizado' || id === 'nao_formalizado' || id === 'averbado' || id === 'nao_averbado') return id
+  if (/finaliz/i.test(String(rec.status || ''))) return 'finalizado'
+  return id
 }
 
 function FichaProposta({
@@ -403,6 +550,7 @@ function FichaProposta({
   const contrato = sourcedField({ value: rec.contrato, fromInstitution: true, waitingInstitution: wait })
   const saldo = sourcedField({ value: rec.saldoDevedor, fromInstitution: true, waitingInstitution: wait })
   const margem = sourcedField({ value: rec.margem, fromInstitution: true, waitingInstitution: wait })
+  const [etapaVista, setEtapaVista] = useState<string | null>(null)
   const pendencias = buildPendencias({ rec, docs: documentos })
   const historico = buildHistory({ rec, auditoria })
   const contratoRows = contratos.length
@@ -421,14 +569,62 @@ function FichaProposta({
           </div>
           <button type="button" onClick={onClose} aria-label="Fechar"><X className="w-5 h-5" /></button>
         </div>
-        <div className="flex gap-1 px-4 py-2 border-b text-[11px]" style={{ borderColor: 'var(--code-border)' }}>
+        <div className="flex gap-1 px-4 py-2 border-b text-[11px] overflow-x-auto" style={{ borderColor: 'var(--code-border)' }}>
           {(['proposta', 'documentos', 'historico'] as const).map((t) => (
             <button key={t} type="button" className={`px-2 py-1 rounded ${tab === t ? 'nexus-cta text-white' : 'nexus-btn-secondary'}`} onClick={() => onTab(t)}>
               {t === 'proposta' ? 'Proposta' : t === 'documentos' ? 'Documentos' : 'Histórico'}
             </button>
           ))}
         </div>
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4 overflow-x-auto">
+          <section className="ficha-block">
+            <div className="desk-label mb-1">Status</div>
+            <div className="status-pill">{digitacaoStatusLabel(String(rec.status || '')) || displayOperationalStatus(rec)}</div>
+            <div className="flex flex-wrap gap-1 mt-2">
+              {ETAPAS_FICHA.map((s) => {
+                const atual = etapaAtual(rec)
+                const on = etapaVista === s.id
+                const real = atual === s.id
+                return (
+                  <button key={s.id} type="button" className={`text-[11px] px-2 py-0.5 rounded ${on || real ? 'nexus-cta text-white' : 'nexus-btn-secondary'}`} onClick={() => setEtapaVista(s.id)}>
+                    {s.label}
+                  </button>
+                )
+              })}
+            </div>
+            {etapaVista && (
+              <div className="mt-3 overflow-x-auto">
+                <p className="text-[12px] mb-2">{etapaAtual(rec) === etapaVista ? 'Etapa retornada para este cliente.' : 'A API ainda não retornou esta etapa para este cliente.'}</p>
+                <table className="text-[11px]" style={{ minWidth: 1600 }}>
+                  <thead>
+                    <tr>
+                      {['Inclusão', 'Proposta', 'CPF', 'Nome', 'Tipo', 'Bruto', 'Líquido', 'Prazo', 'Parcela', 'Situação', 'Averbação', 'Data', 'Último histórico', 'Produto', 'Instituição', 'Vendedor'].map((h) => <th key={h} className="p-1 text-left">{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="p-1">{toDate(rec.criadoEm)?.toLocaleDateString('pt-BR') || '—'}</td>
+                      <td className="p-1">{emptyLabel(rec.protocolo || rec.numeroProposta || rec.id)}</td>
+                      <td className="p-1">{cpf.missing ? '—' : formatCpfDisplay(cpf.value) || '—'}</td>
+                      <td className="p-1">{nome.missing ? '—' : nome.value}</td>
+                      <td className="p-1">{emptyLabel(rec.operacao)}</td>
+                      <td className="p-1">{formatMoney(rec.valorBruto ?? rec.valor)}</td>
+                      <td className="p-1">{formatMoney(rec.valorLiberado)}</td>
+                      <td className="p-1">{formatPrazo(rec.prazo)}</td>
+                      <td className="p-1">{formatMoney(rec.parcela)}</td>
+                      <td className="p-1">{etapaAtual(rec) === etapaVista ? (ETAPAS_FICHA.find((s) => s.id === etapaVista)?.label || '—') : 'Não informado'}</td>
+                      <td className="p-1">{etapaVista.startsWith('averb') || etapaVista === 'finalizado' ? (etapaAtual(rec) === etapaVista ? 'Sim' : 'Não informado') : '—'}</td>
+                      <td className="p-1">{toDate(rec.atualizadoEm)?.toLocaleDateString('pt-BR') || '—'}</td>
+                      <td className="p-1">{emptyLabel(rec.ultimoHistorico || rec.mensagemSimulacao)}</td>
+                      <td className="p-1">{emptyLabel(rec.produto)}</td>
+                      <td className="p-1">{emptyLabel(rec.banco || rec.instituicao)}</td>
+                      <td className="p-1">{emptyLabel(rec.responsavel)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
           {tab === 'proposta' && (
             <>
               <section className="ficha-block">

@@ -133,7 +133,7 @@ export function RobotPanel(props: {
 
   return (
     <section
-      className="rounded-2xl p-5 space-y-4"
+      className="leads-visao rounded-2xl p-5 space-y-4"
       style={{
         background: 'var(--code-surface)',
         border: '1px solid var(--code-card-border)',

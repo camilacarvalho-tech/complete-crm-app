@@ -149,18 +149,29 @@ export function canAccessPath(role: string | undefined, path: string): boolean {
   const r = (role || 'VENDEDOR').toUpperCase() as UserRole
   if (ADMIN_ROLES.includes(r) || r === 'SUPERVISOR') return true
   if (r === 'CONSULTA') {
-    return !['/configuracoes', '/empresas'].includes(path)
+    return !['/configuracoes', '/empresas', '/nexus-ai-financeiro'].includes(path)
   }
   if (r === 'FINANCEIRO') {
-    return ['/', '/financeiro', '/fluxo-caixa', '/faturamento', '/notas-fiscais', '/dre', '/contas-pagar', '/contas-receber', '/relatorios', '/clientes', '/nexus-ai-financeiro', '/diagnostico'].includes(path)
+    return ['/', '/financeiro', '/fluxo-caixa', '/faturamento', '/notas-fiscais', '/dre', '/contas-pagar', '/contas-receber', '/relatorios', '/clientes', '/nexus-ai-financeiro', '/marketing-roi', '/diagnostico', '/auditoria'].includes(path)
   }
   if (r === 'MARKETING') {
-    return ['/', '/campanhas', '/remarketing', '/marketing-roi', '/leads-monitor', '/nexus-ai', '/relatorios', '/clientes', '/whatsapp'].includes(path)
+    return ['/', '/campanhas', '/remarketing', '/marketing-roi', '/leads-monitor', '/nexus-ai', '/relatorios', '/clientes', '/whatsapp', '/automacoes'].includes(path)
   }
   if (['VENDEDOR', 'ATENDENTE', 'OPERADOR'].includes(r)) {
-    return !['/empresas', '/configuracoes', '/financeiro', '/fluxo-caixa', '/faturamento', '/notas-fiscais'].includes(path)
+    return !['/empresas', '/configuracoes', '/financeiro', '/fluxo-caixa', '/faturamento', '/notas-fiscais', '/nexus-ai-financeiro', '/auditoria'].includes(path)
   }
   return true
+}
+
+const FINANCE_ROLES = ['MASTER', 'SUPER_ADMIN', 'ADMIN', 'GESTOR', 'FINANCEIRO', 'SUPERVISOR']
+const INTEGRATION_ROLES = ['MASTER', 'SUPER_ADMIN', 'ADMIN', 'GESTOR']
+
+export function canSeeFinance(role: string | undefined): boolean {
+  return FINANCE_ROLES.includes((role || '').toUpperCase())
+}
+
+export function canManageIntegrations(role: string | undefined): boolean {
+  return INTEGRATION_ROLES.includes((role || '').toUpperCase())
 }
 
 export function canMutate(role: string | undefined): boolean {

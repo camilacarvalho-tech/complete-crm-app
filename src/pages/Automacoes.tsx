@@ -33,7 +33,7 @@ export default function Automacoes() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Automações (Letícia)" subtitle="A fila operacional está no Chat Clientes. Aqui permanece só o motor IF/THEN/ELSE. WhatsApp só dispara com provedor configurado." />
+      <PageHeader title="Automações" subtitle="O robô classifica, coloca na fila e faz o follow-up. Quando o cliente responde ou o funcionário assume, o follow-up para. A conversa continua no Chat Clientes. No modo teste nenhuma mensagem sai." />
       <div className="nexus-card p-4 text-sm flex flex-wrap gap-2 items-center">
         <span>Atendimento e distribuição:</span>
         <GhostButton onClick={() => nav('/whatsapp?fila=novos')}>Abrir Chat Clientes / Fila</GhostButton>
@@ -54,7 +54,7 @@ export default function Automacoes() {
             </SelectInput>
             {step.tipo === 'trigger' && (
               <SelectInput className="md:col-span-3" value={step.gatilho} onChange={(e) => patch(i, { gatilho: e.target.value })}>
-                {LETICIA_TRIGGERS.map((t) => <option key={t}>{t}</option>)}
+                {LETICIA_TRIGGERS.map((t) => <option key={t} value={t}>{labelPt(t)}</option>)}
               </SelectInput>
             )}
             {step.tipo === 'condition' && (
@@ -84,7 +84,14 @@ export default function Automacoes() {
               </>
             )}
             {step.tipo === 'delay' && (
-              <TextInput type="number" placeholder="minutos" value={String(step.delayMinutos || 0)} onChange={(e) => patch(i, { delayMinutos: Number(e.target.value) })} />
+              <>
+                <TextInput type="number" placeholder="tempo" value={String(step.delayMinutos || 0)} onChange={(e) => patch(i, { delayMinutos: Number(e.target.value) })} />
+                <SelectInput value={step.payload || 'minutos'} onChange={(e) => patch(i, { payload: e.target.value })}>
+                  <option value="minutos">Minutos</option>
+                  <option value="horas">Horas</option>
+                  <option value="dias">Dias</option>
+                </SelectInput>
+              </>
             )}
             <GhostButton type="button" onClick={() => setPassos((p) => p.filter((_, idx) => idx !== i))}>Remover</GhostButton>
           </div>
@@ -98,20 +105,38 @@ export default function Automacoes() {
       {automacoes.items.length === 0 ? (
         <EmptyState title="Nenhum fluxo ativo" description="Crie um fluxo. Eventos reais entram na fila automaticamente." />
       ) : (
-        <ul className="text-sm nexus-card p-4 space-y-2">
-          {automacoes.items.map((a) => (
-            <li key={a.id} className="flex justify-between gap-2">
-              <span>{String(a.nome)} · {labelPt(String(a.status))}</span>
-              <GhostButton onClick={() => automacoes.update(a.id, { status: 'pausada' })}>Pausar</GhostButton>
-            </li>
-          ))}
-        </ul>
+        <div className="grid md:grid-cols-2 gap-3">
+          {automacoes.items.map((a) => {
+            const passos = Array.isArray(a.passos) ? a.passos as { tipo?: string; gatilho?: string; valor?: string; acao?: string; delayMinutos?: number }[] : []
+            const fluxo = passos.map((p) => {
+              if (p.delayMinutos) return `${p.delayMinutos} min`
+              if (p.gatilho) return labelPt(p.gatilho)
+              if (p.acao) return labelPt(p.acao)
+              return p.valor || ''
+            }).filter(Boolean).join(' → ')
+            return (
+              <article key={a.id} className="nexus-card p-3 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="font-semibold text-sm">{String(a.nome)}</h3>
+                  <span className="text-[11px]">{labelPt(String(a.status))}</span>
+                </div>
+                <p className="text-xs" style={{ color: 'var(--code-muted)' }}>{fluxo || 'Gatilho → Condição → Ação'}</p>
+                <div className="flex flex-wrap gap-1">
+                  <GhostButton onClick={() => automacoes.update(a.id, { status: 'ativa' })}>Ativar</GhostButton>
+                  <GhostButton onClick={() => automacoes.update(a.id, { status: 'pausada' })}>Pausar</GhostButton>
+                  <GhostButton onClick={() => automacoes.create({ ...a, id: undefined, nome: `${a.nome} cópia`, status: 'pausada' } as any)}>Duplicar</GhostButton>
+                  <GhostButton onClick={() => automacoes.update(a.id, { status: 'teste' })}>Testar</GhostButton>
+                </div>
+              </article>
+            )
+          })}
+        </div>
       )}
       <div className="nexus-card p-4">
         <h2 className="font-semibold mb-2">Histórico de execução</h2>
         {leticiaRuns.items.length === 0 && <p className="text-sm" style={{ color: 'var(--code-muted)' }}>Nenhuma execução ainda.</p>}
         {leticiaRuns.items.slice(0, 20).map((r) => (
-          <p key={r.id} className="text-xs border-b py-1">{String(r.flowNome)} · {String(r.gatilho)}</p>
+          <p key={r.id} className="text-xs border-b py-1">{String(r.flowNome)} · {labelPt(String(r.gatilho || ''))}</p>
         ))}
       </div>
     </div>

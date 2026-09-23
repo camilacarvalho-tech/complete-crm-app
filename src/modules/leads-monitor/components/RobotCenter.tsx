@@ -206,8 +206,8 @@ function RobotCard(props: { card: RobotCardModel; busy?: boolean; onPrimary: () 
   return (
     <div className="rounded-xl px-3 py-2.5 border min-w-0" style={{ background: 'var(--code-surface)', borderColor: 'var(--code-border)' }}>
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[12px] font-semibold text-white leading-tight">{c.emoji} {c.label.replace('Robô de ', '').replace('Robô ', '').toUpperCase()}</p>
-        <span className="text-[10px] font-semibold shrink-0" style={{ color: DOT[c.mode] }}>● {c.modeLabel.toUpperCase()}</span>
+        <p className="text-[12px] font-semibold text-white leading-tight">{c.emoji} {c.label.replace('Robô de ', '').replace('Robô ', '')}</p>
+        <span className="text-[10px] font-semibold shrink-0" style={{ color: DOT[c.mode] }}>{c.modeLabel}</span>
       </div>
       <p className="text-[10px] text-slate-500 mt-2">Tarefa atual</p>
       <p className="text-[12px] text-slate-200 leading-snug min-h-[2.2em]">{c.tarefa}</p>
@@ -215,7 +215,9 @@ function RobotCard(props: { card: RobotCardModel; busy?: boolean; onPrimary: () 
         <>
           <div className="flex items-center justify-between mt-2">
             <span className="text-[10px] text-slate-500">Progresso</span>
-            <span className="text-[11px] tabular-nums text-slate-300">{c.progress}%</span>
+            <span className="text-[11px] tabular-nums text-slate-300">
+              {c.processadosHoje} / {Math.max(c.processadosHoje + c.fila, c.encontrados || 0) || c.processadosHoje} leads
+            </span>
           </div>
           <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden mt-1">
             <div className="h-full bg-nexus-orange" style={{ width: `${Math.min(100, c.progress)}%` }} />

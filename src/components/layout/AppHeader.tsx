@@ -1,28 +1,19 @@
 import { useEffect, useState } from 'react'
-import { Bell, Building2, HelpCircle, Plus, Search } from 'lucide-react'
+import { Bell, Building2, ChevronDown, ChevronUp, HelpCircle, Search } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useNexusStore } from '../../contexts/NexusStore'
 import { CommandPalette } from '../nexus/CommandPalette'
 import { ThemeToggle } from './ThemeToggle'
 import { empresaVisivel } from '../../lib/uiPt'
-
-const QUICK = [
-  { label: 'Novo lead', href: '/clientes' },
-  { label: 'Novo cliente', href: '/clientes' },
-  { label: 'Nova proposta', href: '/propostas' },
-  { label: 'Nova tarefa', href: '/tarefas' },
-  { label: 'Novo compromisso', href: '/agenda' },
-  { label: 'Novo lançamento', href: '/financeiro' },
-  { label: 'Nova campanha', href: '/campanhas' },
-]
+import { useAppearance } from '../../contexts/ThemeContext'
 
 export function AppHeader({ onOpenSearch }: { onOpenSearch: () => void }) {
   const { usuario } = useAuth()
   const { notificacoes } = useNexusStore()
   const nav = useNavigate()
-  const [quick, setQuick] = useState(false)
   const [notes, setNotes] = useState(false)
+  const { fontPx, setFontPx } = useAppearance()
   const unread = notificacoes.items.filter((n) => !n.lida).length
 
   useEffect(() => {
@@ -43,18 +34,6 @@ export function AppHeader({ onOpenSearch }: { onOpenSearch: () => void }) {
         Pesquisa global
         <kbd className="ml-auto text-[10px] border rounded px-1">Ctrl K</kbd>
       </button>
-      <div className="relative">
-        <button type="button" className="nexus-cta text-white rounded-lg px-3 py-2 text-sm font-semibold flex items-center gap-1" onClick={() => setQuick((v) => !v)}>
-          <Plus className="w-4 h-4" /> Criar
-        </button>
-        {quick && (
-          <div className="absolute right-0 mt-1 nexus-card p-2 w-52 z-40">
-            {QUICK.map((q) => (
-              <button key={q.label} type="button" className="block w-full text-left text-sm px-2 py-1.5 rounded hover:bg-black/5" onClick={() => { nav(q.href); setQuick(false) }}>{q.label}</button>
-            ))}
-          </div>
-        )}
-      </div>
       <button type="button" className="relative p-2 rounded-lg" onClick={() => setNotes((v) => !v)} aria-label="Notificações" style={{ color: 'var(--code-text)' }}>
         <Bell className="w-4 h-4" />
         {unread > 0 && <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[color:var(--code-orange)]" />}
@@ -67,6 +46,11 @@ export function AppHeader({ onOpenSearch }: { onOpenSearch: () => void }) {
           ))}
         </div>
       )}
+      <div className="inline-flex items-center rounded-lg border overflow-hidden" style={{ borderColor: 'var(--code-border)' }} title="Tamanho da letra">
+        <button type="button" className="px-1.5 py-1" aria-label="Letra menor" onClick={() => setFontPx(fontPx - 1)}><ChevronDown className="w-3.5 h-3.5" /></button>
+        <span className="px-1 text-[11px] font-semibold">A</span>
+        <button type="button" className="px-1.5 py-1" aria-label="Letra maior" onClick={() => setFontPx(fontPx + 1)}><ChevronUp className="w-3.5 h-3.5" /></button>
+      </div>
       <ThemeToggle />
       <button type="button" className="p-2" aria-label="Ajuda" onClick={() => nav('/diagnostico')} style={{ color: 'var(--code-text)' }}><HelpCircle className="w-4 h-4" /></button>
       <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--code-text)' }}>

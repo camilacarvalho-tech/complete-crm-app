@@ -2,8 +2,7 @@
 import { useNexusStore } from '../contexts/NexusStore'
 import { useAuth } from '../contexts/AuthContext'
 import { runNexusQuery } from '../lib/aiQuery'
-import { nexusAiHttp } from '../ai/httpClient'
-import { EmptyState, GhostButton, PageHeader, PrimaryButton, TextArea } from '../components/nexus/kit'
+import { GhostButton, TextArea } from '../components/nexus/kit'
 import { useNavigate } from 'react-router-dom'
 import {
   loadRobotControl,
@@ -46,8 +45,6 @@ export default function NexusAI() {
   const { usuario } = useAuth()
   const [q, setQ] = useState('')
   const [answer, setAnswer] = useState<{ title: string; lines: string[]; action?: string } | null>(null)
-  const [remote, setRemote] = useState('')
-  const [loading, setLoading] = useState(false)
   const [pendingRobot, setPendingRobot] = useState<{ action: 'pause' | 'resume'; key: RobotControlKey } | null>(null)
 
   const payload = {
@@ -106,55 +103,47 @@ export default function NexusAI() {
     setPendingRobot(null)
   }
 
-  async function askBackend() {
-    setLoading(true)
-    setRemote('')
-    try {
-      const data = await nexusAiHttp.post('/ask', { question: q })
-      setRemote(typeof data === 'string' ? data : JSON.stringify(data))
-    } catch {
-      setRemote('Backend da IA indisponível. A consulta interna do CRM continua funcionando.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   return (
-    <div className="space-y-4 max-w-4xl">
-      <PageHeader title="Nexus AI" subtitle="Consulta somente dados reais deste tenant. Não inventa números nem clientes." />
-      <div className="nexus-card p-6 space-y-4">
-        <p className="text-lg font-semibold">Como posso ajudar?</p>
-        <TextArea rows={4} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Digite um comando..." />
-        <div className="flex flex-wrap gap-2">
-          <PrimaryButton onClick={() => void askInternal()}>Consultar dados</PrimaryButton>
-          <PrimaryButton onClick={() => void askBackend()} disabled={loading}>{loading ? 'Consultando...' : 'Perguntar ao backend'}</PrimaryButton>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {EXAMPLES.map((s) => (
-            <button key={s} type="button" className="px-2 py-1 rounded text-xs nexus-btn-secondary" onClick={() => { setQ(s) }}>{s}</button>
-          ))}
-        </div>
+    <div className="min-h-[70vh] flex flex-col items-center justify-center px-4">
+      <p className="text-2xl font-semibold mb-6" style={{ color: 'var(--code-text)' }}>Como posso lhe ajudar hoje?</p>
+      <form
+        className="w-full max-w-2xl"
+        onSubmit={(e) => { e.preventDefault(); void askInternal() }}
+      >
+        <TextArea
+          rows={3}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              void askInternal()
+            }
+          }}
+          placeholder="Pergunte sobre leads, propostas ou robôs"
+        />
+        <button type="submit" className="mt-2 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: 'var(--code-orange)' }}>Enviar</button>
+      </form>
+      <div className="flex flex-wrap gap-2 justify-center max-w-2xl mt-4">
+        {EXAMPLES.map((s) => (
+          <button key={s} type="button" className="text-xs underline" style={{ color: 'var(--code-muted)' }} onClick={() => setQ(s)}>{s}</button>
+        ))}
       </div>
-      <div className="nexus-card p-4">
-        {!answer ? (
-          <EmptyState title="Sem consulta ainda" description="A IA usa os registros reais deste tenant." />
-        ) : (
-          <div>
-            <h2 className="font-bold mb-2">{answer.title}</h2>
-            <ul className="text-sm space-y-1">{answer.lines.map((l) => <li key={l}>{l}</li>)}</ul>
-            {pendingRobot ? (
-              <div className="flex gap-2 mt-3">
-                <PrimaryButton onClick={() => void confirmRobot()}>Confirmar</PrimaryButton>
-                <GhostButton onClick={() => { setPendingRobot(null); setAnswer(null) }}>Cancelar</GhostButton>
-              </div>
-            ) : null}
-            {answer.action === 'campanha' && <PrimaryButton className="mt-3" onClick={() => nav('/campanhas')}>Preparar campanha</PrimaryButton>}
-            {answer.action === 'remarketing' && <PrimaryButton className="mt-3" onClick={() => nav('/remarketing')}>Abrir remarketing</PrimaryButton>}
-            {answer.action === 'robos' && <PrimaryButton className="mt-3" onClick={() => nav('/leads-monitor?aba=robos')}>Abrir Central de Robôs</PrimaryButton>}
-          </div>
-        )}
-        {remote && <p className="text-xs mt-4" style={{ color: 'var(--code-muted)' }}>{remote}</p>}
-      </div>
+      {answer && (
+        <div className="w-full max-w-2xl mt-6 text-sm">
+          <h2 className="font-semibold mb-2">{answer.title}</h2>
+          <ul className="space-y-1">{answer.lines.map((l) => <li key={l}>{l}</li>)}</ul>
+          {pendingRobot ? (
+            <div className="flex gap-3 mt-3">
+              <button type="button" className="text-sm font-semibold" style={{ color: 'var(--code-text)' }} onClick={() => void confirmRobot()}>Confirmar</button>
+              <GhostButton onClick={() => { setPendingRobot(null); setAnswer(null) }}>Cancelar</GhostButton>
+            </div>
+          ) : null}
+          {answer.action === 'campanha' && <button type="button" className="mt-3 text-sm underline" onClick={() => nav('/remarketing')}>Abrir remarketing</button>}
+          {answer.action === 'remarketing' && <button type="button" className="mt-3 text-sm underline" onClick={() => nav('/remarketing')}>Abrir remarketing</button>}
+          {answer.action === 'robos' && <button type="button" className="mt-3 text-sm underline" onClick={() => nav('/leads-monitor?aba=robos')}>Abrir Central de Robôs</button>}
+        </div>
+      )}
     </div>
   )
 }
