@@ -1117,6 +1117,8 @@ export default function ChatCenter() {
                   <div className="text-[11px] flex flex-wrap gap-2 mb-1">
                     <button type="button" onClick={() => { setRespondendo({ id: m.id, texto: String(m.texto || '').slice(0, 140), wamid: String(m.wamid || '') }); setMenuMsg(null) }}>Responder</button>
                     <button type="button" onClick={() => { void navigator.clipboard.writeText(String(m.texto || '')).then(() => toast.success('Copiado.')); setMenuMsg(null) }}>Copiar</button>
+                    <Link to={`/digitacao?nova=1&cliente=${cliente?.id || ''}&conversa=${selected?.id || ''}&nome=${encodeURIComponent(String(cliente?.nome || ''))}&telefone=${encodeURIComponent(String(cliente?.whatsapp || cliente?.telefone || ''))}&produto=${encodeURIComponent(String(cliente?.produto || cliente?.modalidade || ''))}&origem=whatsapp`} onClick={() => setMenuMsg(null)}>Criar proposta</Link>
+                    <Link to={`/digitacao?digitacao=1&cliente=${cliente?.id || ''}&conversa=${selected?.id || ''}&nome=${encodeURIComponent(String(cliente?.nome || ''))}&telefone=${encodeURIComponent(String(cliente?.whatsapp || cliente?.telefone || ''))}&produto=${encodeURIComponent(String(cliente?.produto || cliente?.modalidade || ''))}&origem=whatsapp`} onClick={() => setMenuMsg(null)}>Criar digitação</Link>
                     <button type="button" onClick={() => {
                       if (m.wamid && mark !== 'failed') {
                         toast.error('O WhatsApp não permite alterar uma mensagem já enviada.')
@@ -1312,7 +1314,10 @@ export default function ChatCenter() {
                 </section>
 
                 <section className="pt-0.5">
-                  <Link className="text-[12px] font-semibold" to={`/propostas?cliente=${cliente.id}`}>Proposta</Link>
+                  <Link className="text-[12px] font-semibold" to={`/digitacao?cliente=${cliente.id}&nome=${encodeURIComponent(cliente.nome || '')}&telefone=${encodeURIComponent(String(cliente.whatsapp || cliente.telefone || ''))}`}>Proposta</Link>
+                  <Link className="block mt-1 text-[12px] font-semibold" to={`/digitacao?nova=1&cliente=${cliente.id}&conversa=${selected?.id || ''}&nome=${encodeURIComponent(cliente.nome || '')}&telefone=${encodeURIComponent(String(cliente.whatsapp || cliente.telefone || ''))}&produto=${encodeURIComponent(String(cliente.produto || cliente.modalidade || ''))}&origem=${String(selected?.leticiaStep || '').includes('analysis') ? 'atendimento' : 'whatsapp'}`}>Criar proposta</Link>
+                  <Link className="block mt-1 text-[12px] font-semibold" to={`/digitacao?digitacao=1&cliente=${cliente.id}&conversa=${selected?.id || ''}&nome=${encodeURIComponent(cliente.nome || '')}&telefone=${encodeURIComponent(String(cliente.whatsapp || cliente.telefone || ''))}&produto=${encodeURIComponent(String(cliente.produto || cliente.modalidade || ''))}&origem=whatsapp`}>Criar digitação</Link>
+                  {String(selected?.leticiaStep || '').includes('analysis') ? <p className="mt-1 text-[11px]">Dados coletados pelo atendimento. A proposta não é criada sozinha.</p> : null}
                   <button
                     type="button"
                     className="block mt-1 text-[12px] font-semibold text-left"

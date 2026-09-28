@@ -143,6 +143,16 @@ export function LeadResults(props: {
                             <User className="w-3 h-3" /> CRM
                           </Link>
                         ) : null}
+                        {(op.status === 'enviado_crm' || op.status === 'qualificado' || op.status === 'aprovado') ? (
+                          <Link to={`/digitacao?lead=${op.id}&cliente=${op.crmClienteId || ''}&nome=${encodeURIComponent(op.nome || '')}&telefone=${encodeURIComponent(op.telefone || '')}&cidade=${encodeURIComponent(op.cidade || '')}&uf=${encodeURIComponent(op.estado || '')}&cep=${encodeURIComponent(op.cep || '')}&bairro=${encodeURIComponent(op.bairro || '')}&logradouro=${encodeURIComponent(op.endereco || '')}&origem=leads_monitor`} className="px-2 py-1 rounded border text-slate-200">
+                            Proposta
+                          </Link>
+                        ) : null}
+                        {op.status === 'enviado_crm' ? (
+                          <Link to={`/digitacao?digitacao=1&lead=${op.id}&cliente=${op.crmClienteId || ''}&nome=${encodeURIComponent(op.nome || '')}&telefone=${encodeURIComponent(op.telefone || '')}&cidade=${encodeURIComponent(op.cidade || '')}&uf=${encodeURIComponent(op.estado || '')}&cep=${encodeURIComponent(op.cep || '')}&bairro=${encodeURIComponent(op.bairro || '')}&logradouro=${encodeURIComponent(op.endereco || '')}&origem=leads_monitor`} className="px-2 py-1 rounded border text-slate-200">
+                            Digitação
+                          </Link>
+                        ) : null}
                         {op.status === 'enviado_crm' && !op.crmClienteId ? (
                           <span className="text-emerald-400 flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3" /> Enviado

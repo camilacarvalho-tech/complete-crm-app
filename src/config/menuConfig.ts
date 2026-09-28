@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, MessageCircle, FileText, Target, TrendingUp,
-  Radar, Bot, FileSignature, DollarSign, Settings, Zap, Kanban, ShieldCheck,
+  Radar, Bot, DollarSign, Settings, Zap, Kanban, ShieldCheck,
 } from 'lucide-react'
 import { NichoEmpresa } from '../types/database.types'
 
@@ -17,7 +17,6 @@ export interface MenuSection { title: string; items: MenuItem[] }
 
 export const MENU_ITEMS: MenuItem[] = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard', nichos: [] },
-  { path: '/propostas', icon: FileSignature, label: 'Propostas', nichos: [] },
   { path: '/kanban', icon: Kanban, label: 'Kanban', nichos: [] },
   { path: '/digitacao', icon: FileText, label: 'Digitação', nichos: [] },
   { path: '/whatsapp', icon: MessageCircle, label: 'Chat Clientes', nichos: [] },
@@ -36,7 +35,7 @@ export const MENU_ITEMS: MenuItem[] = [
 const by = (...paths: string[]) => MENU_ITEMS.filter((i) => paths.includes(i.path))
 
 export const MENU_SECTIONS: MenuSection[] = [
-  { title: 'Operação', items: by('/', '/propostas', '/kanban', '/digitacao', '/whatsapp', '/comunicacao-interna') },
+  { title: 'Operação', items: by('/', '/kanban', '/digitacao', '/whatsapp', '/comunicacao-interna') },
   { title: 'Marketing', items: by('/remarketing', '/marketing-roi', '/automacoes', '/leads-monitor') },
   { title: 'Inteligência', items: by('/nexus-ai', '/nexus-ai-financeiro', '/financeiro') },
   { title: 'Administração', items: by('/configuracoes', '/auditoria') },

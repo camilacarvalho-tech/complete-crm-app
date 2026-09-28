@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bot, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { Bot, X } from 'lucide-react'
 import { PRODUCT_TREE, UFS_BRASIL } from '../catalog/crmCatalog'
 import { DIGITACAO_STATUSES, digitacaoStatusId, digitacaoStatusLabel, findProduct, operationLabel, operationsFor, productCatalogLabel } from '../catalog/productCatalog'
 import { ErrorBanner, GhostButton, LoadingBlock, SelectInput, TextInput } from '../components/nexus/kit'
@@ -31,6 +31,7 @@ import {
   type DeskRecord,
 } from '../modules/digitacao/digitacaoDesk'
 import type { NexusCliente } from '../types/nexus'
+import CentralProducao from './CentralProducao'
 import './digitacaoDesk.css'
 
 function FieldRow({
@@ -101,6 +102,7 @@ export default function Digitacao() {
   const [busy, setBusy] = useState(false)
   const [resultados, setResultados] = useState<Awaited<ReturnType<typeof simulateAllInstitutions>>>([])
   const [clienteId, setClienteId] = useState<string | null>(null)
+  const [ocultarCliente, setOcultarCliente] = useState(false)
   const [ficha, setFicha] = useState<{ rec: DeskRecord; tab: 'proposta' | 'documentos' | 'historico' } | null>(null)
   const [caixa, setCaixa] = useState<DeskRecord | null>(null)
   const [menuId, setMenuId] = useState<string | null>(null)
@@ -113,10 +115,17 @@ export default function Digitacao() {
   const cliente = clientes.items.find((c) => c.id === clienteId) || null
 
   useEffect(() => {
-    if (!isCompleteCpf(q)) return
+    setOcultarCliente(false)
+  }, [q])
+
+  useEffect(() => {
+    if (!isCompleteCpf(q) || ocultarCliente) {
+      if (ocultarCliente || !isCompleteCpf(q)) setClienteId(null)
+      return
+    }
     const hit = findExactCliente(clientes.items, q)
     setClienteId(hit ? hit.id : null)
-  }, [q, clientes.items])
+  }, [q, clientes.items, ocultarCliente])
 
   const propostasCliente = useMemo(() => {
     if (!cliente) return []
@@ -208,8 +217,9 @@ export default function Digitacao() {
 
   return (
     <div className="digitacao-desk space-y-3">
+      <CentralProducao />
       <div className="flex items-center gap-2">
-        <h1>Digitação</h1>
+        <h2 className="text-sm font-semibold">Mesa de consulta</h2>
         {busy && (
           <span className="robinho" role="status">
             <Bot className="w-3.5 h-3.5" />
@@ -280,7 +290,10 @@ export default function Digitacao() {
 
       {cliente && (
         <div className="desk-card p-3">
-          <div className="desk-label mb-2">Cliente</div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="desk-label">Cliente</div>
+            <button type="button" className="px-2 py-0.5 rounded text-[11px] font-semibold nexus-btn-secondary" onClick={() => setOcultarCliente(true)}>Fechar</button>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2">
             <div><div className="desk-label">Nome completo</div><div className="desk-value">{emptyLabel(cliente.nome)}</div></div>
             <div><div className="desk-label">CPF</div><div className="desk-value">{cliente.cpf ? formatCpfDisplay(cliente.cpf) : 'Não informado'}</div></div>
@@ -363,10 +376,6 @@ export default function Digitacao() {
               {t.label}
             </button>
           ))}
-        </div>
-        <div className="flex items-center justify-end gap-1 px-2 py-1">
-          <button type="button" className="nexus-btn-secondary p-1 rounded" aria-label="Rolar para a esquerda" onClick={() => tableRef.current?.scrollBy({ left: -240, behavior: 'smooth' })}><ChevronLeft className="w-4 h-4" /></button>
-          <button type="button" className="nexus-btn-secondary p-1 rounded" aria-label="Rolar para a direita" onClick={() => tableRef.current?.scrollBy({ left: 240, behavior: 'smooth' })}><ChevronRight className="w-4 h-4" /></button>
         </div>
         <div className="desk-table-wrap" ref={tableRef}>
           {fila.length === 0 ? (
