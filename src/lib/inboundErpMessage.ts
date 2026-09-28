@@ -15,17 +15,25 @@ export type InboundErpPayload = {
   messageId?: string
   phone?: string
   whatsapp?: string
+  nome?: string
   clientId?: string
   leadId?: string
   campaignId?: string
+  campanhaNome?: string
+  disparoId?: string
   erpCampaignId?: string
   message?: string
   messageType?: string
   timestamp?: string
   templateId?: string
+  produto?: string
+  wamid?: string
+  conversa?: string
+  contato?: string
   source?: string
   origin?: string
   direction?: string
+  status?: string
 }
 
 export { resolveInboundOrigin } from './inboundOrigin'
@@ -55,7 +63,7 @@ export async function handleInboundErpMessage(
   }
   if (!clienteId) {
     const ref = await addDoc(collection(db, 'empresas', empresaId, 'clientes'), {
-      nome: tel || 'Cliente WhatsApp',
+      nome: String(payload.nome || '').trim() || tel || 'Cliente WhatsApp',
       telefone: tel,
       telefoneNormalizado: tel,
       whatsapp: tel,
@@ -91,13 +99,16 @@ export async function handleInboundErpMessage(
     origemLead,
     fonte: payload.source || 'NX_ERP',
     campanhaId: payload.campaignId,
+    campanhaNome: payload.campanhaNome,
+    produto: payload.produto,
   })
 
   const texto = String(payload.message || '').trim()
   if (texto) {
-    if (payload.messageId) {
+    const chave = String(payload.wamid || payload.messageId || '').trim()
+    if (chave) {
       const dup = await getDocs(
-        query(collection(db, 'empresas', empresaId, 'mensagens'), where('messageId', '==', payload.messageId))
+        query(collection(db, 'empresas', empresaId, 'mensagens'), where('messageId', '==', chave))
       )
       if (!dup.empty) {
         return { conversaId: fila.conversaId, clienteId, created }
@@ -107,16 +118,25 @@ export async function handleInboundErpMessage(
       conversaId: fila.conversaId,
       clienteId,
       autorId: 'cliente',
-      autorNome: 'Cliente',
+      autorNome: payload.nome || 'Cliente',
       texto,
       tipo: payload.messageType || 'texto',
       status: 'recebida',
       direction: 'INBOUND',
       source: payload.source || 'NX_ERP',
-      messageId: payload.messageId || null,
+      origin: payload.origin || 'whatsapp',
+      messageId: chave || null,
+      wamid: payload.wamid || null,
       templateId: payload.templateId || null,
       erpCampaignId: payload.erpCampaignId || null,
       campaignId: payload.campaignId || null,
+      campanhaNome: payload.campanhaNome || null,
+      disparoId: payload.disparoId || null,
+      produto: payload.produto || null,
+      contato: payload.contato || null,
+      erpConversaId: payload.conversa || null,
+      erpStatus: payload.status || null,
+      timestampErp: payload.timestamp || null,
       origemLead,
       criadoEm: serverTimestamp(),
     })

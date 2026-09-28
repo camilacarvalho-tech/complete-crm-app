@@ -11,3 +11,5 @@ firebase-debug.log
 functions/.secret.local
 functions/.env
 **/.secret.local
+.nx-crm-inbound.sha256
+.nx-crm-inbound-queue.json

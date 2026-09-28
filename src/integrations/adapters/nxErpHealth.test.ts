@@ -49,6 +49,33 @@ test('UNAVAILABLE em 503', () => {
   assert.equal(r.connection, 'UNAVAILABLE')
 })
 
+test('404 com URL configurada não volta para Não configurado', () => {
+  const r = interpretErpHealth({
+    enabled: true,
+    urlConfigured: true,
+    keyConfigured: true,
+    healthPathConfigured: true,
+    httpStatus: 404,
+    detail: 'HTTP 404 GET /api/crm/health',
+  })
+  assert.equal(r.connection, 'ERROR')
+  assert.equal(r.mode, 'real')
+  assert.match(r.description, /404/)
+})
+
+test('500 com URL configurada permanece em modo real', () => {
+  const r = interpretErpHealth({
+    enabled: true,
+    urlConfigured: true,
+    keyConfigured: true,
+    healthPathConfigured: true,
+    httpStatus: 500,
+  })
+  assert.equal(r.connection, 'ERROR')
+  assert.equal(r.mode, 'real')
+  assert.equal(r.status, 'error')
+})
+
 test('HTTP 200 sem path documentado não inventa CONNECTED', () => {
   const r = interpretErpHealth({
     enabled: true,

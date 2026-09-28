@@ -23,6 +23,7 @@ export interface ErpHealthProbe {
   timeout?: boolean
   networkError?: boolean
   functionMissing?: boolean
+  detail?: string
 }
 
 export interface ErpHealthResult {
@@ -81,13 +82,13 @@ export function statusDescription(connection: NxErpConnectionStatus): string {
     case 'CONNECTING':
       return 'Verificando o NX ERP…'
     case 'AUTH_ERROR':
-      return 'O backend recusou a autenticação. Confira NX_ERP_API_KEY nas Functions (nunca no frontend).'
+      return 'O NX ERP recusou a autenticação. Confira o token da API NX.'
     case 'UNAVAILABLE':
-      return 'O NX ERP não respondeu. Tente de novo em instantes.'
+      return 'O NX ERP não respondeu.'
     case 'TIMEOUT':
       return 'A verificação excedeu o tempo limite.'
     case 'ERROR':
-      return 'Falha na verificação. Veja os logs do backend (sem secrets).'
+      return 'Falha na verificação.'
     default:
       return 'Configure a conexão do NX ERP para ativá-la.'
   }
@@ -98,40 +99,52 @@ export function interpretErpHealth(input: ErpHealthProbe): Omit<ErpHealthResult,
   const healthReady = Boolean(input.urlConfigured && input.healthPathConfigured && input.enabled !== false)
 
   if (input.timeout) {
-    return pack('TIMEOUT', healthReady ? 'real' : 'mock', apiConfigured)
+    return pack('TIMEOUT', input.urlConfigured ? 'real' : 'mock', apiConfigured, input.detail)
   }
   if (input.httpStatus === 401 || input.httpStatus === 403) {
-    return pack('AUTH_ERROR', 'real', apiConfigured)
+    return pack('AUTH_ERROR', 'real', apiConfigured, input.detail)
+  }
+  if (input.httpStatus === 404) {
+    return pack('ERROR', 'real', apiConfigured, input.detail || 'HTTP 404')
   }
   if (input.httpStatus === 502 || input.httpStatus === 503) {
-    return pack('UNAVAILABLE', 'real', apiConfigured)
+    return pack('UNAVAILABLE', 'real', apiConfigured, input.detail)
+  }
+  if (typeof input.httpStatus === 'number' && input.httpStatus >= 500) {
+    return pack('ERROR', 'real', apiConfigured, input.detail || `HTTP ${input.httpStatus}`)
   }
   if (input.httpStatus === 200 && healthReady) {
-    return pack('CONNECTED', 'real', true)
+    return pack('CONNECTED', 'real', true, input.detail)
+  }
+  if (input.networkError && input.urlConfigured) {
+    return pack('UNAVAILABLE', 'real', apiConfigured, input.detail || 'Conexão recusada')
   }
   if (input.functionMissing || !healthReady) {
-    return pack('NOT_CONFIGURED', 'mock', apiConfigured)
+    return pack('NOT_CONFIGURED', 'mock', apiConfigured, input.detail)
   }
   if (input.networkError) {
-    return pack('UNAVAILABLE', 'real', apiConfigured)
+    return pack('UNAVAILABLE', 'real', apiConfigured, input.detail)
   }
-  return pack('ERROR', healthReady ? 'real' : 'mock', apiConfigured)
+  return pack('ERROR', healthReady ? 'real' : 'mock', apiConfigured, input.detail)
 }
 
 function pack(
   connection: NxErpConnectionStatus,
   mode: ErpRuntimeMode,
-  apiConfigured: boolean
+  apiConfigured: boolean,
+  detail?: string
 ): Omit<ErpHealthResult, 'checkedAt'> {
   const status: ErpHealthResult['status'] =
     connection === 'CONNECTED' ? 'online' : connection === 'NOT_CONFIGURED' ? 'not_configured' : 'error'
+  const base = statusDescription(connection)
+  const description = detail ? `${base} ${detail}` : base
   return {
     connection,
     mode,
     apiConfigured,
-    message: statusDescription(connection),
+    message: description,
     label: statusLabel(connection),
-    description: statusDescription(connection),
+    description,
     status,
   }
 }

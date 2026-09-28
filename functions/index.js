@@ -6,6 +6,12 @@ const { logger } = require('firebase-functions')
 const { handler: placesSearchHandler } = require('./placesSearch')
 const { handler: overpassSearchHandler } = require('./overpassSearch')
 const { handler: nxErpHealthHandler } = require('./nxErpHealth')
+const {
+  configFromEnv,
+  parseCloudWebhook,
+  verifySignature,
+  verifyWebhook,
+} = require('./metaWhatsappCloud')
 
 admin.initializeApp()
 
@@ -465,20 +471,34 @@ exports.metaWhatsAppWebhook = onRequest({
   cors: true,
   region: 'southamerica-east1',
 }, async (req, res) => {
-  const verifyToken = process.env.META_WHATSAPP_VERIFY_TOKEN || ''
+  if (req.method === 'GET' && String(req.query.action || '') === 'config') {
+    const cfg = configFromEnv(process.env)
+    res.status(200).json({ ok: true, configured: cfg.configured, missing: cfg.missing })
+    return
+  }
   if (req.method === 'GET') {
-    const mode = String(req.query['hub.mode'] || '')
-    const token = String(req.query['hub.verify_token'] || '')
-    const challenge = String(req.query['hub.challenge'] || '')
-    if (mode === 'subscribe' && verifyToken && token === verifyToken) {
-      res.status(200).send(challenge)
+    const checked = verifyWebhook({
+      mode: req.query['hub.mode'],
+      token: req.query['hub.verify_token'],
+      expected: process.env.META_WHATSAPP_VERIFY_TOKEN || '',
+      challenge: req.query['hub.challenge'],
+    })
+    if (checked.ok) {
+      res.status(200).send(checked.challenge)
       return
     }
-    res.status(403).json({ error: 'verify_token_mismatch_or_missing' })
+    res.status(checked.status).json({ error: checked.reason })
     return
   }
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'method_not_allowed' })
+    return
+  }
+  const appSecret = process.env.META_APP_SECRET || ''
+  const raw = req.rawBody || Buffer.from(JSON.stringify(req.body || {}))
+  if (!verifySignature(raw, req.header('x-hub-signature-256'), appSecret)) {
+    logger.warn('metaWhatsAppWebhook assinatura recusada')
+    res.status(401).json({ error: 'invalid_signature' })
     return
   }
   const empresaId = String(req.query.empresaId || req.header('x-empresa-id') || '')
@@ -486,35 +506,36 @@ exports.metaWhatsAppWebhook = onRequest({
     res.status(400).json({ error: 'empresaId_required' })
     return
   }
-  const body = req.body || {}
-  const msg = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
-  const contact = body?.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]
-  const wamid = msg?.id || null
-  const waId = contact?.wa_id || null
-  const text = msg?.text?.body || null
-  const referral = msg?.referral || body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.referral
-  const sourceType = String(referral?.source_type || referral?.source_url || '')
-  const origin = /ad|ads|advertisement/i.test(sourceType) ? 'trafego_pago' : 'whatsapp'
-  await db.collection(`empresas/${empresaId}/erpInbound`).add({
-    empresaId,
-    messageId: wamid,
-    phone: waId,
-    whatsapp: waId,
-    message: text,
-    messageType: msg?.type || 'texto',
-    source: 'whatsapp',
-    origin,
-    processado: false,
-    criadoEm: admin.firestore.FieldValue.serverTimestamp(),
-  })
-  await db.collection(`empresas/${empresaId}/automacaoEventos`).add({
-    empresaId,
-    gatilho: 'nova_mensagem',
-    entidade: 'erpInbound',
-    record: { wa_id: waId, wamid, texto: text, canal: 'whatsapp', origin },
-    status: 'pendente',
-    criadoEm: admin.firestore.FieldValue.serverTimestamp(),
-  })
-  res.status(200).json({ ok: true, wamid, wa_id: waId })
+  const parsed = parseCloudWebhook(req.body || {})
+  let accepted = 0
+  for (const msg of parsed.messages) {
+    const dup = await db.collection(`empresas/${empresaId}/erpInbound`).where('messageId', '==', msg.messageId).limit(1).get()
+    if (!dup.empty) continue
+    await db.collection(`empresas/${empresaId}/erpInbound`).add({
+      empresaId,
+      messageId: msg.messageId,
+      wamid: msg.wamid,
+      phone: msg.phone,
+      whatsapp: msg.whatsapp,
+      nome: msg.nome,
+      message: msg.message,
+      messageType: msg.messageType,
+      timestamp: msg.timestamp,
+      source: msg.source,
+      origin: msg.origin,
+      processado: false,
+      criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    })
+    accepted += 1
+  }
+  for (const item of parsed.statuses) {
+    if (!item.wamid) continue
+    const found = await db.collection(`empresas/${empresaId}/mensagens`).where('messageId', '==', item.wamid).limit(5).get()
+    for (const doc of found.docs) {
+      await doc.ref.set({ erpStatus: item.status, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+    }
+  }
+  logger.info('metaWhatsAppWebhook', { messages: parsed.messages.length, statuses: parsed.statuses.length, accepted })
+  res.status(200).json({ ok: true, accepted, statuses: parsed.statuses.length })
 })
 

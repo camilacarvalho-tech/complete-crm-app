@@ -73,7 +73,8 @@ export function IntegrationsCenter() {
   return (
     <div className="space-y-4">
       <p className="text-xs" style={{ color: 'var(--code-muted)' }}>
-        Tokens, client secret e access token ficam no backend ou no Secret Manager. Aqui só entram identificadores e status.
+        Tokens, App Secret e access token da Meta ficam nas variáveis META_* da Function, nunca nesta tela.
+        Webhook: https://southamerica-east1-recomece-cred-oficial.cloudfunctions.net/metaWhatsAppWebhook?empresaId=SUA_EMPRESA
       </p>
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
         {SEEDS.map((seed) => {

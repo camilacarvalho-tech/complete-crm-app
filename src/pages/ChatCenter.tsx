@@ -13,7 +13,8 @@ import { origemMarca, origemPrincipalDe, origemTexto } from '../lib/origemLead'
 import { produtoLabel } from '../modules/leads-monitor/catalog/produtosMonitor'
 import { drainErpInbound } from '../lib/inboundErpMessage'
 import { drainErpToCrmEvents } from '../integrations/events/eventHandlers'
-import { getWhatsAppProvider } from '../integrations/providers'
+import { drainNxErpHttpInbox, sendReplyViaNxErp } from '../integrations/erp/drainNxErpInbox'
+import { loadNxErpCrmConfig } from '../integrations/erp/nxErpCrmClient'
 import { labelPt, textoMisto } from '../lib/uiPt'
 import { ClienteLink } from '../components/nexus/ClienteLink'
 import type { NexusCliente } from '../types/nexus'
@@ -152,7 +153,6 @@ export default function ChatCenter() {
   const [obsTexto, setObsTexto] = useState('')
   const [pastaLocal, setPastaLocal] = useState<{ id: string; clienteId: string; nome: string; url: string; tipo: string }[]>([])
   const [manual, setManual] = useState({ nome: '', cpf: '', telefone: '' })
-  const [waReady, setWaReady] = useState<boolean | null>(null)
   const [painel, setPainel] = useState<'lista' | 'chat' | 'ficha'>(params.get('conversa') ? 'chat' : 'lista')
   const selectedId = params.get('conversa')
 
@@ -161,6 +161,7 @@ export default function ChatCenter() {
     if (!eid) return
     void drainErpInbound(eid)
     void drainErpToCrmEvents(eid)
+    void drainNxErpHttpInbox(eid)
   }, [usuario?.empresaId])
 
   const externas = useMemo(() => conversas.items.filter((c) => c.canal !== 'interno'), [conversas.items])
@@ -336,18 +337,20 @@ export default function ChatCenter() {
   async function send() {
     const cid = await ensureConversa()
     if (!cid || !texto.trim()) return
-    let statusMsg = 'enviando'
-    const health = await getWhatsAppProvider().healthCheck()
-    setWaReady(health.status === 'online')
-    if (health.status !== 'online') {
-      statusMsg = 'nao_enviada'
-      toast.error('Registrada no Nexus. WhatsApp oficial: não configurado — não enviada ao cliente.')
+    let statusMsg = 'falha'
+    const erp = usuario?.empresaId ? await loadNxErpCrmConfig(usuario.empresaId) : null
+    if (erp?.modo === 'real' && erp.ativo && erp.apiUrl && usuario?.empresaId) {
+      const sent = await sendReplyViaNxErp({
+        empresaId: usuario.empresaId,
+        telefone: String(cliente?.whatsapp || cliente?.telefone || ''),
+        mensagem: texto.trim(),
+        conversaId: cid,
+        clienteId: String(cliente?.id || ''),
+      })
+      statusMsg = sent.status
+      if (!sent.ok) toast.error(sent.message || 'O NX ERP não aceitou a resposta.')
     } else {
-      const sent = await getWhatsAppProvider().sendMessage(String(cliente?.whatsapp || cliente?.telefone || ''), texto.trim())
-      if (!sent.ok) {
-        statusMsg = 'nao_enviada'
-        toast.error(sent.message || 'WhatsApp ainda não configurado.')
-      }
+      toast.error('Registrada no Nexus. NX ERP real não está ativo — nada foi enviado ao WhatsApp.')
     }
     await mensagens.create({
       conversaId: cid,

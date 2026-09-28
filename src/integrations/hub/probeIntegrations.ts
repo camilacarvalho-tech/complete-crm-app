@@ -1,7 +1,6 @@
 import { collection, getDocs, limit, query } from 'firebase/firestore'
 import { db } from '../../firebase'
 import { getNxErpHealthAdapter } from '../adapters/erpProvider'
-import { getWhatsAppProvider } from '../providers'
 import { withCheckedAt, interpretErpHealth, type ErpHealthResult, type NxErpConnectionStatus } from '../erp/connectionStatus'
 import { NX_ERP_LOCAL_WEBHOOK_BASE, NX_ERP_LOCAL_HEALTH_PATH } from '../erp/knownEndpoints'
 
@@ -79,27 +78,39 @@ export async function probeNxErpAndDisparo(): Promise<{ erp: HubCardState; dispa
   }
 }
 
+const META_WEBHOOK_URL = 'https://southamerica-east1-recomece-cred-oficial.cloudfunctions.net/metaWhatsAppWebhook'
+
 export async function probeWhatsApp(): Promise<HubCardState> {
-  const wa = await getWhatsAppProvider().healthCheck()
-  if (wa.status === 'online') {
-    const h = withCheckedAt(interpretErpHealth({ enabled: true, urlConfigured: true, healthPathConfigured: true, httpStatus: 200 }))
-    return fromHealth('whatsapp', 'WhatsApp', h, 'Cloud API')
+  const fromEnv = String((import.meta as { env?: Record<string, string> }).env?.VITE_META_WHATSAPP_WEBHOOK_URL || '').trim()
+  if (!fromEnv) {
+    const h = withCheckedAt(interpretErpHealth({}))
+    return {
+      ...fromHealth('whatsapp', 'WhatsApp', h, 'não configurado'),
+      description: `Webhook pronto em ${META_WEBHOOK_URL}. Defina as variáveis META_* na Function. A Meta não foi chamada.`,
+      lastError: 'variáveis META_* ainda não validadas',
+    }
   }
-  const h = withCheckedAt(interpretErpHealth({}))
-  return {
-    ...fromHealth('whatsapp', 'WhatsApp', h, 'não configurado'),
-    description: 'Credencial não encontrada no backend (WABA / Phone Number ID / token). Sem disparo.',
-    lastError: wa.message,
+  try {
+    const res = await fetch(`${fromEnv}${fromEnv.includes('?') ? '&' : '?'}action=config`)
+    const data = await res.json().catch(() => ({}))
+    if (res.ok && data.configured) {
+      const h = withCheckedAt(interpretErpHealth({ enabled: true, urlConfigured: true, healthPathConfigured: true, httpStatus: 200 }))
+      return { ...fromHealth('whatsapp', 'WhatsApp', h, 'Cloud API'), description: 'Variáveis da Meta presentes na Function. Nenhum envio foi feito.' }
+    }
+    const h = withCheckedAt(interpretErpHealth({ urlConfigured: true, healthPathConfigured: true, httpStatus: 401 }))
+    return {
+      ...fromHealth('whatsapp', 'WhatsApp', h, 'Cloud API'),
+      description: 'A Function respondeu, mas falta variável da Meta.',
+      lastError: Array.isArray(data.missing) ? data.missing.join(', ') : 'configuração incompleta',
+    }
+  } catch (e) {
+    const h = withCheckedAt(interpretErpHealth({ urlConfigured: true, healthPathConfigured: true, networkError: true }))
+    return { ...fromHealth('whatsapp', 'WhatsApp', h, 'Cloud API'), lastError: e instanceof Error ? e.message : 'falha' }
   }
 }
 
 export async function probeMeta(): Promise<HubCardState> {
-  const h = withCheckedAt(interpretErpHealth({}))
-  return {
-    ...fromHealth('meta', 'Meta', h, 'não configurado'),
-    description: 'Credencial não encontrada nas Functions. Graph API não foi chamada com token.',
-    lastError: 'META_ACCESS_TOKEN ausente no backend',
-  }
+  return probeWhatsApp().then((card) => ({ ...card, id: 'meta', title: 'Meta' }))
 }
 
 export async function probeWebhook(): Promise<HubCardState> {
