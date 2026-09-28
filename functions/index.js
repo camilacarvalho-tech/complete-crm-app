@@ -2,7 +2,11 @@ const { onRequest } = require('firebase-functions/v2/https')
 const { onDocumentCreated } = require('firebase-functions/v2/firestore')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
 const admin = require('firebase-admin')
+const { FieldValue } = require('firebase-admin/firestore')
 const { logger } = require('firebase-functions')
+const fs = require('fs')
+const path = require('path')
+const crypto = require('crypto')
 const { handler: placesSearchHandler } = require('./placesSearch')
 const { handler: overpassSearchHandler } = require('./overpassSearch')
 const { handler: nxErpHealthHandler } = require('./nxErpHealth')
@@ -507,35 +511,50 @@ exports.metaWhatsAppWebhook = onRequest({
     return
   }
   const parsed = parseCloudWebhook(req.body || {})
-  let accepted = 0
-  for (const msg of parsed.messages) {
-    const dup = await db.collection(`empresas/${empresaId}/erpInbound`).where('messageId', '==', msg.messageId).limit(1).get()
-    if (!dup.empty) continue
-    await db.collection(`empresas/${empresaId}/erpInbound`).add({
-      empresaId,
-      messageId: msg.messageId,
-      wamid: msg.wamid,
-      phone: msg.phone,
-      whatsapp: msg.whatsapp,
-      nome: msg.nome,
-      message: msg.message,
-      messageType: msg.messageType,
-      timestamp: msg.timestamp,
-      source: msg.source,
-      origin: msg.origin,
-      processado: false,
-      criadoEm: admin.firestore.FieldValue.serverTimestamp(),
-    })
-    accepted += 1
-  }
-  for (const item of parsed.statuses) {
-    if (!item.wamid) continue
-    const found = await db.collection(`empresas/${empresaId}/mensagens`).where('messageId', '==', item.wamid).limit(5).get()
-    for (const doc of found.docs) {
-      await doc.ref.set({ erpStatus: item.status, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
-    }
-  }
+  const accepted = await enfileirarMensagensLocais(parsed.messages)
   logger.info('metaWhatsAppWebhook', { messages: parsed.messages.length, statuses: parsed.statuses.length, accepted })
   res.status(200).json({ ok: true, accepted, statuses: parsed.statuses.length })
 })
+
+const FILA_LOCAL = path.join(__dirname, '..', '.nx-crm-inbound-queue.json')
+let gravacaoFila = Promise.resolve()
+
+function enfileirarMensagensLocais(messages) {
+  const entradas = (messages || []).map((msg) => ({
+    wamid: msg.wamid,
+    messageId: msg.messageId,
+    telefone: msg.phone,
+    whatsapp: msg.whatsapp,
+    nome: msg.nome,
+    texto: msg.message,
+    message: msg.message,
+    tipo: msg.messageType,
+    timestamp: msg.timestamp,
+    origem: msg.origin,
+    replyToWamid: msg.replyToWamid || '',
+  })).filter((item) => item.wamid && item.texto)
+  gravacaoFila = gravacaoFila.then(() => {
+    let queue = []
+    try {
+      const parsed = JSON.parse(fs.readFileSync(FILA_LOCAL, 'utf8'))
+      queue = Array.isArray(parsed) ? parsed : []
+    } catch {
+      queue = []
+    }
+    const vistos = new Set(queue.map((item) => String(item && item.body && (item.body.wamid || item.body.messageId) || '')))
+    let novos = 0
+    for (const body of entradas) {
+      if (vistos.has(body.wamid)) continue
+      vistos.add(body.wamid)
+      queue.push({ id: crypto.randomUUID(), kind: 'mensagem', body })
+      novos += 1
+    }
+    if (novos) fs.writeFileSync(FILA_LOCAL, JSON.stringify(queue))
+    return novos
+  }).catch((err) => {
+    logger.error('metaWhatsAppWebhook fila local', { message: err && err.message })
+    return 0
+  })
+  return gravacaoFila
+}
 

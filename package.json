@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:erp": "node --experimental-strip-types --test src/integrations/crm/idempotency.test.ts src/integrations/adapters/nxErpHealth.test.ts src/integrations/banks/digitacaoBanks.test.ts src/modules/chat-robot/chatRobot.test.ts src/lib/inboundOrigin.test.ts src/modules/digitacao/digitacaoDesk.test.ts src/integrations/erp/nxErpInbox.test.ts functions/metaWhatsappCloud.test.js"
+    "test:erp": "node --experimental-strip-types --test src/integrations/crm/idempotency.test.ts src/integrations/adapters/nxErpHealth.test.ts src/integrations/banks/digitacaoBanks.test.ts src/modules/chat-robot/chatRobot.test.ts src/modules/chat-robot/leticiaReception.test.ts src/lib/inboundOrigin.test.ts src/lib/oggOpus.test.ts src/modules/digitacao/digitacaoDesk.test.ts src/integrations/erp/nxErpInbox.test.ts functions/metaWhatsappCloud.test.js"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

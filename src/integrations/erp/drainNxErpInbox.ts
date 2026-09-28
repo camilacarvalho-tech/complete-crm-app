@@ -1,11 +1,35 @@
 import { collection, getDocs, query, serverTimestamp, updateDoc, where } from 'firebase/firestore'
 import { db } from '../../firebase'
-import { handleInboundErpMessage } from '../../lib/inboundErpMessage'
+import { gravarMensagemRecebida, handleInboundErpMessage, type InboundErpPayload } from '../../lib/inboundErpMessage'
 import { handleErpToCrmEvent } from '../events/eventHandlers'
+import { buildRespostaChat } from './chatOutbound'
 import { postNxErpEvento } from './nxErpCrmClient'
 import { mapCampaignEvent, mapInboundMessage, nxErpStatus } from './nxErpInbox'
 
 type Queued = { id: string; kind: 'mensagem' | 'evento'; body: Record<string, unknown> }
+
+export type MemoriaInbox = {
+  clientes: { id: string; telefone?: string; whatsapp?: string; telefoneNormalizado?: string }[]
+  conversas: {
+    id: string
+    clienteId?: string
+    canal?: string
+    status?: string
+    statusAtendimento?: string
+    roboPausado?: boolean
+    robotPaused?: boolean
+    robotState?: string
+    botWelcomeSent?: boolean
+    leticiaStep?: string
+    etapa?: string
+    botAtivo?: boolean
+    atendimentoHumano?: boolean
+    welcomeSentAt?: string
+    assignedTo?: string
+  }[]
+  mensagens: { id?: string; wamid?: string; messageId?: string; texto?: string; processedByLeticia?: boolean }[]
+  conversaAbertaId?: string
+}
 
 async function applyStatus(empresaId: string, body: Record<string, unknown>) {
   const status = nxErpStatus(body.status)
@@ -19,10 +43,15 @@ async function applyStatus(empresaId: string, body: Record<string, unknown>) {
   }
 }
 
-async function applyItem(empresaId: string, item: Queued) {
+async function applyItem(empresaId: string, item: Queued, memoria?: MemoriaInbox) {
   if (item.kind === 'mensagem') {
     const mapped = mapInboundMessage(item.body)
-    await handleInboundErpMessage(empresaId, mapped)
+    const payload: InboundErpPayload = { ...mapped, replyToWamid: mapped.replyToWamid }
+    if (memoria) {
+      await gravarMensagemRecebida(empresaId, payload, memoria)
+      return
+    }
+    await handleInboundErpMessage(empresaId, payload)
     return
   }
   const tipo = String(item.body.tipo || item.body.type || '').trim().toLowerCase()
@@ -57,15 +86,20 @@ async function applyItem(empresaId: string, item: Queued) {
 }
 
 /** Lê a fila local gravada pelo endpoint autenticado e aplica no Chat existente. */
-export async function drainNxErpHttpInbox(empresaId: string): Promise<number> {
+export async function drainNxErpHttpInbox(empresaId: string, memoria?: MemoriaInbox): Promise<number> {
   const pending = await fetch('/__nx_crm_inbound/pending')
   if (!pending.ok) return 0
   const data = (await pending.json()) as { items?: Queued[] }
-  const items = Array.isArray(data.items) ? data.items : []
+  const items = (Array.isArray(data.items) ? data.items : []).slice().sort((a, b) => {
+    const ta = Number(a.body?.timestamp || 0)
+    const tb = Number(b.body?.timestamp || 0)
+    if (ta && tb && ta !== tb) return ta - tb
+    return 0
+  })
   const done: string[] = []
   for (const item of items) {
     try {
-      await applyItem(empresaId, item)
+      await applyItem(empresaId, item, memoria)
       done.push(item.id)
     } catch {
       /* permanece na fila para a próxima leitura */
@@ -88,14 +122,38 @@ export async function sendReplyViaNxErp(opts: {
   mensagem: string
   conversaId: string
   clienteId: string
-}): Promise<{ ok: boolean; status: 'aceito' | 'falha'; message: string }> {
-  const result = await postNxErpEvento(opts.empresaId, {
-    tipo: 'resposta_chat',
+  crmMensagemId: string
+  operador?: string
+  audioBase64?: string
+  audioMime?: string
+  midiaBase64?: string
+  midiaMime?: string
+  midiaNome?: string
+  midiaLegenda?: string
+  replyToWamid?: string
+}): Promise<{ ok: boolean; status: 'sent' | 'failed'; message: string; wamid: string }> {
+  const payload = buildRespostaChat({
+    crmMensagemId: opts.crmMensagemId,
     telefone: opts.telefone,
-    mensagem: opts.mensagem,
+    texto: opts.mensagem,
+    operador: opts.operador,
     conversaId: opts.conversaId,
     clienteId: opts.clienteId,
+    audioBase64: opts.audioBase64,
+    audioMime: opts.audioMime,
+    midiaBase64: opts.midiaBase64,
+    midiaMime: opts.midiaMime,
+    midiaNome: opts.midiaNome,
+    midiaLegenda: opts.midiaLegenda,
+    replyToWamid: opts.replyToWamid,
   })
-  if (result.ok) return { ok: true, status: 'aceito', message: result.message }
-  return { ok: false, status: 'falha', message: result.message }
+  console.info(`[CRM OUTBOUND] crm_mensagem_id=${payload.crm_mensagem_id} telefone_digitos=${payload.telefone.length}`)
+  const result = await postNxErpEvento(opts.empresaId, payload)
+  if (result.ok) {
+    console.info(`[META] wamid=${result.wamid || ''}`)
+    console.info('[CHAT] status=sent')
+    return { ok: true, status: 'sent', message: result.message, wamid: result.wamid || '' }
+  }
+  console.info(`[CHAT OUTBOUND ERROR]\nstage=nx-erp\nhttp_status=${result.status}\ncode=\nmessage=${result.message}`)
+  return { ok: false, status: 'failed', message: result.message, wamid: '' }
 }

@@ -75,6 +75,39 @@ test('processa mensagem recebida e status sem chamar a Meta', () => {
   assert.equal(parsed.statuses.length, 1)
 })
 
+test('clique do cliente vira a mensagem da conversa', () => {
+  const parsed = parseCloudWebhook({
+    entry: [{
+      changes: [{
+        value: {
+          contacts: [{ wa_id: '5511999887766', profile: { name: 'Maria' } }],
+          messages: [
+            {
+              id: 'wamid.BTN_1',
+              from: '5511999887766',
+              timestamp: '3',
+              type: 'interactive',
+              context: { id: 'wamid.PERGUNTA' },
+              interactive: { type: 'button_reply', button_reply: { id: 'nao', title: 'Não, obrigado' } },
+            },
+            {
+              id: 'wamid.BTN_2',
+              from: '5511999887766',
+              timestamp: '4',
+              type: 'button',
+              button: { text: '5', payload: '5' },
+            },
+          ],
+        },
+      }],
+    }],
+  })
+  assert.equal(parsed.messages.length, 2)
+  assert.equal(parsed.messages[0].message, 'Não, obrigado')
+  assert.equal(parsed.messages[0].replyToWamid, 'wamid.PERGUNTA')
+  assert.equal(parsed.messages[1].message, '5')
+})
+
 test('idempotência pelo wamid', () => {
   assert.equal(alreadySeen(['wamid.IN_1'], 'wamid.IN_1'), true)
   assert.equal(alreadySeen(['wamid.IN_1'], 'wamid.IN_2'), false)

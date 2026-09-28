@@ -53,6 +53,17 @@ function verifySignature(rawBody, header, appSecret) {
   return crypto.timingSafeEqual(a, b)
 }
 
+function textoDoCliente(msg) {
+  const texto = String(msg.text && msg.text.body || '').trim()
+  if (texto) return texto
+  const botao = msg.button || {}
+  const clique = String(botao.text || botao.payload || '').trim()
+  if (clique) return clique
+  const interativo = msg.interactive || {}
+  const resposta = interativo.button_reply || interativo.list_reply || {}
+  return String(resposta.title || resposta.description || '').trim()
+}
+
 function parseCloudWebhook(body) {
   const messages = []
   const statuses = []
@@ -65,14 +76,17 @@ function parseCloudWebhook(body) {
       for (const msg of value.messages || []) {
         const wamid = String(msg.id || '').trim()
         if (!wamid) continue
+        const texto = textoDoCliente(msg)
+        if (!texto) continue
         messages.push({
           wamid,
           messageId: wamid,
           phone: String(msg.from || contact.wa_id || '').trim(),
           whatsapp: String(contact.wa_id || msg.from || '').trim(),
           nome: String(contact.profile && contact.profile.name || '').trim(),
-          message: String(msg.text && msg.text.body || '').trim(),
+          message: texto,
           messageType: String(msg.type || 'texto'),
+          replyToWamid: String(msg.context && msg.context.id || '').trim(),
           timestamp: String(msg.timestamp || ''),
           source: 'whatsapp',
           origin: /ad|ads/i.test(String((msg.referral || {}).source_type || '')) ? 'trafego_pago' : 'whatsapp',

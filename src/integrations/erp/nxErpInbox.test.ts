@@ -8,6 +8,7 @@ import {
   nxErpStatus,
   nxErpStatusLabel,
 } from './nxErpInbox.ts'
+import { buildRespostaChat, deliveryMark, phoneError } from './chatOutbound.ts'
 
 test('mensagem inbound preserva telefone, nome, texto, wamid e campanha', () => {
   const mapped = mapInboundMessage({
@@ -63,16 +64,24 @@ test('status só aceita o que o ERP ou a Meta já enviam', () => {
   assert.equal(nxErpStatusLabel('entregue_inventado'), null)
 })
 
-test('resposta outbound não chama a Meta: o destino é o evento do ERP', () => {
-  const body = {
-    tipo: 'resposta_chat',
-    telefone: '5511999887766',
-    mensagem: 'Olá',
+test('resposta outbound envia crm_mensagem_id e não leva token', () => {
+  const body = buildRespostaChat({
+    crmMensagemId: 'crm-1',
+    telefone: '+55 (11) 99988-7766',
+    texto: 'Olá',
     conversaId: 'c1',
     clienteId: 'cli1',
-  }
+  })
   assert.equal(body.tipo, 'resposta_chat')
+  assert.equal(body.crm_mensagem_id, 'crm-1')
+  assert.equal(body.telefone, '5511999887766')
+  assert.equal(body.texto, 'Olá')
   assert.equal('metaToken' in body, false)
+  assert.equal(phoneError(''), 'Telefone ausente')
+  assert.equal(phoneError('123'), 'Telefone inválido')
+  assert.equal(phoneError('11999887766'), null)
+  assert.equal(deliveryMark('aceito'), 'sent')
+  assert.equal(deliveryMark('falha'), 'failed')
 })
 
 test('erro de autenticação não entra na fila', () => {

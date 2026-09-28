@@ -364,7 +364,7 @@ export async function listNxErpEventos(empresaId: string): Promise<{ ok: boolean
   return { ok: result.ok, status: result.status, eventos: result.leads, message: result.message }
 }
 
-export async function postNxErpEvento(empresaId: string, body: ErpRow): Promise<{ ok: boolean; status: number; message: string }> {
+export async function postNxErpEvento(empresaId: string, body: ErpRow): Promise<{ ok: boolean; status: number; message: string; wamid?: string }> {
   return writeResource(empresaId, NX_ERP_CRM_EVENTOS_PATH, body)
 }
 
@@ -393,9 +393,21 @@ async function listResource(empresaId: string, path: string, _kind: string) {
   }
 }
 
-async function writeResource(empresaId: string, path: string, body: ErpRow) {
+function textoErroApi(value: unknown): string {
+  if (value == null || value === '') return ''
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    const msg = obj.message || obj.mensagem || obj.error || obj.erro
+    if (typeof msg === 'string' && msg.trim()) return msg.trim()
+    try { return JSON.stringify(value) } catch { return 'erro sem detalhe' }
+  }
+  return String(value)
+}
+
+async function writeResource(empresaId: string, path: string, body: ErpRow): Promise<{ ok: boolean; status: number; message: string; wamid: string }> {
   const ready = await requireReal(empresaId)
-  if ('message' in ready) return { ok: false, status: 0, message: ready.message }
+  if ('message' in ready) return { ok: false, status: 0, message: ready.message, wamid: '' }
   const target = joinUrl(ready.cfg.apiUrl, path)
   try {
     const res = await erpFetch(target, ready.token, {
@@ -403,11 +415,15 @@ async function writeResource(empresaId: string, path: string, body: ErpRow) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(sanitizeErpLog(body)),
     })
-    if (!res.ok) return { ok: false, status: res.status, message: `HTTP ${res.status} POST ${path}` }
-    return { ok: true, status: res.status, message: '' }
+    const data = await res.json().catch(() => ({} as Record<string, unknown>))
+    const payload = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+    const erro = textoErroApi(payload.erro || payload.error || payload.message)
+    const wamid = String(payload.wamid || payload.erp_mensagem_id || '').trim()
+    if (!res.ok) return { ok: false, status: res.status, message: erro || `HTTP ${res.status} POST ${path}`, wamid }
+    return { ok: true, status: res.status, message: '', wamid }
   } catch (e) {
     const raw = e instanceof Error ? e.message : 'falha de rede'
-    return { ok: false, status: 0, message: redact(raw, ready.token) }
+    return { ok: false, status: 0, message: redact(raw, ready.token), wamid: '' }
   }
 }
 

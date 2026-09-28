@@ -383,7 +383,18 @@ export default function LeadsMonitor() {
       />
 
       {view === 'visao' && (
-        <MonitorOverview
+        <>
+          <button
+            type="button"
+            onClick={() => setView('importar')}
+            className="w-full text-left rounded-xl border p-4"
+            style={{ background: 'var(--code-surface)', borderColor: 'var(--code-border)' }}
+          >
+            <div className="font-semibold">Importar nova base</div>
+            <p className="text-xs text-slate-500 mt-1">CSV, XLS ou XLSX. A planilha é analisada antes de ir para a fila. Não dispara WhatsApp.</p>
+            <span className="inline-block mt-3 text-xs font-semibold px-3 py-1.5 rounded-lg text-white bg-nexus-orange">Anexar planilha</span>
+          </button>
+          <MonitorOverview
           online={Boolean(empresaId)}
           robotsAtivos={robotsAtivos}
           robotsTotal={5}
@@ -394,6 +405,7 @@ export default function LeadsMonitor() {
           run={activeProcessRun}
           pesquisas={pesquisas}
         />
+        </>
       )}
 
       {view === 'campanhas' && (

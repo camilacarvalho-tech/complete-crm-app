@@ -3,10 +3,10 @@ import test from 'node:test'
 import { isHumanHandoffText, tickChatRobot } from './chatRobot.ts'
 import { detectProductOperation, requirementsFor } from './productRequirements.ts'
 
-test('handoff 1 e quero falar com atendente pausam o robô', () => {
-  assert.equal(isHumanHandoffText('1'), true)
+test('handoff quero falar com atendente pausa o robô', () => {
+  assert.equal(isHumanHandoffText('1'), false)
   assert.equal(isHumanHandoffText('quero falar com atendente'), true)
-  const t = tickChatRobot({ state: 'PRODUCT_SELECTION', inboundText: '1', channelConnected: false, robotEnabled: false })
+  const t = tickChatRobot({ state: 'PRODUCT_SELECTION', inboundText: 'quero falar com atendente', channelConnected: false, robotEnabled: false })
   assert.equal(t.nextState, 'HUMAN_REQUEST')
   assert.equal(t.pauseRobot, true)
   assert.equal(t.sendNow, false)

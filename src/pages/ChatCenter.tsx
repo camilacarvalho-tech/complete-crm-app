@@ -14,8 +14,12 @@ import { produtoLabel } from '../modules/leads-monitor/catalog/produtosMonitor'
 import { drainErpInbound } from '../lib/inboundErpMessage'
 import { drainErpToCrmEvents } from '../integrations/events/eventHandlers'
 import { drainNxErpHttpInbox, sendReplyViaNxErp } from '../integrations/erp/drainNxErpInbox'
+import { deliveryGlyph, deliveryLabel, deliveryMark, newClientMessageId, phoneError } from '../integrations/erp/chatOutbound'
 import { loadNxErpCrmConfig } from '../integrations/erp/nxErpCrmClient'
-import { labelPt, textoMisto } from '../lib/uiPt'
+import { formatMessageClock, horaMensagem, rotuloDiaMensagem } from '../lib/messageClock'
+import { gravacaoParaOgg } from '../lib/oggOpus'
+import { textoMisto } from '../lib/uiPt'
+import { EmojiPicker } from '../components/chat/EmojiPicker'
 import { ClienteLink } from '../components/nexus/ClienteLink'
 import type { NexusCliente } from '../types/nexus'
 import { digits, maskCpf, maskPhone } from '../lib/format'
@@ -42,11 +46,6 @@ function asDate(v: unknown): Date | null {
   if (typeof v === 'object' && v && 'seconds' in v) return new Date(Number((v as { seconds: number }).seconds) * 1000)
   const d = new Date(String(v))
   return Number.isNaN(d.getTime()) ? null : d
-}
-
-function horaCurta(v: unknown) {
-  const d = asDate(v)
-  return d ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''
 }
 
 function dataHora(v: unknown) {
@@ -145,8 +144,30 @@ export default function ChatCenter() {
   const [produtoF, setProdutoF] = useState('')
   const [respF, setRespF] = useState('')
   const [texto, setTexto] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [emojis, setEmojis] = useState(false)
+  const [midia, setMidia] = useState<{ file: File; url: string; legenda: string } | null>(null)
+  const [audioPreview, setAudioPreview] = useState<{ url: string; file: File } | null>(null)
+  const [gravandoSeg, setGravandoSeg] = useState(0)
+  const [limiteMsgs, setLimiteMsgs] = useState(50)
   const [gravando, setGravando] = useState(false)
   const recorderRef = useRef<MediaRecorder | null>(null)
+  const enviarAoPararRef = useRef(false)
+  const envioEmCursoRef = useRef(false)
+  const cancelarGravacaoRef = useRef(false)
+  const pausadoRef = useRef(false)
+  const imagemRef = useRef<HTMLInputElement>(null)
+  const documentoRef = useRef<HTMLInputElement>(null)
+  const planilhaRef = useRef<HTMLInputElement>(null)
+  const videoRef = useRef<HTMLInputElement>(null)
+  const [menuAnexo, setMenuAnexo] = useState(false)
+  const [audioPausado, setAudioPausado] = useState(false)
+  const [respondendo, setRespondendo] = useState<{ id: string; texto: string; wamid: string } | null>(null)
+  const [menuMsg, setMenuMsg] = useState<string | null>(null)
+  const [editando, setEditando] = useState<{ id: string; texto: string; clientMessageId: string; reenviar: boolean } | null>(null)
+  const envioTickRef = useRef(false)
+  const listaChatRef = useRef<HTMLDivElement>(null)
+  const noFundoRef = useRef(true)
   const [busca, setBusca] = useState('')
   const [novoCli, setNovoCli] = useState(false)
   const [obsAberta, setObsAberta] = useState(false)
@@ -156,12 +177,37 @@ export default function ChatCenter() {
   const [painel, setPainel] = useState<'lista' | 'chat' | 'ficha'>(params.get('conversa') ? 'chat' : 'lista')
   const selectedId = params.get('conversa')
 
+  const inboxRef = useRef({ clientes: clientes.items, conversas: conversas.items, mensagens: mensagens.items, conversaAbertaId: '' })
+  inboxRef.current = { ...inboxRef.current, clientes: clientes.items, conversas: conversas.items, mensagens: mensagens.items }
+
   useEffect(() => {
     const eid = usuario?.empresaId
     if (!eid) return
-    void drainErpInbound(eid)
-    void drainErpToCrmEvents(eid)
-    void drainNxErpHttpInbox(eid)
+    void drainErpInbound(eid).catch(() => {})
+    void drainErpToCrmEvents(eid).catch(() => {})
+    let ativo = true
+    let ocupado = false
+    const puxar = async () => {
+      if (!ativo || ocupado) return
+      ocupado = true
+      try {
+        const agora = inboxRef.current
+        await drainNxErpHttpInbox(eid, {
+          clientes: agora.clientes,
+          conversas: agora.conversas,
+          mensagens: agora.mensagens,
+          conversaAbertaId: agora.conversaAbertaId,
+        })
+      } finally {
+        ocupado = false
+      }
+    }
+    void puxar()
+    const timer = window.setInterval(() => { void puxar() }, 1200)
+    return () => {
+      ativo = false
+      window.clearInterval(timer)
+    }
   }, [usuario?.empresaId])
 
   const externas = useMemo(() => conversas.items.filter((c) => c.canal !== 'interno'), [conversas.items])
@@ -217,6 +263,7 @@ export default function ChatCenter() {
   }, [externas, filtro, clientePref, busca, clientes.items, origemF, campanhaF, fonteF, estadoF, cidadeF, segmentoF, produtoF, respF])
 
   const selected = conversas.items.find((c) => c.id === selectedId)
+  inboxRef.current.conversaAbertaId = selectedId || ''
   const cliente = clientes.items.find((c) => c.id === selected?.clienteId || c.id === clientePref)
   const nascimentoCliente = (() => {
     const direto = lerNascimento(cliente)
@@ -234,6 +281,16 @@ export default function ChatCenter() {
   const msgs = mensagens.items
     .filter((m) => m.conversaId === selected?.id)
     .sort((a, b) => String(a.criadoEm || '').localeCompare(String(b.criadoEm || '')))
+
+  useEffect(() => {
+    noFundoRef.current = true
+  }, [selectedId])
+
+  useEffect(() => {
+    const el = listaChatRef.current
+    if (!el || !noFundoRef.current) return
+    el.scrollTop = el.scrollHeight
+  }, [msgs.length, selectedId])
   const docsCli = documentos.items.filter((d) => d.clienteId === cliente?.id || (selected && d.conversaId === selected.id))
   const pastaCliente = [
     ...pastaLocal.filter((d) => d.clienteId === cliente?.id),
@@ -251,13 +308,49 @@ export default function ChatCenter() {
   }
 
   useEffect(() => {
-    if (!selectedId) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') fecharConversa()
+      if (e.key !== 'Escape') return
+      if (menuMsg) {
+        setMenuMsg(null)
+        return
+      }
+      if (editando) {
+        setEditando(null)
+        return
+      }
+      if (respondendo) {
+        setRespondendo(null)
+        return
+      }
+      if (emojis) {
+        setEmojis(false)
+        return
+      }
+      if (menuAnexo) {
+        setMenuAnexo(false)
+        return
+      }
+      if (gravando && recorderRef.current && recorderRef.current.state !== 'inactive') {
+        enviarAoPararRef.current = false
+        cancelarGravacaoRef.current = true
+        recorderRef.current.stop()
+        return
+      }
+      if (audioPreview) {
+        URL.revokeObjectURL(audioPreview.url)
+        setAudioPreview(null)
+        return
+      }
+      if (midia) {
+        URL.revokeObjectURL(midia.url)
+        setMidia(null)
+        return
+      }
+      if (selectedId) fecharConversa()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedId, params])
+  }, [selectedId, params, emojis, menuAnexo, gravando, audioPreview, midia, menuMsg, editando, respondendo])
 
   async function adicionarCliente() {
     const nome = manual.nome.trim()
@@ -296,7 +389,7 @@ export default function ChatCenter() {
     next.set('conversa', id)
     if (clienteId) next.set('cliente', clienteId)
     setParams(next, { replace: true })
-    if (id) void conversas.update(id, { naoLidas: 0 })
+    if (id) void conversas.update(id, { naoLidas: 0, unreadCount: 0 })
   }
 
   async function ensureConversa() {
@@ -334,44 +427,296 @@ export default function ChatCenter() {
     return id
   }
 
-  async function send() {
-    const cid = await ensureConversa()
-    if (!cid || !texto.trim()) return
-    let statusMsg = 'falha'
+  async function entregarTexto(cid: string, textoEnvio: string, clientMessageId: string, mensagemId?: string, replyToWamid?: string) {
+    const tel = String(cliente?.whatsapp || cliente?.telefone || '')
+    const invalido = phoneError(tel)
+    if (invalido) {
+      if (mensagemId) await mensagens.update(mensagemId, { status: 'failed', erroEnvio: invalido })
+      toast.error(invalido)
+      return
+    }
     const erp = usuario?.empresaId ? await loadNxErpCrmConfig(usuario.empresaId) : null
-    if (erp?.modo === 'real' && erp.ativo && erp.apiUrl && usuario?.empresaId) {
+    if (!(erp?.modo === 'real' && erp.ativo && erp.apiUrl && usuario?.empresaId)) {
+      if (mensagemId) await mensagens.update(mensagemId, { status: 'failed', erroEnvio: 'NX ERP real não está ativo' })
+      toast.error('Registrada no Nexus. NX ERP real não está ativo — nada foi enviado ao WhatsApp.')
+      return
+    }
+    if (mensagemId) await mensagens.update(mensagemId, { status: 'sending' })
+    console.info(`[CRM OUTBOUND] crm_mensagem_id=${clientMessageId}`)
+    const sent = await sendReplyViaNxErp({
+      empresaId: usuario.empresaId,
+      telefone: tel,
+      mensagem: textoEnvio,
+      conversaId: cid,
+      clienteId: String(cliente?.id || ''),
+      crmMensagemId: clientMessageId,
+      operador: usuario?.nome || 'Atendente CRM',
+      replyToWamid,
+    })
+    const confirmado = Boolean(sent.ok && sent.wamid)
+    if (mensagemId) {
+      await mensagens.update(mensagemId, confirmado
+        ? { status: 'sent', erpStatus: 'sent', wamid: sent.wamid, messageId: sent.wamid, erroEnvio: '' }
+        : { status: 'failed', erpStatus: 'failed', erroEnvio: sent.wamid ? '' : (sent.message || 'A Meta não confirmou o envio.') })
+    }
+    if (!confirmado) toast.error(sent.message || 'A Meta não confirmou o envio.')
+  }
+
+  function lerBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const raw = String(reader.result || '')
+        const corte = raw.indexOf(',')
+        resolve(corte >= 0 ? raw.slice(corte + 1) : raw)
+      }
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(file)
+    })
+  }
+
+  async function enviarAudio(file: File) {
+    if (envioEmCursoRef.current) return
+    envioEmCursoRef.current = true
+    let arquivo = file
+    if (!file.type.includes('ogg')) {
+      const ogg = await gravacaoParaOgg(file).catch(() => null)
+      if (ogg && ogg !== file) arquivo = new File([ogg], `audio-${Date.now()}.ogg`, { type: 'audio/ogg' })
+    }
+    if (!arquivo || arquivo.size < 1) {
+      envioEmCursoRef.current = false
+      setEnviando(false)
+      toast.error('Áudio vazio. Grave de novo e clique em Enviar.')
+      return
+    }
+    if (arquivo.size > 8 * 1024 * 1024) {
+      setEnviando(false)
+      envioEmCursoRef.current = false
+      toast.error('Áudio acima de 8 MB.')
+      return
+    }
+    const cid = await ensureConversa()
+    if (!cid) {
+      setEnviando(false)
+      envioEmCursoRef.current = false
+      return
+    }
+    const tel = String(cliente?.whatsapp || cliente?.telefone || '')
+    const invalido = phoneError(tel)
+    if (invalido) {
+      setEnviando(false)
+      envioEmCursoRef.current = false
+      toast.error(invalido)
+      return
+    }
+    const clientMessageId = newClientMessageId()
+    setEnviando(true)
+    const localUrl = URL.createObjectURL(arquivo)
+    const mensagemId = await mensagens.create({
+      conversaId: cid,
+      texto: 'Áudio',
+      tipo: 'audio',
+      interno: false,
+      autorId: usuario?.id,
+      autorNome: usuario?.nome,
+      status: 'pending',
+      clientMessageId,
+      messageId: clientMessageId,
+      channel: selected?.canal || 'whatsapp',
+      arquivoUrl: localUrl,
+    } as any)
+    await conversas.update(cid, { lastMessage: 'Áudio', status: 'aguardando_cliente', lastAssignedTo: selected?.assignedTo })
+    try {
+      const audioBase64 = await lerBase64(arquivo)
+      const erp = usuario?.empresaId ? await loadNxErpCrmConfig(usuario.empresaId) : null
+      if (!(erp?.modo === 'real' && erp.ativo && erp.apiUrl && usuario?.empresaId)) {
+        await mensagens.update(mensagemId, { status: 'failed', erroEnvio: 'NX ERP real não está ativo' })
+        toast.error('Áudio ficou no Nexus. NX ERP real não está ativo — nada foi enviado ao WhatsApp.')
+        return
+      }
+      await mensagens.update(mensagemId, { status: 'sending' })
       const sent = await sendReplyViaNxErp({
         empresaId: usuario.empresaId,
-        telefone: String(cliente?.whatsapp || cliente?.telefone || ''),
-        mensagem: texto.trim(),
+        telefone: tel,
+        mensagem: 'Áudio',
         conversaId: cid,
         clienteId: String(cliente?.id || ''),
+        crmMensagemId: clientMessageId,
+        operador: usuario?.nome || 'Atendente CRM',
+        audioBase64,
+        audioMime: arquivo.type || 'audio/ogg',
       })
-      statusMsg = sent.status
-      if (!sent.ok) toast.error(sent.message || 'O NX ERP não aceitou a resposta.')
-    } else {
-      toast.error('Registrada no Nexus. NX ERP real não está ativo — nada foi enviado ao WhatsApp.')
+      await mensagens.update(mensagemId, sent.ok && sent.wamid
+        ? { status: 'sent', erpStatus: 'sent', wamid: sent.wamid, messageId: sent.wamid, erroEnvio: '' }
+        : { status: 'failed', erpStatus: 'failed', erroEnvio: sent.message || 'A Meta não confirmou o envio do áudio.' })
+      if (!sent.ok) toast.error(sent.message || 'O NX ERP não enviou o áudio.')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Falha no envio do áudio'
+      await mensagens.update(mensagemId, { status: 'failed', erroEnvio: msg })
+      toast.error(msg)
+    } finally {
+      envioEmCursoRef.current = false
+      setEnviando(false)
     }
-    await mensagens.create({
+  }
+
+  async function enviarMidia(file: File, legenda = '') {
+    if (envioEmCursoRef.current) return
+    envioEmCursoRef.current = true
+    if (!file || file.size < 1) {
+      envioEmCursoRef.current = false
+      toast.error('Arquivo vazio.')
+      return
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      envioEmCursoRef.current = false
+      toast.error('Arquivo acima de 8 MB.')
+      return
+    }
+    const cid = await ensureConversa()
+    if (!cid) {
+      envioEmCursoRef.current = false
+      return
+    }
+    const tel = String(cliente?.whatsapp || cliente?.telefone || '')
+    const invalido = phoneError(tel)
+    if (invalido) {
+      envioEmCursoRef.current = false
+      toast.error(invalido)
+      return
+    }
+    const tipo = file.type.startsWith('image/')
+      ? 'imagem'
+      : file.type.startsWith('video/')
+        ? 'video'
+        : 'documento'
+    const clientMessageId = newClientMessageId()
+    setEnviando(true)
+    const localUrl = URL.createObjectURL(file)
+    const mensagemId = await mensagens.create({
       conversaId: cid,
-      texto: texto.trim(),
+      texto: legenda || file.name,
+      tipo,
+      interno: false,
+      autorId: usuario?.id,
+      autorNome: usuario?.nome,
+      status: 'pending',
+      clientMessageId,
+      messageId: clientMessageId,
+      channel: selected?.canal || 'whatsapp',
+      arquivoUrl: localUrl,
+    } as any)
+    await conversas.update(cid, { lastMessage: legenda || file.name, status: 'aguardando_cliente', lastAssignedTo: selected?.assignedTo })
+    try {
+      const midiaBase64 = await lerBase64(file)
+      const erp = usuario?.empresaId ? await loadNxErpCrmConfig(usuario.empresaId) : null
+      if (!(erp?.modo === 'real' && erp.ativo && erp.apiUrl && usuario?.empresaId)) {
+        await mensagens.update(mensagemId, { status: 'failed', erroEnvio: 'NX ERP real não está ativo' })
+        toast.error('Arquivo ficou no Nexus. NX ERP real não está ativo — nada foi enviado ao WhatsApp.')
+        return
+      }
+      await mensagens.update(mensagemId, { status: 'sending' })
+      const sent = await sendReplyViaNxErp({
+        empresaId: usuario.empresaId,
+        telefone: tel,
+        mensagem: legenda || file.name,
+        conversaId: cid,
+        clienteId: String(cliente?.id || ''),
+        crmMensagemId: clientMessageId,
+        operador: usuario?.nome || 'Atendente CRM',
+        midiaBase64,
+        midiaMime: file.type || 'application/octet-stream',
+        midiaNome: file.name,
+        midiaLegenda: legenda,
+      })
+      await mensagens.update(mensagemId, sent.ok && sent.wamid
+        ? { status: 'sent', erpStatus: 'sent', wamid: sent.wamid, messageId: sent.wamid, erroEnvio: '' }
+        : { status: 'failed', erpStatus: 'failed', erroEnvio: sent.message || 'A Meta não confirmou o envio do arquivo.' })
+      if (!sent.ok) toast.error(sent.message || 'O NX ERP não enviou o arquivo.')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Falha no envio do arquivo'
+      await mensagens.update(mensagemId, { status: 'failed', erroEnvio: msg })
+      toast.error(msg)
+    } finally {
+      envioEmCursoRef.current = false
+      setEnviando(false)
+    }
+  }
+
+  async function send() {
+    if (enviando) return
+    if (gravando && recorderRef.current && recorderRef.current.state !== 'inactive') {
+      if (enviarAoPararRef.current) return
+      setEnviando(true)
+      enviarAoPararRef.current = true
+      recorderRef.current.stop()
+      return
+    }
+    if (audioPreview) {
+      const file = audioPreview.file
+      URL.revokeObjectURL(audioPreview.url)
+      setAudioPreview(null)
+      void enviarAudio(file)
+      return
+    }
+    if (midia) {
+      const atual = midia
+      URL.revokeObjectURL(atual.url)
+      setMidia(null)
+      void enviarMidia(atual.file, atual.legenda)
+      return
+    }
+    const textoEnvio = texto.trim()
+    if (!textoEnvio || envioTickRef.current) return
+    const cid = await ensureConversa()
+    if (!cid) return
+    const invalido = phoneError(String(cliente?.whatsapp || cliente?.telefone || ''))
+    if (invalido) {
+      toast.error(invalido)
+      return
+    }
+    const clientMessageId = newClientMessageId()
+    const resposta = respondendo
+    envioTickRef.current = true
+    setTexto('')
+    setRespondendo(null)
+    const mensagemId = await mensagens.create({
+      conversaId: cid,
+      texto: textoEnvio,
       tipo: 'texto',
       interno: false,
       autorId: usuario?.id,
       autorNome: usuario?.nome,
-      status: statusMsg,
+      status: 'sending',
+      clientMessageId,
+      messageId: clientMessageId,
       channel: selected?.canal || 'whatsapp',
+      replyToMessageId: resposta?.id || null,
+      replyToTexto: resposta?.texto || null,
     } as any)
-    await conversas.update(cid, { lastMessage: texto.trim(), status: 'aguardando_cliente', lastAssignedTo: selected?.assignedTo })
-    setTexto('')
+    void conversas.update(cid, { lastMessage: textoEnvio, status: 'aguardando_cliente', lastAssignedTo: selected?.assignedTo })
+    envioTickRef.current = false
+    void entregarTexto(cid, textoEnvio, clientMessageId, mensagemId, resposta?.wamid)
+  }
+
+  async function reenviar(m: { id: string; texto?: string; clientMessageId?: string; conversaId?: string }) {
+    const cid = String(m.conversaId || selected?.id || '')
+    const clientMessageId = String(m.clientMessageId || '')
+    const textoEnvio = String(m.texto || '').trim()
+    if (!cid || !clientMessageId || !textoEnvio) return
+    void entregarTexto(cid, textoEnvio, clientMessageId, m.id)
   }
 
   async function attach(file: File) {
     const cid = await ensureConversa()
     if (!cid || !cliente) return
-    const allowed = /^(image\/(jpeg|jpg|png|webp)|application\/pdf|audio\/(webm|ogg|mpeg|mp4|wav)|video\/(mp4|webm|quicktime))$/i.test(file.type) || /\.(pdf|jpe?g|png|webp|webm|ogg|mp3|m4a|wav|mp4|mov)$/i.test(file.name)
+    const allowed = /^(image\/(jpeg|jpg|png|webp)|application\/pdf|audio\/(webm|ogg|mpeg|mp4|wav)|video\/(mp4|webm|quicktime))$/i.test(file.type) || /\.(pdf|jpe?g|png|webp|webm|ogg|mp3|m4a|wav|mp4|mov|docx?|xlsx?|csv|txt)$/i.test(file.name)
     if (!allowed) {
-      toast.error('Use imagem, PDF, vídeo ou áudio.')
+      toast.error('Use imagem JPG, PNG, WEBP, PDF, DOC, XLS, CSV ou áudio.')
+      return
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error('Arquivo acima de 8 MB.')
       return
     }
     const empresaId = documentos.empresaId
@@ -447,20 +792,39 @@ export default function ChatCenter() {
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg'
-      const rec = new MediaRecorder(stream)
+      const preferido = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus', 'audio/webm'].find((t) => MediaRecorder.isTypeSupported(t)) || ''
+      const rec = preferido ? new MediaRecorder(stream, { mimeType: preferido }) : new MediaRecorder(stream)
+      const mime = (rec.mimeType || preferido || 'audio/webm').split(';')[0]
       const chunks: Blob[] = []
       rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data) }
       rec.onstop = () => {
         stream.getTracks().forEach((t) => t.stop())
         setGravando(false)
+        setGravandoSeg(0)
         const blob = new Blob(chunks, { type: mime })
-        const file = new File([blob], `audio-${Date.now()}.webm`, { type: mime })
-        void attach(file)
+        const ext = mime.includes('ogg') ? 'ogg' : 'webm'
+        const file = new File([blob], `audio-${Date.now()}.${ext}`, { type: mime })
+        const deveEnviar = enviarAoPararRef.current
+        const cancelar = cancelarGravacaoRef.current
+        enviarAoPararRef.current = false
+        cancelarGravacaoRef.current = false
+        pausadoRef.current = false
+        setAudioPausado(false)
+        if (cancelar) return
+        if (deveEnviar) {
+          void enviarAudio(file)
+          return
+        }
+        setAudioPreview({ url: URL.createObjectURL(blob), file })
       }
       recorderRef.current = rec
       rec.start()
       setGravando(true)
+      setGravandoSeg(0)
+      const timer = window.setInterval(() => {
+        if (!pausadoRef.current) setGravandoSeg((n) => n + 1)
+      }, 1000)
+      rec.addEventListener('stop', () => window.clearInterval(timer), { once: true })
     } catch {
       toast.error('Permita o microfone para enviar áudio ao cliente.')
     }
@@ -533,6 +897,33 @@ export default function ChatCenter() {
       depois: { de: 'robo', para: usuario?.nome },
     })
     toast.success('Atendimento assumido. Robô pausado nesta conversa.')
+  }
+
+  async function transferirLaiane() {
+    if (!selected) return
+    await conversas.update(selected.id, {
+      assignedTo: 'Laiane',
+      status: 'em_atendimento',
+      statusAtendimento: 'HUMANO',
+      roboPausado: true,
+      robotPaused: true,
+      robotState: 'HUMAN_ACTIVE',
+      leticiaStep: 'human',
+      etapa: 'HUMANO',
+      botAtivo: false,
+      atendimentoHumano: true,
+      transferidoEm: new Date().toISOString(),
+      transferidoPor: usuario?.nome,
+    })
+    await mensagens.create({
+      conversaId: selected.id,
+      texto: 'Atendimento transferido para Laiane.',
+      tipo: 'texto',
+      autorNome: 'Sistema',
+      autorId: 'sistema',
+      status: 'local',
+    } as any)
+    toast.success('Atendimento transferido para Laiane.')
   }
 
   const timeline = useMemo(() => {
@@ -622,7 +1013,7 @@ export default function ChatCenter() {
             >
               <div className="flex justify-between gap-2">
                 <p className="text-sm font-semibold truncate">{String(c.titulo || cli?.nome || 'Conversa')}</p>
-                <span className="text-[10px] shrink-0" style={{ color: 'var(--code-muted)' }}>{horaCurta(c.atualizadoEm || c.criadoEm)}</span>
+                <span className="text-[10px] shrink-0" style={{ color: 'var(--code-muted)' }}>{formatMessageClock(asDate(c.atualizadoEm || c.criadoEm))}</span>
               </div>
               <p className="text-[11px] truncate" style={{ color: 'var(--code-muted)' }}>{String(c.lastMessage || 'Sem mensagens')}</p>
               <div className="flex items-center gap-2 mt-0.5">
@@ -649,6 +1040,7 @@ export default function ChatCenter() {
           <div className="px-3 py-2 border-b shrink-0" style={{ borderColor: 'var(--code-border)', background: 'var(--code-surface)' }}>
             <div className="flex items-start justify-between gap-2">
               <div>
+                <p className="text-[10px] font-semibold" style={{ color: 'var(--code-orange)' }}>LOCAL / TESTE · Letícia não envia WhatsApp sozinha</p>
                 <div className="flex items-center gap-2">
                   <button type="button" className="lg:hidden text-xs font-semibold" onClick={() => setPainel('lista')}>← Fila</button>
                   <p className="font-bold text-sm">{textoMisto(String(cliente?.nome || selected.titulo || ''))}</p>
@@ -663,6 +1055,7 @@ export default function ChatCenter() {
               </div>
               <div className="flex flex-wrap gap-1 justify-end">
                 <GhostButton className="text-xs" onClick={() => void assumir()}>Assumir</GhostButton>
+                <GhostButton className="text-xs" onClick={() => void transferirLaiane()}>Transferir para Laiane</GhostButton>
                 <GhostButton className="text-xs" aria-label="Fechar" data-nexus-esc onClick={fecharConversa}>X</GhostButton>
                 <GhostButton className="text-xs lg:hidden" onClick={() => setPainel('ficha')}>Cliente</GhostButton>
                 <SelectInput value={String(selected.status || '')} onChange={(e) => void mudarStatus(e.target.value)}>
@@ -679,30 +1072,172 @@ export default function ChatCenter() {
               </div>
             </div>
             <div className="mt-2">
-              <SelectInput value="" onChange={(e) => void transferir(e.target.value)}>
+              <SelectInput value="" onChange={(e) => {
+                const valor = e.target.value
+                if (valor === 'laiane') void transferirLaiane()
+                else void transferir(valor)
+              }}>
                 <option value="">Transferir para funcionário</option>
-                {usuariosEmpresa.items.map((u) => <option key={u.id} value={u.id}>{String(u.nome)}{u.cargo ? ` — ${String(u.cargo)}` : ''}</option>)}
+                <option value="laiane">Laiane</option>
+                {usuariosEmpresa.items.filter((u) => !/laiane/i.test(String(u.nome || ''))).map((u) => <option key={u.id} value={u.id}>{String(u.nome)}{u.cargo ? ` — ${String(u.cargo)}` : ''}</option>)}
               </SelectInput>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          <div
+            ref={listaChatRef}
+            className="flex-1 overflow-y-auto p-3 space-y-2"
+            onScroll={(e) => {
+              const el = e.currentTarget
+              noFundoRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+            }}
+          >
             {selected.roboPausado ? null : null}
             <div className="chat-wa">
-            {msgs.map((m) => (
-              <div key={m.id} className={`bolha ${m.autorId === usuario?.id ? 'sai' : 'entra'}`}>
-                <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>{textoMisto(String(m.autorNome || ''))} · {horaCurta(m.criadoEm)}</p>
-                {String(m.tipo) === 'imagem' && (m.arquivoUrl ? <img src={String(m.arquivoUrl)} alt="" className="max-h-40 rounded mt-1" /> : <p>Imagem: {String(m.texto)}</p>)}
-                {String(m.tipo) === 'audio' && (m.arquivoUrl ? <audio controls src={String(m.arquivoUrl)} className="mt-1" /> : <p>Áudio: {String(m.texto)}</p>)}
-                {String(m.tipo) === 'video' && (m.arquivoUrl ? <video controls src={String(m.arquivoUrl)} className="max-h-40 rounded mt-1" /> : <p>Vídeo: {String(m.texto)}</p>)}
-                {String(m.tipo) === 'documento' && <p>📎 {String(m.texto)}</p>}
-                {!['imagem', 'documento', 'audio', 'video'].includes(String(m.tipo)) && <p>{String(m.texto || '')}</p>}
+            {msgs.length > limiteMsgs && (
+              <button type="button" className="text-[11px] font-semibold" onClick={() => setLimiteMsgs((n) => n + 50)}>Carregar anteriores</button>
+            )}
+            {msgs.slice(-limiteMsgs).map((m, indice, listaVisivel) => {
+              const mark = deliveryMark(String(m.erpStatus || m.status || ''))
+              const minha = m.autorId === usuario?.id || Boolean(m.clientMessageId)
+              const daLeticia = m.autorId === 'leticia'
+              const apagada = Boolean(m.deletedAt)
+              const quando = asDate(m.criadoEm)
+              const dia = rotuloDiaMensagem(quando)
+              const diaAnterior = indice > 0 ? rotuloDiaMensagem(asDate(listaVisivel[indice - 1].criadoEm)) : ''
+              const statusLeticia = daLeticia ? (mark === 'sending' ? 'Gerando...' : 'Enviada') : ''
+              return (
+              <div key={m.id}>
+                {dia && dia !== diaAnterior ? <p className="text-[10px] text-center py-1" style={{ color: 'var(--code-muted)' }}>{dia}</p> : null}
+              <div className={`bolha ${minha || daLeticia ? 'sai' : 'entra'}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>{textoMisto(String(m.autorNome || ''))} · {horaMensagem(quando)}</p>
+                  <button type="button" className="text-xs" aria-label="Ações da mensagem" onClick={() => setMenuMsg(menuMsg === m.id ? null : m.id)}>⋮</button>
+                </div>
+                {menuMsg === m.id && (
+                  <div className="text-[11px] flex flex-wrap gap-2 mb-1">
+                    <button type="button" onClick={() => { setRespondendo({ id: m.id, texto: String(m.texto || '').slice(0, 140), wamid: String(m.wamid || '') }); setMenuMsg(null) }}>Responder</button>
+                    <button type="button" onClick={() => { void navigator.clipboard.writeText(String(m.texto || '')).then(() => toast.success('Copiado.')); setMenuMsg(null) }}>Copiar</button>
+                    <button type="button" onClick={() => {
+                      if (m.wamid && mark !== 'failed') {
+                        toast.error('O WhatsApp não permite alterar uma mensagem já enviada.')
+                        setMenuMsg(null)
+                        return
+                      }
+                      setEditando({ id: m.id, texto: String(m.texto || ''), clientMessageId: String(m.clientMessageId || ''), reenviar: mark === 'failed' && Boolean(m.clientMessageId) })
+                      setMenuMsg(null)
+                    }}>Editar</button>
+                    <button type="button" onClick={() => { setMenuMsg(null); if (window.confirm('Apagar esta mensagem?')) void mensagens.update(m.id, { deletedAt: new Date().toISOString() }) }}>Apagar</button>
+                  </div>
+                )}
+                {apagada ? <p>Mensagem apagada</p> : (
+                  <>
+                    {m.replyToTexto ? <p className="text-[10px] border-l-2 pl-1 mb-1">Respondendo a: {String(m.replyToTexto)}</p> : null}
+                    {String(m.tipo) === 'imagem' && (m.arquivoUrl ? <img src={String(m.arquivoUrl)} alt="" className="max-h-40 rounded mt-1" /> : <p>Imagem: {String(m.texto)}</p>)}
+                    {String(m.tipo) === 'audio' && (m.arquivoUrl ? <audio controls src={String(m.arquivoUrl)} className="mt-1" /> : <p>Áudio: {String(m.texto)}</p>)}
+                    {String(m.tipo) === 'video' && (m.arquivoUrl ? <video controls src={String(m.arquivoUrl)} className="max-h-40 rounded mt-1" /> : <p>Vídeo: {String(m.texto)}</p>)}
+                    {String(m.tipo) === 'documento' && <p>📎 {String(m.texto)}</p>}
+                    {!['imagem', 'documento', 'audio', 'video'].includes(String(m.tipo)) && <p>{String(m.texto || '')}</p>}
+                    {m.editedAt ? <p className="text-[10px]">editada no CRM</p> : null}
+                  </>
+                )}
+                {(minha || daLeticia) && !apagada && (
+                  <p className="text-[10px] text-right" style={{ color: mark === 'read' ? '#53bdeb' : mark === 'failed' ? '#b91c1c' : 'var(--code-muted)' }}>
+                    {daLeticia ? (mark === 'sending' ? '…' : '✓') : deliveryGlyph(String(m.erpStatus || m.status || ''))} {daLeticia ? statusLeticia : deliveryLabel(String(m.erpStatus || m.status || ''))}
+                  </p>
+                )}
+                {mark === 'failed' && m.erroEnvio ? <p className="text-[10px]" style={{ color: '#b91c1c' }}>{String(m.erroEnvio)}</p> : null}
+                {mark === 'failed' && m.clientMessageId && (
+                  <button type="button" className="text-[10px] font-semibold" onClick={() => void reenviar(m as any)}>Tentar novamente</button>
+                )}
               </div>
-            ))}
+              </div>
+              )
+            })}
             {msgs.length === 0 && <p className="text-sm text-center" style={{ color: 'var(--code-muted)' }}>Nenhuma mensagem ainda.</p>}
             </div>
           </div>
           <div className="p-2 border-t shrink-0" style={{ borderColor: 'var(--code-border)', background: 'var(--code-surface)' }}>
-            <div className="flex gap-2">
+            {emojis && <EmojiPicker onPick={(emoji) => setTexto((t) => `${t}${emoji}`)} onClose={() => setEmojis(false)} />}
+            {respondendo && (
+              <div className="mb-2 text-xs flex items-start justify-between gap-2">
+                <p>Respondendo a: {respondendo.texto}</p>
+                <button type="button" aria-label="Cancelar resposta" onClick={() => setRespondendo(null)}>X</button>
+              </div>
+            )}
+            {editando && (
+              <div className="mb-2 text-xs">
+                <p className="mb-1">Editando mensagem...</p>
+                <input className="nexus-input w-full text-xs mb-2" value={editando.texto} onChange={(e) => setEditando({ ...editando, texto: e.target.value })} />
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setEditando(null)}>Cancelar</button>
+                  <button type="button" className="font-semibold" onClick={() => {
+                    const atual = editando
+                    setEditando(null)
+                    void mensagens.update(atual.id, { texto: atual.texto, editedAt: new Date().toISOString() })
+                    if (atual.reenviar && atual.clientMessageId && selected?.id) void entregarTexto(selected.id, atual.texto, atual.clientMessageId, atual.id)
+                  }}>Salvar</button>
+                </div>
+              </div>
+            )}
+            {midia && (
+              <div className="mb-2 rounded-lg p-2 text-xs" style={{ border: '1px solid var(--code-border)' }}>
+                {midia.file.type.startsWith('image/') ? <img src={midia.url} alt="" className="max-h-32 rounded mb-2" /> : null}
+                <p>{midia.file.name} · {(midia.file.size / 1024).toFixed(0)} KB · {midia.file.type || 'arquivo'}</p>
+                <input className="nexus-input w-full text-xs mb-2" value={midia.legenda} onChange={(e) => setMidia({ ...midia, legenda: e.target.value })} placeholder="Legenda" />
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => { URL.revokeObjectURL(midia.url); setMidia(null) }}>Cancelar</button>
+                  <button type="button" className="font-semibold" onClick={() => { const atual = midia; URL.revokeObjectURL(atual.url); setMidia(null); void enviarMidia(atual.file, atual.legenda) }}>Enviar</button>
+                </div>
+                <p style={{ color: 'var(--code-muted)' }}>Enter envia. ESC cancela. O arquivo só sai neste clique.</p>
+              </div>
+            )}
+            {audioPreview && (
+              <div className="mb-2 rounded-lg p-2 text-xs" style={{ border: '1px solid var(--code-border)' }}>
+                <audio controls src={audioPreview.url} />
+                <div className="flex gap-2 mt-1">
+                  <button type="button" onClick={() => { URL.revokeObjectURL(audioPreview.url); setAudioPreview(null) }}>Cancelar</button>
+                  <button type="button" className="font-semibold" onClick={() => { const file = audioPreview.file; URL.revokeObjectURL(audioPreview.url); setAudioPreview(null); void enviarAudio(file) }}>Enviar</button>
+                </div>
+                <p style={{ color: 'var(--code-muted)' }}>Enter envia o áudio. ESC cancela.</p>
+              </div>
+            )}
+            {gravando && (
+              <p className="text-xs mb-1 flex items-center gap-2">
+                Gravando {String(Math.floor(gravandoSeg / 60)).padStart(2, '0')}:{String(gravandoSeg % 60).padStart(2, '0')}
+                <button type="button" className="font-semibold" onClick={() => {
+                  const rec = recorderRef.current
+                  if (!rec) return
+                  if (rec.state === 'recording') {
+                    rec.pause()
+                    pausadoRef.current = true
+                    setAudioPausado(true)
+                  } else if (rec.state === 'paused') {
+                    rec.resume()
+                    pausadoRef.current = false
+                    setAudioPausado(false)
+                  }
+                }}>{audioPausado ? 'Continuar' : 'Pausar'}</button>
+                <button type="button" className="font-semibold" onClick={() => { enviarAoPararRef.current = false; cancelarGravacaoRef.current = false; recorderRef.current?.stop() }}>Parar</button>
+              </p>
+            )}
+            <div className="flex items-end gap-2">
+              <button type="button" className="text-lg px-1" aria-label="Emoji" onClick={() => { setMenuAnexo(false); setEmojis((v) => !v) }}>😀</button>
+              <div className="relative">
+                <button type="button" className="text-lg px-1" aria-label="Anexar" onClick={() => { setEmojis(false); setMenuAnexo((v) => !v) }}>📎</button>
+                {menuAnexo && (
+                  <div className="absolute bottom-8 left-0 z-20 rounded-lg p-1 text-xs shadow" style={{ background: 'var(--code-surface)', border: '1px solid var(--code-border)' }}>
+                    <button type="button" className="block w-full text-left px-2 py-1" onClick={() => { setMenuAnexo(false); imagemRef.current?.click() }}>Imagem</button>
+                    <button type="button" className="block w-full text-left px-2 py-1" onClick={() => { setMenuAnexo(false); documentoRef.current?.click() }}>Documento</button>
+                    <button type="button" className="block w-full text-left px-2 py-1" onClick={() => { setMenuAnexo(false); planilhaRef.current?.click() }}>Planilha</button>
+                    <button type="button" className="block w-full text-left px-2 py-1" onClick={() => { setMenuAnexo(false); videoRef.current?.click() }}>Vídeo</button>
+                  </div>
+                )}
+                <input ref={imagemRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) setMidia({ file, url: URL.createObjectURL(file), legenda: '' }) }} />
+                <input ref={documentoRef} type="file" accept="application/pdf,.pdf,.doc,.docx,.txt" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) setMidia({ file, url: URL.createObjectURL(file), legenda: '' }) }} />
+                <input ref={planilhaRef} type="file" accept=".xls,.xlsx,.csv,text/csv" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) setMidia({ file, url: URL.createObjectURL(file), legenda: '' }) }} />
+                <input ref={videoRef} type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) setMidia({ file, url: URL.createObjectURL(file), legenda: '' }) }} />
+              </div>
+              <button type="button" className="text-lg px-1" aria-label="Áudio" style={{ color: gravando ? 'var(--code-orange)' : 'inherit' }} onClick={() => void gravarAudio()}>🎤</button>
               <TextArea
                 rows={2}
                 value={texto}
@@ -710,29 +1245,12 @@ export default function ChatCenter() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
-                    void send()
+                    if (!enviando) void send()
                   }
                 }}
                 placeholder="Digite uma mensagem..."
               />
-              <PrimaryButton onClick={() => void send()}>Enviar</PrimaryButton>
-            </div>
-            <div className="flex flex-wrap gap-3 items-center text-[11px] mt-1">
-              <label className="cursor-pointer font-semibold" style={{ color: 'var(--code-orange)' }}>
-                Imagem
-                <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => e.target.files?.[0] && attach(e.target.files[0])} />
-              </label>
-              <label className="cursor-pointer font-semibold">
-                Documento
-                <input type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => e.target.files?.[0] && attach(e.target.files[0])} />
-              </label>
-              <label className="cursor-pointer font-semibold">
-                Vídeo
-                <input type="file" accept="video/mp4,video/webm,video/quicktime,.mp4,.mov" className="hidden" onChange={(e) => e.target.files?.[0] && attach(e.target.files[0])} />
-              </label>
-              <button type="button" className="font-semibold" style={{ color: gravando ? 'var(--code-orange)' : 'inherit' }} onClick={() => void gravarAudio()}>
-                {gravando ? 'Parar e enviar áudio' : 'Áudio'}
-              </button>
+              <PrimaryButton disabled={!texto.trim() && !audioPreview && !gravando && !midia} onClick={() => void send()}>Enviar</PrimaryButton>
             </div>
           </div>
         </>

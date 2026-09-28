@@ -61,14 +61,42 @@ export function ImportBasePanel(props: {
           CSV ou XLSX. Uma ou várias planilhas. A planilha é origem — o registro operacional é o PERSON_LEAD.
         </p>
       </div>
-      <input
-        type="file"
-        multiple
-        accept=".csv,text/csv,.txt,.xlsx,.xls,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.oasis.opendocument.spreadsheet"
-        onChange={(e) => {
-          if (e.target.files?.length) void onFiles(e.target.files)
+      <div
+        className="rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 p-6 text-center"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault()
+          if (e.dataTransfer.files?.length) void onFiles(e.dataTransfer.files)
         }}
-      />
+      >
+        <p className="text-base font-bold text-slate-800 dark:text-white">Importar planilha</p>
+        <p className="text-sm text-slate-500 mt-2">Arraste sua planilha aqui</p>
+        <p className="text-xs text-slate-400 my-2">ou</p>
+        <label className="inline-block px-4 py-2 rounded-lg bg-nexus-orange text-white text-sm font-semibold cursor-pointer">
+          Selecionar arquivo
+          <input
+            type="file"
+            multiple
+            className="hidden"
+            accept=".csv,text/csv,.txt,.xlsx,.xls,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.oasis.opendocument.spreadsheet"
+            onChange={(e) => {
+              if (e.target.files?.length) void onFiles(e.target.files)
+              e.target.value = ''
+            }}
+          />
+        </label>
+        <p className="text-xs text-slate-500 mt-3">CSV • XLS • XLSX</p>
+      </div>
+      {fileName && (
+        <div className="text-sm text-slate-700 dark:text-slate-200 space-y-1">
+          <div>Arquivo: <b>{fileName}</b></div>
+          <div>Registros: <b>{rows.length}</b></div>
+          <div>Colunas encontradas: <b>{headers.join(', ') || '—'}</b></div>
+          <div>Válidos: <b>{Math.max(0, stats.total - stats.incompletos)}</b></div>
+          <div>Duplicados: <b>{stats.duplicados}</b></div>
+          <div>Inválidos: <b>{stats.incompletos}</b></div>
+        </div>
+      )}
       {notice && <p className="text-xs text-amber-700">{notice}</p>}
       {headers.length > 0 && (
         <>
@@ -158,7 +186,7 @@ export function ImportBasePanel(props: {
             }
             className="px-4 py-2.5 bg-nexus-orange text-white rounded-lg text-sm font-semibold disabled:opacity-60"
           >
-            {autoEnrich ? 'Importar e enriquecer base' : 'Iniciar processamento'}
+            {autoEnrich ? 'Importar e enriquecer base' : 'Iniciar análise'}
           </button>
         </>
       )}

@@ -227,6 +227,7 @@ export default function Remarketing() {
 
   async function executar(ids: string[], mensagemPronta?: string) {
     if (!ids.length) return toast.error('Selecione ao menos um contato.')
+    if (!window.confirm(`Você está prestes a iniciar um disparo para ${ids.length} contatos.`)) return
     if (pararRef.current || fase === 'pausado') return toast.error('Robô pausado. Dê play para disparar.')
     if (!regraAtiva) {
       toast.error('Nenhuma regra de remarketing está ativa. Nenhuma mensagem foi enviada.')

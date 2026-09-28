@@ -48,6 +48,7 @@ export interface NxErpInboundMessage {
   templateId: string
   produto: string
   status: NxErpStatus | null
+  replyToWamid: string
 }
 
 export function inboundIdempotencyKey(body: Record<string, unknown>): string {
@@ -62,7 +63,7 @@ export function mapInboundMessage(body: Record<string, unknown>): NxErpInboundMe
     phone,
     whatsapp: String(body.whatsapp || body.telefone || body.phone || '').trim(),
     nome: String(body.nome || body.nome_contato || '').trim(),
-    message: String(body.mensagem || body.message || body.texto || body.text || '').trim(),
+    message: String(body.mensagem || body.message || body.texto || body.text || body.button_text || '').trim(),
     messageType: String(body.tipo || body.messageType || 'texto').trim() || 'texto',
     timestamp: String(body.timestamp || body.data_hora || body.dataHora || '').trim(),
     wamid: String(body.wamid || '').trim(),
@@ -76,6 +77,7 @@ export function mapInboundMessage(body: Record<string, unknown>): NxErpInboundMe
     templateId: String(body.template || body.templateId || '').trim(),
     produto: String(body.produto || '').trim(),
     status: nxErpStatus(body.status),
+    replyToWamid: String(body.replyToWamid || body.reply_to_wamid || '').trim(),
   }
 }
 

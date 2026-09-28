@@ -3,12 +3,12 @@
  * Não inventa HTTP: a Function/webhook do ERP deve chamar esta função no backend
  * ou gravar em empresas/{id}/erpInbound e este handler processa o payload.
  */
-import { addDoc, collection, doc, getDoc, getDocs, increment, query, serverTimestamp, updateDoc, where } from 'firebase/firestore'
+import { addDoc, collection, doc, getDoc, getDocs, increment, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore'
 import { db } from '../firebase'
 import { garantirConversaFila } from './garantirConversaFila'
 import { digits } from './nexusCore'
 import { writeAudit } from './audit'
-import { tickChatRobot } from '../modules/chat-robot/chatRobot'
+import { etapaDe, leticiaReply, stepDe } from '../modules/chat-robot/leticiaReception'
 import { resolveInboundOrigin } from './inboundOrigin'
 
 export type InboundErpPayload = {
@@ -34,6 +34,7 @@ export type InboundErpPayload = {
   origin?: string
   direction?: string
   status?: string
+  replyToWamid?: string
 }
 
 export { resolveInboundOrigin } from './inboundOrigin'
@@ -103,8 +104,8 @@ export async function handleInboundErpMessage(
     produto: payload.produto,
   })
 
-  const texto = String(payload.message || '').trim()
-  if (texto) {
+    const texto = String(payload.message || '').trim()
+    if (texto) {
     const chave = String(payload.wamid || payload.messageId || '').trim()
     if (chave) {
       const dup = await getDocs(
@@ -113,6 +114,14 @@ export async function handleInboundErpMessage(
       if (!dup.empty) {
         return { conversaId: fila.conversaId, clienteId, created }
       }
+    }
+    let replyToTexto = ''
+    const citado = String(payload.replyToWamid || '').trim()
+    if (citado) {
+      const origem = await getDocs(
+        query(collection(db, 'empresas', empresaId, 'mensagens'), where('wamid', '==', citado))
+      )
+      replyToTexto = String(origem.docs[0]?.data()?.texto || '').slice(0, 180)
     }
     await addDoc(collection(db, 'empresas', empresaId, 'mensagens'), {
       conversaId: fila.conversaId,
@@ -127,6 +136,8 @@ export async function handleInboundErpMessage(
       origin: payload.origin || 'whatsapp',
       messageId: chave || null,
       wamid: payload.wamid || null,
+      replyToMessageId: citado || null,
+      replyToTexto: replyToTexto || null,
       templateId: payload.templateId || null,
       erpCampaignId: payload.erpCampaignId || null,
       campaignId: payload.campaignId || null,
@@ -141,31 +152,61 @@ export async function handleInboundErpMessage(
       criadoEm: serverTimestamp(),
     })
     const convSnap = await getDoc(doc(db, 'empresas', empresaId, 'conversas', fila.conversaId))
-    const conv = convSnap.data() || {}
+    const conv = (convSnap.data() || {}) as ConversaMemoria
     const st = String(conv.status || '')
     const keepStatus = st === 'em_atendimento' || st === 'aguardando_cliente' || st === 'aguardando_funcionario'
-    const tick = tickChatRobot({
-      state: String(conv.robotState || 'NEW'),
-      inboundText: texto,
-      channelConnected: false,
-      robotEnabled: false,
-      produto: String(conv.produto || conv.robotProduto || ''),
-      operacao: String(conv.operacao || conv.robotOperacao || ''),
+    const anterior = lerEstado(fila.conversaId, { ...conv, id: fila.conversaId })
+    const reception = anterior.paused
+      ? null
+      : leticiaReply({
+          paused: false,
+          welcomed: anterior.welcomed,
+          step: anterior.step,
+          text: texto,
+        })
+    const welcomeSentAt = reception?.welcomed ? (anterior.welcomeSentAt || new Date().toISOString()) : anterior.welcomeSentAt
+    const passo = reception?.step || anterior.step || 'menu'
+    const pausou = Boolean(reception?.pause) || anterior.paused
+    if (reception?.reply && chave) {
+      await setDoc(doc(db, 'empresas', empresaId, 'mensagens', `leticia-${chave.replace(/\//g, '_').slice(0, 700)}`), {
+        empresaId,
+        conversaId: fila.conversaId,
+        clienteId,
+        autorNome: 'Letícia',
+        autorId: 'leticia',
+        texto: reception.reply,
+        tipo: 'texto',
+        status: 'sent',
+        direction: 'OUTBOUND',
+        source: 'LETICIA_LOCAL',
+        processedInboundId: chave,
+        criadoEm: serverTimestamp(),
+      })
+    }
+    estadoConversa.set(fila.conversaId, {
+      step: pausou ? 'human' : passo,
+      welcomed: reception?.welcomed ?? anterior.welcomed,
+      paused: pausou,
+      welcomeSentAt,
     })
     await updateDoc(doc(db, 'empresas', empresaId, 'conversas', fila.conversaId), {
-      lastMessage: texto.slice(0, 240),
+      lastMessage: (reception?.reply || texto).slice(0, 240),
       lastMessageAt: serverTimestamp(),
       ...(fila.criada
-        ? { unreadCount: 1 }
+        ? { unreadCount: 1, naoLidas: 1 }
         : { naoLidas: increment(1), unreadCount: increment(1) }),
       conversationStatus: 'RESPONDIDO',
-      ...(keepStatus ? {} : { status: tick.pauseRobot ? 'aguardando_funcionario' : 'aguardando_triagem' }),
-      robotState: tick.nextState,
-      robotPaused: tick.pauseRobot || st === 'em_atendimento',
-      robotProduto: tick.produto || conv.robotProduto || null,
-      robotOperacao: tick.operacao || conv.robotOperacao || null,
-      requiredDocuments: tick.requiredDocuments || conv.requiredDocuments || null,
-      requisitosPendentes: tick.pendingConfig || false,
+      ...(keepStatus ? {} : { status: pausou ? 'aguardando_funcionario' : 'aguardando_triagem' }),
+      robotState: pausou ? 'HUMAN_ACTIVE' : 'BOT_ACTIVE',
+      robotPaused: pausou,
+      roboPausado: pausou,
+      botAtivo: !pausou,
+      atendimentoHumano: pausou,
+      botWelcomeSent: reception?.welcomed ?? anterior.welcomed,
+      welcomeSentAt: welcomeSentAt || null,
+      leticiaStep: pausou ? 'human' : passo,
+      etapa: etapaDe(pausou ? 'human' : passo),
+      assignedTo: reception?.transferTo || conv.assignedTo || null,
       origemLead,
       atualizadoEm: serverTimestamp(),
     })
@@ -181,6 +222,221 @@ export async function handleInboundErpMessage(
   })
 
   return { conversaId: fila.conversaId, clienteId, created }
+}
+
+const jaGravadas = new Set<string>()
+const estadoConversa = new Map<string, { step: string; welcomed: boolean; paused: boolean; welcomeSentAt: string }>()
+
+type ConversaMemoria = {
+  id: string
+  clienteId?: string
+  canal?: string
+  status?: string
+  statusAtendimento?: string
+  roboPausado?: boolean
+  robotPaused?: boolean
+  robotState?: string
+  botWelcomeSent?: boolean
+  leticiaStep?: string
+  etapa?: string
+  botAtivo?: boolean
+  atendimentoHumano?: boolean
+  welcomeSentAt?: string
+  assignedTo?: string
+}
+
+type MemoriaChat = {
+  clientes: { id: string; telefone?: string; whatsapp?: string; telefoneNormalizado?: string }[]
+  conversas: ConversaMemoria[]
+  mensagens: { id?: string; wamid?: string; messageId?: string; texto?: string; processedByLeticia?: boolean }[]
+  conversaAbertaId?: string
+}
+
+function humanoAtivo(conversa?: ConversaMemoria): boolean {
+  return conversa?.roboPausado === true
+    || conversa?.robotPaused === true
+    || conversa?.botAtivo === false
+    || conversa?.atendimentoHumano === true
+    || String(conversa?.statusAtendimento || '') === 'HUMANO'
+    || String(conversa?.robotState || '') === 'HUMAN_ACTIVE'
+    || conversa?.leticiaStep === 'human'
+    || conversa?.etapa === 'HUMANO'
+}
+
+function lerEstado(conversaId: string, conversa?: ConversaMemoria) {
+  if (humanoAtivo(conversa)) {
+    const parado = { step: 'human', welcomed: true, paused: true, welcomeSentAt: String(conversa?.welcomeSentAt || '') }
+    estadoConversa.set(conversaId, parado)
+    return parado
+  }
+  const cache = estadoConversa.get(conversaId)
+  if (cache) return cache
+  const welcomed = conversa?.botWelcomeSent === true || Boolean(conversa?.welcomeSentAt)
+  const estado = {
+    step: stepDe(String(conversa?.leticiaStep || ''), String(conversa?.etapa || '')),
+    welcomed,
+    paused: false,
+    welcomeSentAt: String(conversa?.welcomeSentAt || ''),
+  }
+  estadoConversa.set(conversaId, estado)
+  return estado
+}
+
+/** Grava a mensagem do cliente usando a conversa já aberta no Chat, sem varrer o Firestore. */
+export async function gravarMensagemRecebida(
+  empresaId: string,
+  payload: InboundErpPayload,
+  memoria: MemoriaChat,
+): Promise<void> {
+  const texto = String(payload.message || '').trim()
+  const chave = String(payload.wamid || payload.messageId || '').trim()
+  if (!texto || !chave) return
+  const id = chave.replace(/\//g, '_').slice(0, 700)
+  if (jaGravadas.has(id) || memoria.mensagens.some((m) => m.id === id || m.wamid === chave || m.messageId === chave)) return
+
+  const tel = digits(payload.whatsapp || payload.phone || '')
+  if (tel.length < 10) throw new Error('Inbound sem telefone válido')
+  const origemLead = resolveInboundOrigin(payload)
+  let clienteId = memoria.clientes.find((c) => {
+    const n = digits(c.whatsapp || c.telefone || c.telefoneNormalizado || '')
+    return Boolean(n) && n === tel
+  })?.id || ''
+  if (!clienteId) {
+    const ref = await addDoc(collection(db, 'empresas', empresaId, 'clientes'), {
+      nome: String(payload.nome || '').trim() || tel,
+      telefone: tel,
+      telefoneNormalizado: tel,
+      whatsapp: tel,
+      origemLead,
+      origem: origemLead,
+      fonte: 'whatsapp',
+      pipelineStage: 'novo_lead',
+      status: 'NOVO LEAD',
+      criadoEm: serverTimestamp(),
+      atualizadoEm: serverTimestamp(),
+    })
+    clienteId = ref.id
+  }
+
+  const conversa = memoria.conversas.find((c) => c.canal !== 'interno' && c.clienteId === clienteId)
+  let conversaId = conversa?.id || ''
+  let criada = false
+  if (!conversaId) {
+    const fila = await garantirConversaFila({
+      empresaId,
+      clienteId,
+      titulo: payload.nome || tel,
+      telefone: tel,
+      origemLead,
+      fonte: 'whatsapp',
+    })
+    conversaId = fila.conversaId
+    criada = fila.criada
+  }
+
+  const citado = String(payload.replyToWamid || '').trim()
+  const replyToTexto = citado
+    ? String(memoria.mensagens.find((m) => m.wamid === citado || m.messageId === citado)?.texto || '').slice(0, 180)
+    : ''
+  await setDoc(doc(db, 'empresas', empresaId, 'mensagens', id), {
+    conversaId,
+    clienteId,
+    autorId: 'cliente',
+    autorNome: payload.nome || 'Cliente',
+    texto,
+    tipo: payload.messageType || 'texto',
+    status: 'recebida',
+    direction: 'INBOUND',
+    source: 'whatsapp',
+    origin: payload.origin || 'whatsapp',
+    messageId: chave,
+    wamid: chave,
+    replyToMessageId: citado || null,
+    replyToTexto: replyToTexto || null,
+    timestampErp: payload.timestamp || null,
+    origemLead,
+    criadoEm: serverTimestamp(),
+  })
+  jaGravadas.add(id)
+
+  const st = String(conversa?.status || '')
+  const keepStatus = st === 'em_atendimento' || st === 'aguardando_cliente' || st === 'aguardando_funcionario'
+  const anterior = lerEstado(conversaId, conversa)
+  const reception = anterior.paused
+    ? null
+    : leticiaReply({
+        paused: false,
+        welcomed: anterior.welcomed,
+        step: anterior.step,
+        text: texto,
+      })
+  const welcomeSentAt = reception?.welcomed
+    ? (anterior.welcomeSentAt || new Date().toISOString())
+    : anterior.welcomeSentAt
+  const passo = reception?.step || anterior.step || 'menu'
+  const pausou = Boolean(reception?.pause) || anterior.paused
+  if (reception?.reply) {
+    await setDoc(doc(db, 'empresas', empresaId, 'mensagens', `leticia-${id}`), {
+      empresaId,
+      conversaId,
+      clienteId,
+      autorNome: 'Letícia',
+      autorId: 'leticia',
+      texto: reception.reply,
+      tipo: 'texto',
+      status: 'sent',
+      direction: 'OUTBOUND',
+      source: 'LETICIA_LOCAL',
+      replyToMessageId: id,
+      processedInboundId: chave,
+      criadoEm: serverTimestamp(),
+    })
+  }
+  await updateDoc(doc(db, 'empresas', empresaId, 'mensagens', id), { processedByLeticia: true })
+  const proximo = {
+    step: pausou ? 'human' : passo,
+    welcomed: reception?.welcomed ?? anterior.welcomed,
+    paused: pausou,
+    welcomeSentAt,
+  }
+  estadoConversa.set(conversaId, proximo)
+  if (conversa) {
+    conversa.leticiaStep = proximo.step
+    conversa.etapa = etapaDe(proximo.step)
+    conversa.botWelcomeSent = proximo.welcomed
+    conversa.welcomeSentAt = welcomeSentAt
+    conversa.botAtivo = !pausou
+    conversa.atendimentoHumano = pausou
+    conversa.roboPausado = pausou
+    conversa.robotPaused = pausou
+    conversa.robotState = pausou ? 'HUMAN_ACTIVE' : 'BOT_ACTIVE'
+    if (reception?.transferTo) conversa.assignedTo = reception.transferTo
+  }
+  memoria.mensagens.push({ id, wamid: chave, messageId: chave, texto, processedByLeticia: true })
+  const aberta = memoria.conversaAbertaId === conversaId
+  await updateDoc(doc(db, 'empresas', empresaId, 'conversas', conversaId), {
+    lastMessage: (reception?.reply || texto).slice(0, 240),
+    lastMessageAt: serverTimestamp(),
+    ...(aberta
+      ? { naoLidas: 0, unreadCount: 0 }
+      : criada
+        ? { unreadCount: 1, naoLidas: 1 }
+        : { naoLidas: increment(1), unreadCount: increment(1) }),
+    conversationStatus: 'RESPONDIDO',
+    ...(keepStatus ? {} : { status: pausou ? 'aguardando_funcionario' : 'aguardando_triagem' }),
+    robotState: pausou ? 'HUMAN_ACTIVE' : 'BOT_ACTIVE',
+    robotPaused: pausou,
+    roboPausado: pausou,
+    botAtivo: !pausou,
+    atendimentoHumano: pausou,
+    botWelcomeSent: proximo.welcomed,
+    welcomeSentAt: welcomeSentAt || null,
+    leticiaStep: proximo.step,
+    etapa: etapaDe(proximo.step),
+    assignedTo: reception?.transferTo || conversa?.assignedTo || null,
+    origemLead,
+    atualizadoEm: serverTimestamp(),
+  })
 }
 
 /** Processa inbox empresas/{id}/erpInbound com processado!=true */

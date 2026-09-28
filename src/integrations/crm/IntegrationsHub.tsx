@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { GhostButton } from '../../components/nexus/kit'
 import { NxErpStatusPanel } from './NxErpStatusPanel'
+import { MetaConnectionPanel } from './MetaConnectionPanel'
 import {
   probeCrm,
   probeLeadsMonitor,
@@ -95,6 +96,7 @@ export function IntegrationsHub({ empresaId }: { empresaId?: string | null }) {
         />
       </div>
       <NxErpStatusPanel empresaId={empresaId} />
+      <MetaConnectionPanel />
       <div className="grid md:grid-cols-2 gap-3">
         <Card
           state={disparo}

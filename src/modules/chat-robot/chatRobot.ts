@@ -31,7 +31,6 @@ const HUMAN_HINT = /humano|atendente|falar com algu[eé]m|n[aã]o quero rob[oô]
 
 export function isHumanHandoffText(text: string): boolean {
   const t = String(text || '').trim()
-  if (t === '1') return true
   return HUMAN_HINT.test(t)
 }
 

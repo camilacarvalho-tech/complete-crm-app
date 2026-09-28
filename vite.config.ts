@@ -2,12 +2,14 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { nxErpInboundPlugin } from './vite.nxErpInbound'
+import { metaDiagnosePlugin } from './vite.metaDiagnose'
 
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
     nxErpInboundPlugin(),
+    metaDiagnosePlugin(),
   ],
   server: {
     port: 5474,

@@ -44,6 +44,10 @@ export function sanitizeErpLog(value: unknown): unknown {
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (k === 'audio_base64' || k === 'midia_base64') {
+        out[k] = v
+        continue
+      }
       if (SECRET_KEY.test(k) || SECRET_KEY.test(String(v))) {
         out[k] = '[REDACTED]'
         continue
