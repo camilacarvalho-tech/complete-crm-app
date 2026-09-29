@@ -9,31 +9,26 @@ import { NexusModal } from '../components/nexus/Modal'
 import { useToast } from '../components/ui/Toast'
 import { writeAudit } from '../lib/audit'
 import { inferCategoriaDocumento } from '../lib/documentCategoria'
-import { origemMarca, origemPrincipalDe, origemTexto } from '../lib/origemLead'
+import { origemPrincipalDe, origemTexto } from '../lib/origemLead'
 import { produtoLabel } from '../modules/leads-monitor/catalog/produtosMonitor'
 import { drainErpInbound } from '../lib/inboundErpMessage'
 import { drainErpToCrmEvents } from '../integrations/events/eventHandlers'
 import { drainNxErpHttpInbox, sendReplyViaNxErp } from '../integrations/erp/drainNxErpInbox'
 import { deliveryGlyph, deliveryLabel, deliveryMark, newClientMessageId, phoneError } from '../integrations/erp/chatOutbound'
 import { loadNxErpCrmConfig } from '../integrations/erp/nxErpCrmClient'
+import { conversaFinalizada, instanteChat, naoLidasDe, ordenarConversas, teclaEnviaMensagem } from '../lib/chatLista'
+import { camposConversa, leticiaReply, leticiaTravada, LETICIA_MENU_BOTAO, LETICIA_MENU_TITULO, stepDoBot } from '../modules/chat-robot/leticiaReception'
 import { formatMessageClock, horaMensagem, rotuloDiaMensagem } from '../lib/messageClock'
 import { gravacaoParaOgg } from '../lib/oggOpus'
 import { textoMisto } from '../lib/uiPt'
 import { EmojiPicker } from '../components/chat/EmojiPicker'
 import { ClienteLink } from '../components/nexus/ClienteLink'
-import type { NexusCliente } from '../types/nexus'
 import { digits, maskCpf, maskPhone } from '../lib/format'
+import { mascaraCpf, mascaraTelefone } from '../modules/digitacao/producaoEsteira'
 import './chatInterno.css'
 
-const FILA = [
-  { id: 'todas', label: 'Todas' },
-  { id: 'novos', label: 'Novos' },
-  { id: 'aguardando', label: 'Aguardando' },
-  { id: 'em_atendimento', label: 'Em atendimento' },
-  { id: 'aguardando_cliente', label: 'Aguardando cliente' },
-  { id: 'documentacao', label: 'Documentação' },
-  { id: 'proposta', label: 'Proposta' },
-  { id: 'contrato', label: 'Contrato' },
+const VISTA = [
+  { id: 'conversas', label: 'Conversas' },
   { id: 'finalizados', label: 'Finalizados' },
 ]
 
@@ -113,19 +108,6 @@ function statusAtendimentoLabel(status?: string) {
   return { label: mapa[String(status || '')] || 'Novos', color: 'var(--code-orange)' }
 }
 
-function slotFila(c: { status?: unknown }, cli?: NexusCliente): string {
-  const st = String(c.status || '')
-  const stage = String(cli?.pipelineStage || '')
-  if (st === 'finalizado') return 'finalizados'
-  if (st === 'aguardando_cliente') return 'aguardando_cliente'
-  if (stage === 'contrato' || st === 'contrato') return 'contrato'
-  if (stage === 'proposta' || st === 'proposta') return 'proposta'
-  if (stage === 'documentacao' || st === 'documentacao') return 'documentacao'
-  if (st === 'em_atendimento') return 'em_atendimento'
-  if (st === 'aguardando_funcionario' || st === 'aguardando_humano') return 'aguardando'
-  return 'novos'
-}
-
 export default function ChatCenter() {
   const { usuario } = useAuth()
   const toast = useToast()
@@ -133,16 +115,11 @@ export default function ChatCenter() {
   const [params, setParams] = useSearchParams()
   const clientePref = params.get('cliente')
   const modalidade = params.get('modalidade')
-  const [filtro, setFiltro] = useState(params.get('fila') || 'todas')
-  const [filtrosAbertos, setFiltrosAbertos] = useState(false)
-  const [origemF, setOrigemF] = useState('')
-  const [campanhaF, setCampanhaF] = useState('')
-  const [fonteF, setFonteF] = useState('')
-  const [estadoF, setEstadoF] = useState('')
-  const [cidadeF, setCidadeF] = useState('')
-  const [segmentoF, setSegmentoF] = useState('')
-  const [produtoF, setProdutoF] = useState('')
-  const [respF, setRespF] = useState('')
+  const vistaInicial = params.get('fila')
+  const [filtro, setFiltro] = useState(VISTA.some((v) => v.id === vistaInicial) ? String(vistaInicial) : 'conversas')
+  useEffect(() => {
+    if (!VISTA.some((v) => v.id === filtro)) setFiltro('conversas')
+  }, [filtro])
   const [texto, setTexto] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [emojis, setEmojis] = useState(false)
@@ -150,6 +127,8 @@ export default function ChatCenter() {
   const [audioPreview, setAudioPreview] = useState<{ url: string; file: File } | null>(null)
   const [gravandoSeg, setGravandoSeg] = useState(0)
   const [limiteMsgs, setLimiteMsgs] = useState(50)
+  const [longeDoFim, setLongeDoFim] = useState(false)
+  const [midiaFalhou, setMidiaFalhou] = useState<Record<string, boolean>>({})
   const [gravando, setGravando] = useState(false)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const enviarAoPararRef = useRef(false)
@@ -212,55 +191,45 @@ export default function ChatCenter() {
 
   const externas = useMemo(() => conversas.items.filter((c) => c.canal !== 'interno'), [conversas.items])
 
-  useEffect(() => {
-    if (conversas.loading || sessionStorage.getItem('nexus-chat-so-camila')) return
-    const falsas = externas.filter((c) => {
-      const cli = clientes.items.find((x) => x.id === c.clienteId)
-      return !/camila/i.test(`${c.titulo || ''} ${cli?.nome || ''}`)
-    })
-    sessionStorage.setItem('nexus-chat-so-camila', '1')
-    if (falsas.length) void Promise.all(falsas.map((c) => conversas.remove(c.id)))
-  }, [conversas.loading, externas, clientes.items, conversas.remove])
-
   const contagem = useMemo(() => {
-    const map: Record<string, number> = { todas: 0 }
-    for (const f of FILA) map[f.id] = 0
+    const map = { conversas: 0, finalizados: 0 }
     for (const c of externas) {
-      const cli = clientes.items.find((x) => x.id === c.clienteId)
-      const slot = slotFila(c, cli)
-      map[slot] = (map[slot] || 0) + 1
-      if (slot !== 'finalizados') map.todas += 1
+      if (conversaFinalizada(c)) map.finalizados += 1
+      else map.conversas += 1
     }
     return map
-  }, [externas, clientes.items])
+  }, [externas])
+
+  const ultimaMensagem = useMemo(() => {
+    const map = new Map<string, { texto: string; em: number }>()
+    for (const m of mensagens.items) {
+      const id = String(m.conversaId || '')
+      if (!id) continue
+      const em = instanteChat(m.criadoEm)
+      const prev = map.get(id)
+      if (!prev || em >= prev.em) map.set(id, { texto: String(m.texto || m.tipo || ''), em })
+    }
+    return map
+  }, [mensagens.items])
 
   const lista = useMemo(() => {
     const q = busca.toLowerCase()
-    return externas
+    const filtradas = externas
       .filter((c) => {
         const cli = clientes.items.find((x) => x.id === c.clienteId)
-        const slot = slotFila(c, cli)
-        if (filtro === 'todas' && slot === 'finalizados') return false
-        if (filtro !== 'todas' && slot !== filtro) return false
-        const orig = origemPrincipalDe(cli || { origemLead: c.origemLead })
-        if (origemF && orig !== origemF) return false
-        if (campanhaF && !String(cli?.campanhaNome || cli?.campanha || c.campanhaNome || '').toLowerCase().includes(campanhaF.toLowerCase())) return false
-        if (fonteF && !String(cli?.fonte || cli?.fontePesquisa || '').toLowerCase().includes(fonteF.toLowerCase())) return false
-        if (estadoF && String(cli?.estado || c.estado || '').toLowerCase() !== estadoF.toLowerCase()) return false
-        if (cidadeF && !String(cli?.cidade || c.cidade || '').toLowerCase().includes(cidadeF.toLowerCase())) return false
-        if (segmentoF && !String(cli?.modalidade || '').toLowerCase().includes(segmentoF.toLowerCase())) return false
-        if (produtoF && !String(cli?.produto || cli?.modalidade || '').toLowerCase().includes(produtoF.toLowerCase())) return false
-        if (respF && String(c.assignedToId || '') !== respF) return false
-        if (clientePref && c.clienteId !== clientePref) return false
+        const aberta = c.id === (params.get('conversa') || '')
+        const finalizada = conversaFinalizada(c)
+        if (!aberta && filtro === 'conversas' && finalizada) return false
+        if (!aberta && filtro === 'finalizados' && !finalizada) return false
         if (q) {
           const blob = `${c.titulo} ${c.lastMessage} ${c.assignedTo}`.toLowerCase()
-          const extra = `${cli?.nome} ${cli?.telefone} ${cli?.whatsapp} ${cli?.campanhaNome}`.toLowerCase()
+          const extra = `${cli?.nome} ${cli?.telefone} ${cli?.whatsapp}`.toLowerCase()
           if (!blob.includes(q) && !extra.includes(q)) return false
         }
         return true
       })
-      .sort((a, b) => String(b.atualizadoEm || b.criadoEm || '').localeCompare(String(a.atualizadoEm || a.criadoEm || '')))
-  }, [externas, filtro, clientePref, busca, clientes.items, origemF, campanhaF, fonteF, estadoF, cidadeF, segmentoF, produtoF, respF])
+    return ordenarConversas(filtradas, (id) => ultimaMensagem.get(id)?.em || 0)
+  }, [externas, filtro, busca, clientes.items, ultimaMensagem, params])
 
   const selected = conversas.items.find((c) => c.id === selectedId)
   inboxRef.current.conversaAbertaId = selectedId || ''
@@ -276,14 +245,97 @@ export default function ChatCenter() {
     })
     return hit ? lerNascimento(hit) : ''
   })()
-  const origemCode = origemPrincipalDe(cliente)
-  const marca = origemMarca(origemCode)
   const msgs = mensagens.items
     .filter((m) => m.conversaId === selected?.id)
-    .sort((a, b) => String(a.criadoEm || '').localeCompare(String(b.criadoEm || '')))
+    .sort((a, b) => instanteChat(a.criadoEm) - instanteChat(b.criadoEm))
+  const leticiaToken = useRef(new Set<string>())
+  const menuEnviado = useRef(new Set<string>())
+
+  useEffect(() => {
+    if (!selected?.id || leticiaTravada(selected)) return
+    const last = msgs[msgs.length - 1]
+    if (!last?.id || last.wamid || last.autorId === 'leticia' || last.autorId === 'sistema') return
+    const idade = Date.now() - instanteChat(last.criadoEm)
+    if (idade <= 0 || idade > 2 * 60 * 60 * 1000) return
+    const chave = String(last.id)
+    if (leticiaToken.current.has(chave)) return
+    const stepSalvo = stepDoBot(selected.botState, String(selected.leticiaStep || ''), String(selected.etapa || ''))
+    const step = stepSalvo === 'human' ? 'menu' : stepSalvo
+    const welcomed = selected.botWelcomeSent === true || Boolean(selected.welcomeSentAt)
+    const turn = leticiaReply({
+      paused: false,
+      welcomed: step === 'menu' ? welcomed : true,
+      step,
+      flow: String(selected.botState?.flow || ''),
+      text: String(last.texto || ''),
+      opcaoId: String(last.opcaoId || ''),
+    })
+    if (!turn.reply) return
+    leticiaToken.current.add(chave)
+    const campos = camposConversa(turn, turn.step, turn.pause)
+    void mensagens.create({
+      conversaId: selected.id,
+      clienteId: selected.clienteId,
+      autorNome: 'Letícia',
+      autorId: 'leticia',
+      texto: turn.reply,
+      ...(turn.opcoes?.length ? { opcoes: turn.opcoes, listaBotao: LETICIA_MENU_TITULO } : {}),
+      tipo: turn.opcoes?.length ? 'interativa' : 'texto',
+      status: 'sent',
+      direction: 'OUTBOUND',
+      source: 'LETICIA_LOCAL',
+      processedInboundId: chave,
+    } as any).then(() => conversas.update(selected.id, {
+      lastMessage: String(turn.reply).slice(0, 240),
+      roboPausado: turn.pause,
+      robotPaused: turn.pause,
+      robotState: turn.pause ? 'HUMAN_ACTIVE' : 'BOT_ACTIVE',
+      botAtivo: !turn.pause,
+      atendimentoHumano: turn.pause,
+      leticiaStep: campos.leticiaStep,
+      etapa: campos.etapa,
+      botWelcomeSent: true,
+      welcomeSentAt: new Date().toISOString(),
+      botState: campos.botState,
+      ...(campos.modalidadeSelecionada ? { modalidadeSelecionada: campos.modalidadeSelecionada } : {}),
+    } as any))
+  }, [selected, msgs, mensagens, conversas])
+
+  useEffect(() => {
+    if (!selected?.id || !usuario?.empresaId || leticiaTravada(selected)) return
+    const menu = [...msgs].reverse().find((m) => m.autorId === 'leticia' && Array.isArray(m.opcoes) && m.opcoes.length > 0 && !m.wamid)
+    if (!menu?.id || menuEnviado.current.has(String(menu.id))) return
+    const tel = String(cliente?.whatsapp || cliente?.telefone || '')
+    if (phoneError(tel)) return
+    menuEnviado.current.add(String(menu.id))
+    const empresaId = usuario.empresaId
+    void sendReplyViaNxErp({
+      empresaId,
+      telefone: tel,
+      mensagem: String(menu.texto || ''),
+      conversaId: selected.id,
+      clienteId: String(cliente?.id || selected.clienteId || ''),
+      crmMensagemId: String(menu.id),
+      operador: 'Letícia',
+      lista: menu.opcoes,
+      listaBotao: LETICIA_MENU_BOTAO,
+      listaTitulo: LETICIA_MENU_TITULO,
+    }).then((sent) => {
+      if (sent.ok && sent.wamid) {
+        void mensagens.update(menu.id, { wamid: sent.wamid, messageId: sent.wamid, status: 'sent', erpStatus: 'sent' })
+      }
+    })
+  }, [selected, msgs, cliente, usuario?.empresaId, mensagens])
 
   useEffect(() => {
     noFundoRef.current = true
+    setLongeDoFim(false)
+    setLimiteMsgs(50)
+    const id = window.requestAnimationFrame(() => {
+      const el = listaChatRef.current
+      if (el) el.scrollTop = el.scrollHeight
+    })
+    return () => window.cancelAnimationFrame(id)
   }, [selectedId])
 
   useEffect(() => {
@@ -354,15 +406,26 @@ export default function ChatCenter() {
 
   async function adicionarCliente() {
     const nome = manual.nome.trim()
+    const cpf = digits(manual.cpf)
+    const telefone = digits(manual.telefone)
     if (!nome) {
-      toast.error('Informe o nome do cliente')
+      toast.error('Informe o nome completo')
+      return
+    }
+    if (cpf && cpf.length !== 11) {
+      toast.error('CPF incompleto')
+      return
+    }
+    const invalido = phoneError(telefone)
+    if (invalido) {
+      toast.error(invalido === 'Telefone ausente' ? 'Informe o telefone do WhatsApp' : invalido)
       return
     }
     const id = await clientes.create({
       nome,
-      cpf: manual.cpf.trim(),
-      telefone: manual.telefone.trim(),
-      whatsapp: manual.telefone.trim(),
+      cpf,
+      telefone,
+      whatsapp: telefone,
       status: 'novo',
       origem: 'manual',
       origemLead: 'manual',
@@ -390,6 +453,12 @@ export default function ChatCenter() {
     if (clienteId) next.set('cliente', clienteId)
     setParams(next, { replace: true })
     if (id) void conversas.update(id, { naoLidas: 0, unreadCount: 0 })
+  }
+
+  function marcarNaoLida(id: string, naoLida: boolean) {
+    void conversas.update(id, naoLida
+      ? { naoLidas: 1, unreadCount: 1 }
+      : { naoLidas: 0, unreadCount: 0 })
   }
 
   async function ensureConversa() {
@@ -668,35 +737,42 @@ export default function ChatCenter() {
     }
     const textoEnvio = texto.trim()
     if (!textoEnvio || envioTickRef.current) return
+    envioTickRef.current = true
     const cid = await ensureConversa()
-    if (!cid) return
+    if (!cid) {
+      envioTickRef.current = false
+      return
+    }
     const invalido = phoneError(String(cliente?.whatsapp || cliente?.telefone || ''))
     if (invalido) {
+      envioTickRef.current = false
       toast.error(invalido)
       return
     }
     const clientMessageId = newClientMessageId()
     const resposta = respondendo
-    envioTickRef.current = true
     setTexto('')
     setRespondendo(null)
-    const mensagemId = await mensagens.create({
-      conversaId: cid,
-      texto: textoEnvio,
-      tipo: 'texto',
-      interno: false,
-      autorId: usuario?.id,
-      autorNome: usuario?.nome,
-      status: 'sending',
-      clientMessageId,
-      messageId: clientMessageId,
-      channel: selected?.canal || 'whatsapp',
-      replyToMessageId: resposta?.id || null,
-      replyToTexto: resposta?.texto || null,
-    } as any)
-    void conversas.update(cid, { lastMessage: textoEnvio, status: 'aguardando_cliente', lastAssignedTo: selected?.assignedTo })
-    envioTickRef.current = false
-    void entregarTexto(cid, textoEnvio, clientMessageId, mensagemId, resposta?.wamid)
+    try {
+      const mensagemId = await mensagens.create({
+        conversaId: cid,
+        texto: textoEnvio,
+        tipo: 'texto',
+        interno: false,
+        autorId: usuario?.id,
+        autorNome: usuario?.nome,
+        status: 'sending',
+        clientMessageId,
+        messageId: clientMessageId,
+        channel: selected?.canal || 'whatsapp',
+        replyToMessageId: resposta?.id || null,
+        replyToTexto: resposta?.texto || null,
+      } as any)
+      void conversas.update(cid, { lastMessage: textoEnvio, status: 'aguardando_cliente', lastAssignedTo: selected?.assignedTo })
+      void entregarTexto(cid, textoEnvio, clientMessageId, mensagemId, resposta?.wamid)
+    } finally {
+      envioTickRef.current = false
+    }
   }
 
   async function reenviar(m: { id: string; texto?: string; clientMessageId?: string; conversaId?: string }) {
@@ -839,6 +915,15 @@ export default function ChatCenter() {
       assignedTo: u.nome,
       assignedToId: u.id,
       status: 'em_atendimento',
+      statusAtendimento: 'HUMANO',
+      roboPausado: true,
+      robotPaused: true,
+      robotState: 'HUMAN_ACTIVE',
+      leticiaStep: 'human',
+      etapa: 'HUMANO',
+      botAtivo: false,
+      atendimentoHumano: true,
+      botState: { active: false, flow: 'human', step: 'human' },
       transferidoPor: usuario?.nome,
       transferidoPorId: usuario?.id,
       transferidoEm: new Date().toISOString(),
@@ -878,6 +963,13 @@ export default function ChatCenter() {
       status: 'em_atendimento',
       statusAtendimento: 'HUMANO',
       roboPausado: true,
+      robotPaused: true,
+      robotState: 'HUMAN_ACTIVE',
+      leticiaStep: 'human',
+      etapa: 'HUMANO',
+      botAtivo: false,
+      atendimentoHumano: true,
+      botState: { active: false, flow: 'human', step: 'human' },
       triagemStatus: 'humano',
     })
     await writeAudit({
@@ -897,6 +989,24 @@ export default function ChatCenter() {
       depois: { de: 'robo', para: usuario?.nome },
     })
     toast.success('Atendimento assumido. Robô pausado nesta conversa.')
+  }
+
+  async function finalizarAtendimento() {
+    if (!selected) return
+    const flow = String(selected.botState?.flow || 'main')
+    await conversas.update(selected.id, {
+      status: 'finalizado',
+      statusAtendimento: 'FINALIZADO',
+      roboPausado: true,
+      robotPaused: true,
+      robotState: 'HUMAN_ACTIVE',
+      leticiaStep: 'human',
+      etapa: 'HUMANO',
+      botAtivo: false,
+      atendimentoHumano: true,
+      botState: { active: false, flow, step: 'human_handoff' },
+    })
+    toast.success('Atendimento finalizado. O histórico permanece nesta conversa.')
   }
 
   async function transferirLaiane() {
@@ -949,38 +1059,11 @@ export default function ChatCenter() {
       <div className="p-2 border-b space-y-2" style={{ borderColor: 'var(--code-border)' }}>
         <div className="flex items-center justify-between gap-2">
           <h1 className="text-sm font-bold">Chat Clientes</h1>
-          <button type="button" className="text-[11px] font-semibold" style={{ color: 'var(--code-orange)' }} onClick={() => setNovoCli(true)}>Cliente</button>
+          <button type="button" aria-label="Novo contato" title="Novo contato" className="h-7 w-7 rounded-full text-lg leading-none font-bold" style={{ background: 'var(--code-orange)', color: '#111' }} onClick={() => setNovoCli(true)}>+</button>
         </div>
         <TextInput placeholder="Buscar cliente ou telefone" value={busca} onChange={(e) => setBusca(e.target.value)} />
-        <button type="button" className="text-[11px] font-semibold" style={{ color: 'var(--code-orange)' }} onClick={() => setFiltrosAbertos((v) => !v)}>
-          {filtrosAbertos ? 'Ocultar filtros' : 'Filtros'}
-        </button>
-        {filtrosAbertos && (
-          <div className="grid grid-cols-2 gap-1">
-            <SelectInput value={origemF} onChange={(e) => setOrigemF(e.target.value)}>
-              <option value="">Origem</option>
-              <option value="leads_monitor">Leads Monitor</option>
-              <option value="trafego_pago">Tráfego pago</option>
-              <option value="disparo_massa">Disparo em massa</option>
-              <option value="planilha_csv">Planilha</option>
-              <option value="landing_page">Landing page</option>
-              <option value="whatsapp">WhatsApp</option>
-              <option value="manual">Manual</option>
-            </SelectInput>
-            <TextInput placeholder="Campanha" value={campanhaF} onChange={(e) => setCampanhaF(e.target.value)} />
-            <TextInput placeholder="Fonte" value={fonteF} onChange={(e) => setFonteF(e.target.value)} />
-            <TextInput placeholder="UF" value={estadoF} onChange={(e) => setEstadoF(e.target.value)} />
-            <TextInput placeholder="Cidade" value={cidadeF} onChange={(e) => setCidadeF(e.target.value)} />
-            <TextInput placeholder="Segmento" value={segmentoF} onChange={(e) => setSegmentoF(e.target.value)} />
-            <TextInput placeholder="Produto" value={produtoF} onChange={(e) => setProdutoF(e.target.value)} />
-            <SelectInput value={respF} onChange={(e) => setRespF(e.target.value)}>
-              <option value="">Responsável</option>
-              {usuariosEmpresa.items.map((u) => <option key={u.id} value={u.id}>{String(u.nome)}</option>)}
-            </SelectInput>
-          </div>
-        )}
         <div className="flex flex-wrap gap-1">
-          {FILA.map((f) => (
+          {VISTA.map((f) => (
             <button
               key={f.id}
               type="button"
@@ -988,45 +1071,46 @@ export default function ChatCenter() {
               className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${filtro === f.id ? 'nexus-cta text-white' : ''}`}
               style={filtro === f.id ? undefined : { background: 'var(--code-surface-muted)' }}
             >
-              {f.label} {contagem[f.id] ? contagem[f.id] : ''}
+              {f.label} {contagem[f.id as keyof typeof contagem] ? contagem[f.id as keyof typeof contagem] : ''}
             </button>
           ))}
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {lista.length === 0 && <div className="p-3"><EmptyState title="Nenhuma conversa neste filtro" description="Leads aprovados no Monitor entram automaticamente aqui." /></div>}
+        {lista.length === 0 && <div className="p-3"><EmptyState title={filtro === 'finalizados' ? 'Nenhum atendimento finalizado' : 'Nenhuma conversa'} description={filtro === 'finalizados' ? 'Quando você finalizar, o cliente aparece aqui.' : 'Os clientes que falam com você ficam nesta lista.'} /></div>}
         {lista.map((c) => {
           const cli = clientes.items.find((x) => x.id === c.clienteId)
-          const oc = origemPrincipalDe(cli || { origemLead: c.origemLead })
-          const mk = origemMarca(oc)
-          const unread = Number(c.naoLidas || 0)
+          const unread = naoLidasDe(c)
+          const preview = String(c.lastMessage || ultimaMensagem.get(c.id)?.texto || 'Sem mensagens')
+          const nome = String(c.titulo || cli?.nome || displayPhone(String(cli?.whatsapp || cli?.telefone || '')) || 'Conversa')
+          const quandoLista = Math.max(instanteChat(c.atualizadoEm), instanteChat(c.criadoEm), ultimaMensagem.get(c.id)?.em || 0)
           return (
-            <button
+            <div
               key={c.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => abrirConversa(c.id, String(c.clienteId || ''))}
-              className="w-full text-left px-3 py-2 border-b"
+              onKeyDown={(e) => { if (e.key === 'Enter') abrirConversa(c.id, String(c.clienteId || '')) }}
+              className="w-full text-left px-3 py-2 border-b cursor-pointer"
               style={{
                 borderColor: 'var(--code-border)',
                 background: selected?.id === c.id ? 'var(--code-surface-muted)' : 'transparent',
               }}
             >
               <div className="flex justify-between gap-2">
-                <p className="text-sm font-semibold truncate">{String(c.titulo || cli?.nome || 'Conversa')}</p>
-                <span className="text-[10px] shrink-0" style={{ color: 'var(--code-muted)' }}>{formatMessageClock(asDate(c.atualizadoEm || c.criadoEm))}</span>
+                <p className="text-sm font-semibold truncate">{nome}</p>
+                <span className="text-[10px] shrink-0" style={{ color: 'var(--code-muted)' }}>{formatMessageClock(quandoLista ? new Date(quandoLista) : null)}</span>
               </div>
-              <p className="text-[11px] truncate" style={{ color: 'var(--code-muted)' }}>{String(c.lastMessage || 'Sem mensagens')}</p>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-[10px] font-semibold" style={{ color: mk.cor }}>{mk.emoji} {origemTexto(oc)}</span>
-                {(cli?.produto || cli?.modalidade || c.produto) ? (
-                  <span className="text-[10px] font-semibold" style={{ color: 'var(--code-orange)' }}>
-                    {produtoLabel(String(cli?.produto || cli?.modalidade || c.produto || ''))}
-                  </span>
-                ) : null}
+              <p className="text-[11px] truncate" style={{ color: 'var(--code-muted)' }}>{displayPhone(String(cli?.whatsapp || cli?.telefone || ''))}</p>
+              <p className="text-[11px] truncate" style={{ color: 'var(--code-muted)' }}>{preview}</p>
+              <div className="flex items-center gap-2 mt-1">
+                <label className="text-[10px] flex items-center gap-1" style={{ color: 'var(--code-muted)' }} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                  <input type="checkbox" checked={unread > 0} onChange={(e) => marcarNaoLida(c.id, e.target.checked)} />
+                  Não lida
+                </label>
                 {unread > 0 && <span className="ml-auto text-[10px] px-1.5 rounded-full text-white" style={{ background: 'var(--code-orange)' }}>{unread}</span>}
               </div>
-              <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>{String(cli?.campanhaNome || cli?.campanha || c.campanhaNome || '—')} · {String(c.assignedTo || 'sem responsável')}</p>
-            </button>
+            </div>
           )
         })}
       </div>
@@ -1040,12 +1124,16 @@ export default function ChatCenter() {
           <div className="px-3 py-2 border-b shrink-0" style={{ borderColor: 'var(--code-border)', background: 'var(--code-surface)' }}>
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-[10px] font-semibold" style={{ color: 'var(--code-orange)' }}>LOCAL / TESTE · Letícia não envia WhatsApp sozinha</p>
+                <p className="text-[10px] font-semibold" style={{ color: 'var(--code-orange)' }}>Letícia · uma pergunta por vez</p>
                 <div className="flex items-center gap-2">
                   <button type="button" className="lg:hidden text-xs font-semibold" onClick={() => setPainel('lista')}>← Fila</button>
                   <p className="font-bold text-sm">{textoMisto(String(cliente?.nome || selected.titulo || ''))}</p>
                 </div>
                 <p className="text-[11px]" style={{ color: 'var(--code-muted)' }}>{displayCpfSidebar(cliente?.cpf) ? `CPF ${displayCpfSidebar(cliente?.cpf)}` : 'CPF —'} · {displayPhone(String(cliente?.whatsapp || cliente?.telefone || '')) || 'Telefone —'}</p>
+                <label className="text-[11px] mt-1 flex items-center gap-1" style={{ color: 'var(--code-muted)' }}>
+                  <input type="checkbox" checked={naoLidasDe(selected) > 0} onChange={(e) => marcarNaoLida(selected.id, e.target.checked)} />
+                  Não lida
+                </label>
                 {(cliente?.produto || cliente?.modalidade || selected.produto) && (
                   <p className="text-[11px] font-semibold" style={{ color: 'var(--code-orange)' }}>
                     {produtoLabel(String(cliente?.produto || cliente?.modalidade || selected.produto || selected.operacao || ''))}
@@ -1055,6 +1143,7 @@ export default function ChatCenter() {
               </div>
               <div className="flex flex-wrap gap-1 justify-end">
                 <GhostButton className="text-xs" onClick={() => void assumir()}>Assumir</GhostButton>
+                <GhostButton className="text-xs" onClick={() => void finalizarAtendimento()}>Finalizar atendimento</GhostButton>
                 <GhostButton className="text-xs" onClick={() => void transferirLaiane()}>Transferir para Laiane</GhostButton>
                 <GhostButton className="text-xs" aria-label="Fechar" data-nexus-esc onClick={fecharConversa}>X</GhostButton>
                 <GhostButton className="text-xs lg:hidden" onClick={() => setPainel('ficha')}>Cliente</GhostButton>
@@ -1083,12 +1172,15 @@ export default function ChatCenter() {
               </SelectInput>
             </div>
           </div>
+          <div className="relative flex-1 min-h-0">
           <div
             ref={listaChatRef}
-            className="flex-1 overflow-y-auto p-3 space-y-2"
+            className="h-full overflow-y-auto p-3 space-y-2"
             onScroll={(e) => {
               const el = e.currentTarget
-              noFundoRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+              const noFim = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+              noFundoRef.current = noFim
+              setLongeDoFim(!noFim)
             }}
           >
             {selected.roboPausado ? null : null}
@@ -1134,11 +1226,19 @@ export default function ChatCenter() {
                 {apagada ? <p>Mensagem apagada</p> : (
                   <>
                     {m.replyToTexto ? <p className="text-[10px] border-l-2 pl-1 mb-1">Respondendo a: {String(m.replyToTexto)}</p> : null}
-                    {String(m.tipo) === 'imagem' && (m.arquivoUrl ? <img src={String(m.arquivoUrl)} alt="" className="max-h-40 rounded mt-1" /> : <p>Imagem: {String(m.texto)}</p>)}
-                    {String(m.tipo) === 'audio' && (m.arquivoUrl ? <audio controls src={String(m.arquivoUrl)} className="mt-1" /> : <p>Áudio: {String(m.texto)}</p>)}
-                    {String(m.tipo) === 'video' && (m.arquivoUrl ? <video controls src={String(m.arquivoUrl)} className="max-h-40 rounded mt-1" /> : <p>Vídeo: {String(m.texto)}</p>)}
+                    {String(m.tipo) === 'imagem' && (m.arquivoUrl && !midiaFalhou[m.id] ? <img src={String(m.arquivoUrl)} alt="" className="max-h-40 rounded mt-1" onError={() => setMidiaFalhou((atual) => ({ ...atual, [m.id]: true }))} /> : <p>Imagem indisponível</p>)}
+                    {String(m.tipo) === 'audio' && (m.arquivoUrl && !midiaFalhou[m.id] ? <audio controls src={String(m.arquivoUrl)} className="mt-1" onError={() => setMidiaFalhou((atual) => ({ ...atual, [m.id]: true }))} /> : <p>Áudio indisponível</p>)}
+                    {String(m.tipo) === 'video' && (m.arquivoUrl && !midiaFalhou[m.id] ? <video controls src={String(m.arquivoUrl)} className="max-h-40 rounded mt-1" onError={() => setMidiaFalhou((atual) => ({ ...atual, [m.id]: true }))} /> : <p>Vídeo indisponível</p>)}
                     {String(m.tipo) === 'documento' && <p>📎 {String(m.texto)}</p>}
                     {!['imagem', 'documento', 'audio', 'video'].includes(String(m.tipo)) && <p>{String(m.texto || '')}</p>}
+                    {Array.isArray(m.opcoes) && m.opcoes.length > 0 ? (
+                      <details className="opcoes">
+                        <summary>{String(m.listaBotao || LETICIA_MENU_TITULO)}</summary>
+                        {m.opcoes.map((op: { id?: string; title?: string }) => (
+                          <span key={String(op.id || op.title)}>{String(op.title || '')}</span>
+                        ))}
+                      </details>
+                    ) : null}
                     {m.editedAt ? <p className="text-[10px]">editada no CRM</p> : null}
                   </>
                 )}
@@ -1157,6 +1257,15 @@ export default function ChatCenter() {
             })}
             {msgs.length === 0 && <p className="text-sm text-center" style={{ color: 'var(--code-muted)' }}>Nenhuma mensagem ainda.</p>}
             </div>
+          </div>
+            {longeDoFim ? (
+              <button type="button" className="absolute bottom-3 right-3 text-[11px] font-semibold px-2 py-1 rounded shadow" style={{ background: 'var(--code-orange)', color: '#111' }} onClick={() => {
+                const el = listaChatRef.current
+                noFundoRef.current = true
+                setLongeDoFim(false)
+                if (el) el.scrollTop = el.scrollHeight
+              }}>Novas mensagens</button>
+            ) : null}
           </div>
           <div className="p-2 border-t shrink-0" style={{ borderColor: 'var(--code-border)', background: 'var(--code-surface)' }}>
             {emojis && <EmojiPicker onPick={(emoji) => setTexto((t) => `${t}${emoji}`)} onClose={() => setEmojis(false)} />}
@@ -1245,14 +1354,16 @@ export default function ChatCenter() {
                 value={texto}
                 onChange={(e) => setTexto(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
+                  const acao = teclaEnviaMensagem(e.key, e.shiftKey)
+                  if (acao === 'linha') return
+                  if (acao === 'enviar') {
                     e.preventDefault()
-                    if (!enviando) void send()
+                    if (!enviando && texto.trim()) void send()
                   }
                 }}
                 placeholder="Digite uma mensagem..."
               />
-              <PrimaryButton disabled={!texto.trim() && !audioPreview && !gravando && !midia} onClick={() => void send()}>Enviar</PrimaryButton>
+              <PrimaryButton disabled={enviando || (!texto.trim() && !audioPreview && !gravando && !midia)} onClick={() => void send()}>Enviar</PrimaryButton>
             </div>
           </div>
         </>
@@ -1347,15 +1458,15 @@ export default function ChatCenter() {
     <div className="-m-3 md:-m-4 h-[calc(100vh-3.5rem)] md:h-[calc(100vh-4.5rem)] flex flex-col">
       <ErrorBanner message={conversas.error} />
       {novoCli && (
-        <NexusModal compact title="Cliente manual" onClose={() => setNovoCli(false)} onSave={() => void adicionarCliente()} closeOnBackdrop={false}>
-          <label className="text-xs font-semibold block mb-2">Nome
+        <NexusModal compact title="Novo contato" onClose={() => setNovoCli(false)} onSave={() => void adicionarCliente()} closeOnBackdrop={false}>
+          <label className="text-xs font-semibold block mb-2">Nome completo
             <TextInput placeholder="Nome completo" value={manual.nome} onChange={(e) => setManual({ ...manual, nome: e.target.value })} />
           </label>
           <label className="text-xs font-semibold block mb-2">CPF
-            <TextInput placeholder="CPF" value={manual.cpf} onChange={(e) => setManual({ ...manual, cpf: e.target.value })} />
+            <TextInput placeholder="000.000.000-00" inputMode="numeric" value={manual.cpf} onChange={(e) => setManual({ ...manual, cpf: mascaraCpf(e.target.value) })} />
           </label>
-          <label className="text-xs font-semibold block mb-2">Telefone
-            <TextInput placeholder="WhatsApp" value={manual.telefone} onChange={(e) => setManual({ ...manual, telefone: e.target.value })} />
+          <label className="text-xs font-semibold block mb-2">Telefone WhatsApp
+            <TextInput placeholder="(00) 00000-0000" inputMode="tel" value={manual.telefone} onChange={(e) => setManual({ ...manual, telefone: mascaraTelefone(e.target.value) })} />
           </label>
         </NexusModal>
       )}

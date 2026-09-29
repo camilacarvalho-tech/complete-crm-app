@@ -1,93 +1,186 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { etapaDe, leticiaReply, LETICIA_WELCOME, processarSequencia } from './leticiaReception.ts'
+import { botStateDe, camposConversa, etapaDe, leticiaReply, leticiaTravada, LETICIA_ESCLARECER, LETICIA_HANDOFF, LETICIA_MENU_BOTAO, LETICIA_MENU_OPCOES, LETICIA_MENU_TITULO, LETICIA_WELCOME, podeResponder, processarSequencia, stepDoBot, textoSelecaoCliente } from './leticiaReception.ts'
 import { formatMessageClock } from '../../lib/messageClock.ts'
 import { filterEmojis } from '../../components/chat/emojiData.ts'
 
-test('nova mensagem recebe o menu e não repete depois', () => {
+test('primeira mensagem é a saudação curta e a lista interativa, sem modalidades no texto', () => {
   const first = leticiaReply({ paused: false, welcomed: false, step: 'menu', text: 'oi' })
   assert.equal(first.reply, LETICIA_WELCOME)
-  assert.equal(first.welcomed, true)
-  const again = leticiaReply({ paused: true, welcomed: true, step: 'menu', text: 'oi' })
-  assert.equal(again.reply, undefined)
-  assert.equal(again.pause, true)
+  assert.match(first.reply || '', /Escolha a modalidade que deseja consultar:/)
+  assert.doesNotMatch(first.reply || '', /1️⃣|2️⃣|Crédito CLT|FGTS|INSS/)
+  assert.equal(first.opcoes?.length, 8)
+  assert.deepEqual(first.opcoes, LETICIA_MENU_OPCOES)
+  assert.equal(first.opcoes?.[0]?.id, 'credito_clt')
+  assert.equal(first.opcoes?.[7]?.id, 'outros')
+  assert.equal(LETICIA_MENU_TITULO, 'Escolha sua modalidade')
+  assert.equal(LETICIA_MENU_BOTAO.length <= 20, true)
+  assert.doesNotMatch(first.reply || '', /CPF|nome completo|nascimento/)
+  assert.equal(first.step, 'menu')
+  assert.deepEqual(botStateDe(first.step, false), { active: true, flow: 'main', step: 'choose_modality' })
 })
 
-test('cliente escolhe 1 e entra no CLT sem inventar valor', () => {
-  const turn = leticiaReply({ paused: false, welcomed: true, step: 'menu', text: '1' })
-  assert.equal(turn.step, 'clt_name')
-  assert.match(turn.reply || '', /nome completo/)
-  assert.doesNotMatch(turn.reply || '', /CPF/)
-  assert.doesNotMatch(turn.reply || '', /R\$/)
-  const nome = leticiaReply({ paused: false, welcomed: true, step: 'clt_name', text: 'Camila Carvalho' })
-  assert.equal(nome.step, 'clt_cpf')
-  assert.match(nome.reply || '', /Camila/)
-  assert.match(nome.reply || '', /CPF/)
-  const cpf = leticiaReply({ paused: false, welcomed: true, step: 'clt_cpf', text: '12345678901' })
-  assert.equal(cpf.step, 'clt_analysis')
-  assert.doesNotMatch(cpf.reply || '', /12345678901/)
-  assert.doesNotMatch(cpf.reply || '', /R\$/)
+test('cliente escolhe FGTS, INSS e CLT por número e só então o CPF é pedido', () => {
+  for (const [texto, flow, nome] of [
+    ['2', 'fgts', 'Saque-Aniversário FGTS'],
+    ['6', 'inss', 'INSS'],
+    ['1', 'clt', 'Crédito CLT'],
+  ] as const) {
+    const turn = leticiaReply({ paused: false, welcomed: true, step: 'menu', text: texto })
+    assert.equal(turn.flow, flow)
+    assert.equal(turn.step, `${flow}_cpf`)
+    assert.match(turn.reply || '', new RegExp(`Você escolheu ${nome}`))
+    assert.match(turn.reply || '', /me informe seu CPF/)
+    assert.equal(turn.opcoes, undefined)
+    assert.equal(turn.modalidadeSelecionada, texto === '2' ? 'fgts' : texto === '6' ? 'inss' : 'credito_clt')
+    assert.doesNotMatch(turn.reply || '', /Seja bem-vindo/)
+    assert.equal(botStateDe(turn.step, false).step, 'request_cpf')
+  }
 })
 
-test('cliente escolhe FGTS por texto', () => {
-  const primeiro = leticiaReply({ paused: false, welcomed: false, step: 'menu', text: 'saque FGTS' })
-  assert.equal(primeiro.reply, LETICIA_WELCOME)
-  const turn = leticiaReply({ paused: false, welcomed: true, step: 'menu', text: 'quero fgts' })
-  assert.equal(turn.step, 'fgts_name')
-  assert.match(turn.reply || '', /Saque-Aniversário/)
-  assert.doesNotMatch(turn.reply || '', /CPF/)
+test('cliente escolhe pelo nome da modalidade', () => {
+  const casos = [
+    ['crédito CLT', 'clt'],
+    ['FGTS', 'fgts'],
+    ['saque aniversário', 'fgts'],
+    ['saque-aniversário', 'fgts'],
+    ['refinanciamento de casa', 'casa'],
+    ['refinanciamento de carro', 'carro'],
+    ['placa solar', 'solar'],
+    ['crédito placa solar', 'solar'],
+    ['aposentadoria', 'inss'],
+    ['benefício', 'inss'],
+    ['servidor público', 'servidor'],
+    ['SIAPE', 'servidor'],
+    ['outros', 'outros'],
+  ] as const
+  for (const [texto, flow] of casos) {
+    const turn = leticiaReply({ paused: false, welcomed: true, step: 'menu', text: texto })
+    assert.equal(turn.flow, flow, texto)
+    assert.equal(turn.step, `${flow}_cpf`)
+  }
 })
 
-test('INSS e servidor perguntam um dado por vez', () => {
-  const inss = leticiaReply({ paused: false, welcomed: true, step: 'menu', text: '6' })
-  assert.equal(inss.step, 'inss_name')
-  assert.doesNotMatch(inss.reply || '', /CPF/)
-  const servidor = leticiaReply({ paused: false, welcomed: true, step: 'menu', text: 'prefeitura' })
-  assert.equal(servidor.step, 'servidor_orgao')
-  assert.match(servidor.reply || '', /órgão/)
-  const nome = leticiaReply({ paused: false, welcomed: true, step: 'servidor_orgao', text: 'Prefeitura' })
-  assert.equal(nome.step, 'servidor_name')
+test('cada id oficial escolhe a modalidade e pede só o CPF', () => {
+  const ids = [
+    ['credito_clt', 'clt', 'Crédito CLT'],
+    ['fgts', 'fgts', 'Saque-Aniversário FGTS'],
+    ['refinanciamento_casa', 'casa', 'Refinanciamento de casa'],
+    ['refinanciamento_carro', 'carro', 'Refinanciamento de carro'],
+    ['placa_solar', 'solar', 'Crédito para placa solar'],
+    ['inss', 'inss', 'INSS'],
+    ['servidor_publico', 'servidor', 'Servidor Público'],
+    ['outros', 'outros', 'Outros assuntos'],
+  ] as const
+  for (const [id, flow, nome] of ids) {
+    const turn = leticiaReply({ paused: false, welcomed: true, step: 'menu', text: 'toque', opcaoId: id })
+    assert.equal(turn.flow, flow, id)
+    assert.equal(turn.step, `${flow}_cpf`)
+    assert.equal(turn.modalidadeSelecionada, id)
+    assert.equal(turn.opcoes, undefined)
+    assert.match(turn.reply || '', new RegExp(`Você escolheu ${nome}`))
+    assert.match(turn.reply || '', /me informe seu CPF/)
+    assert.doesNotMatch(turn.reply || '', /1️⃣|Escolha a modalidade/)
+    assert.equal(textoSelecaoCliente(id), `Cliente selecionou:\n${nome}`)
+    const campos = camposConversa(turn, turn.step, false)
+    assert.equal(campos.modalidadeSelecionada, id)
+    assert.equal(campos.leticiaStep, `${flow}_cpf`)
+    assert.equal(campos.botState.step, 'request_cpf')
+  }
 })
 
-test('CPF encaminha análise sem devolver o número', () => {
-  const turn = leticiaReply({ paused: false, welcomed: true, step: 'clt_cpf', text: '12345678901' })
-  assert.equal(turn.step, 'clt_analysis')
-  assert.doesNotMatch(turn.reply || '', /12345678901/)
-  assert.doesNotMatch(turn.reply || '', /R\$/)
-  const depois = leticiaReply({ paused: false, welcomed: true, step: 'clt_analysis', text: 'e o valor?' })
-  assert.equal(depois.step, 'clt_analysis')
-  assert.doesNotMatch(depois.reply || '', /R\$/)
+test('a mesma seleção não gera segunda resposta', () => {
+  const vistas = new Set<string>()
+  const id = 'wamid.LISTA_FGTS'
+  assert.equal(podeResponder(vistas, id), true)
+  vistas.add(id)
+  const turn = leticiaReply({ paused: false, welcomed: true, step: 'menu', text: 'Saque-Aniversário FGTS', opcaoId: 'fgts' })
+  assert.match(turn.reply || '', /Saque-Aniversário FGTS/)
+  assert.equal(podeResponder(vistas, id), false)
+  const cpf = leticiaReply({ paused: false, welcomed: true, step: turn.step, flow: turn.flow, text: '12345678901' })
+  assert.equal(cpf.reply, LETICIA_HANDOFF)
+  const deNovo = leticiaReply({ paused: cpf.pause, welcomed: true, step: cpf.leticiaStepGravar || cpf.step, flow: cpf.flow, text: 'oi' })
+  assert.equal(deNovo.reply, undefined)
 })
 
-test('oi, 1, nome e cpf avançam um estado por mensagem', () => {
-  const fluxo = processarSequencia(
-    { paused: false, welcomed: false, step: 'menu' },
-    ['oi', '1', 'Camila Carvalho', '12345678901'],
-  )
+test('resposta inválida não reinicia o menu', () => {
+  const fluxo = processarSequencia({ paused: false, welcomed: false, step: 'menu' }, ['oi', 'talvez amanhã'])
+  assert.equal(fluxo.respostas[0], LETICIA_WELCOME)
+  assert.equal(fluxo.respostas[1], LETICIA_ESCLARECER)
+  assert.doesNotMatch(fluxo.respostas[1], /Seja bem-vindo|8️⃣/)
+  assert.equal(fluxo.estado.step, 'menu')
+  const menu = leticiaReply({ paused: false, welcomed: true, step: 'menu', text: 'talvez amanhã' })
+  assert.equal(menu.opcoes?.length, 8)
+  const cpf = leticiaReply({ paused: false, welcomed: true, step: 'clt_cpf', flow: 'clt', text: '123' })
+  assert.equal(cpf.opcoes, undefined)
+})
+
+test('CPF inválido pede de novo e CPF válido encerra a Letícia', () => {
+  const ruim = leticiaReply({ paused: false, welcomed: true, step: 'fgts_cpf', flow: 'fgts', text: '123' })
+  assert.equal(ruim.step, 'fgts_cpf')
+  assert.equal(ruim.pause, false)
+  assert.equal(ruim.reply, 'Não consegui validar esse CPF. Pode conferir os números e me enviar novamente, por favor?')
+  const saudacao = leticiaReply({ paused: false, welcomed: true, step: 'fgts_cpf', flow: 'fgts', text: 'Bom dia' })
+  assert.equal(saudacao.reply, LETICIA_WELCOME)
+  assert.equal(saudacao.step, 'menu')
+  assert.equal(saudacao.opcoes?.length, 8)
+  assert.doesNotMatch(ruim.reply || '', /Seja bem-vindo/)
+  const bom = leticiaReply({ paused: false, welcomed: true, step: 'fgts_cpf', flow: 'fgts', text: '12345678901' })
+  assert.equal(bom.reply, LETICIA_HANDOFF)
+  assert.equal(bom.pause, true)
+  assert.equal(bom.step, 'human')
+  assert.equal(bom.flow, 'fgts')
+  assert.equal(bom.leticiaStepGravar, 'human_handoff')
+  assert.equal(bom.etapaGravar, 'human_handoff')
+  assert.equal(bom.modalidadeSelecionada, 'fgts')
+  assert.deepEqual(camposConversa(bom, bom.step, true), {
+    leticiaStep: 'human_handoff',
+    etapa: 'human_handoff',
+    botState: { active: false, flow: 'fgts', step: 'human_handoff' },
+    modalidadeSelecionada: 'fgts',
+  })
+  assert.doesNotMatch(bom.reply || '', /12345678901|R\$/)
+  const depois = leticiaReply({ paused: bom.pause, welcomed: true, step: bom.step, flow: bom.flow, text: 'oi' })
+  assert.equal(depois.reply, undefined)
+  assert.equal(depois.pause, true)
+  assert.deepEqual(botStateDe(bom.step, true, bom.flow), { active: false, flow: 'fgts', step: 'human_handoff' })
+})
+
+test('estado da modalidade sobrevive ao recarregamento', () => {
+  const salvo = botStateDe('inss_cpf', false)
+  assert.deepEqual(salvo, { active: true, flow: 'inss', step: 'request_cpf' })
+  const step = stepDoBot(salvo)
+  assert.equal(step, 'inss_cpf')
+  const next = leticiaReply({ paused: !salvo.active, welcomed: true, step, flow: salvo.flow, text: '12345678900' })
+  assert.equal(next.reply, LETICIA_HANDOFF)
+  assert.equal(next.flow, 'inss')
+  assert.equal(etapaDe('inss_cpf'), 'INSS_CPF')
+})
+
+test('aguardando cliente não trava a Letícia; assumir e finalizar travam', () => {
+  assert.equal(leticiaTravada({ status: 'aguardando_cliente', roboPausado: true, statusAtendimento: 'HUMANO' }), false)
+  assert.equal(leticiaTravada({ status: 'em_atendimento', roboPausado: true, statusAtendimento: 'HUMANO' }), true)
+  assert.equal(leticiaTravada({ status: 'finalizado' }), true)
+  assert.equal(leticiaTravada({ status: 'aguardando_funcionario', botState: { active: false, step: 'human_handoff' } }), true)
+})
+
+test('assumir ou finalizar impede nova resposta automática', () => {
+  const turn = leticiaReply({ paused: true, welcomed: true, step: 'clt_cpf', flow: 'clt', text: '12345678901' })
+  assert.equal(turn.reply, undefined)
+  assert.equal(turn.pause, true)
+  assert.equal(botStateDe('human', true, 'clt').active, false)
+})
+
+test('fluxo completo FGTS pede CPF só depois da escolha e não responde de novo', () => {
+  const fluxo = processarSequencia({ paused: false, welcomed: false, step: 'menu' }, ['oi', '2', '123', '12345678901', 'ainda está aí?'])
   assert.equal(fluxo.respostas.length, 4)
   assert.equal(fluxo.respostas[0], LETICIA_WELCOME)
-  assert.match(fluxo.respostas[1], /Crédito CLT/)
-  assert.match(fluxo.respostas[1], /Me informe seu nome completo/)
-  assert.doesNotMatch(fluxo.respostas[1], /Digite o número/)
-  assert.match(fluxo.respostas[2], /Obrigada, Camila/)
-  assert.match(fluxo.respostas[2], /CPF/)
-  assert.match(fluxo.respostas[3], /Vou verificar as informações/)
-  assert.equal(fluxo.estado.step, 'clt_analysis')
-  assert.equal(etapaDe(fluxo.estado.step), 'CLT_ANALISE')
-})
-
-test('bom dia não repete o menu e o 1 entra no CLT', () => {
-  const fluxo = processarSequencia(
-    { paused: false, welcomed: true, step: 'menu' },
-    ['bom dia', '1'],
-  )
-  assert.equal(fluxo.respostas.length, 2)
-  assert.match(fluxo.respostas[0], /Digite o número ou escreva a opção desejada/)
-  assert.doesNotMatch(fluxo.respostas[0], /Seja bem-vindo/)
-  assert.match(fluxo.respostas[1], /Crédito CLT/)
-  assert.equal(fluxo.estado.step, 'clt_name')
-  const tecla = leticiaReply({ paused: false, welcomed: true, step: 'menu', text: '1️⃣' })
-  assert.equal(tecla.step, 'clt_name')
+  assert.match(fluxo.respostas[1], /Saque-Aniversário FGTS/)
+  assert.doesNotMatch(fluxo.respostas[0], /informe seu CPF/)
+  assert.match(fluxo.respostas[2], /Não consegui validar esse CPF/)
+  assert.equal(fluxo.respostas[3], LETICIA_HANDOFF)
+  assert.equal(fluxo.estado.paused, true)
+  assert.equal(fluxo.estado.flow, 'fgts')
 })
 
 test('welcome sai uma vez e Laiane impede a próxima resposta', () => {
@@ -96,7 +189,7 @@ test('welcome sai uma vez e Laiane impede a próxima resposta', () => {
     ['oi', 'bom dia', 'quero falar com a Laiane', '1'],
   )
   assert.equal(fluxo.respostas[0], LETICIA_WELCOME)
-  assert.notEqual(fluxo.respostas[1], LETICIA_WELCOME)
+  assert.equal(fluxo.respostas[1], LETICIA_ESCLARECER)
   assert.match(fluxo.respostas[2], /Laiane/)
   assert.equal(fluxo.respostas.length, 3)
   assert.equal(fluxo.estado.paused, true)

@@ -104,8 +104,34 @@ test('clique do cliente vira a mensagem da conversa', () => {
   })
   assert.equal(parsed.messages.length, 2)
   assert.equal(parsed.messages[0].message, 'Não, obrigado')
+  assert.equal(parsed.messages[0].opcaoId, 'nao')
   assert.equal(parsed.messages[0].replyToWamid, 'wamid.PERGUNTA')
   assert.equal(parsed.messages[1].message, '5')
+})
+
+test('lista de modalidade guarda o id e o mesmo wamid não responde de novo', () => {
+  const parsed = parseCloudWebhook({
+    entry: [{
+      changes: [{
+        value: {
+          contacts: [{ wa_id: '5514996902902', profile: { name: 'Camila' } }],
+          messages: [{
+            id: 'wamid.LISTA_1',
+            from: '5514996902902',
+            timestamp: '5',
+            type: 'interactive',
+            interactive: { type: 'list_reply', list_reply: { id: 'fgts', title: 'Saque-Aniversário FGTS' } },
+          }],
+        },
+      }],
+    }],
+  })
+  assert.equal(parsed.messages.length, 1)
+  assert.equal(parsed.messages[0].opcaoId, 'fgts')
+  assert.equal(parsed.messages[0].message, 'Saque-Aniversário FGTS')
+  assert.equal(parsed.messages[0].messageId, 'wamid.LISTA_1')
+  assert.equal(alreadySeen(['wamid.LISTA_1'], parsed.messages[0].messageId), true)
+  assert.equal(alreadySeen([], 'wamid.LISTA_2'), false)
 })
 
 test('idempotência pelo wamid', () => {

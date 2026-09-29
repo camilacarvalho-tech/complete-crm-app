@@ -49,6 +49,7 @@ export interface NxErpInboundMessage {
   produto: string
   status: NxErpStatus | null
   replyToWamid: string
+  opcaoId: string
 }
 
 export function inboundIdempotencyKey(body: Record<string, unknown>): string {
@@ -78,6 +79,7 @@ export function mapInboundMessage(body: Record<string, unknown>): NxErpInboundMe
     produto: String(body.produto || '').trim(),
     status: nxErpStatus(body.status),
     replyToWamid: String(body.replyToWamid || body.reply_to_wamid || '').trim(),
+    opcaoId: String(body.opcaoId || body.opcao_id || '').trim(),
   }
 }
 

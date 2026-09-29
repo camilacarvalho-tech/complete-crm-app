@@ -76,7 +76,30 @@ test('resposta outbound envia crm_mensagem_id e não leva token', () => {
   assert.equal(body.crm_mensagem_id, 'crm-1')
   assert.equal(body.telefone, '5511999887766')
   assert.equal(body.texto, 'Olá')
+  assert.equal('lista' in body, false)
   assert.equal('metaToken' in body, false)
+  const menu = buildRespostaChat({
+    crmMensagemId: 'leticia-1',
+    telefone: '14996902902',
+    texto: 'Olá',
+    lista: [{ id: '1', title: 'Crédito CLT' }, { id: '6', title: 'INSS' }],
+    listaBotao: 'Ver modalidades',
+  })
+  assert.equal(menu.lista_botao, 'Ver modalidades')
+  assert.equal(menu.lista_titulo, 'Escolha sua modalidade')
+  assert.equal(menu.lista?.[0]?.id, '1')
+  assert.equal(menu.lista?.[1]?.title, 'INSS')
+  const longo = buildRespostaChat({
+    crmMensagemId: 'leticia-2',
+    telefone: '14996902902',
+    texto: 'Olá',
+    lista: [{ id: 'fgts', title: 'Saque-Aniversário FGTS' }],
+    listaBotao: 'Escolha sua modalidade',
+    listaTitulo: 'Escolha sua modalidade',
+  })
+  assert.equal(longo.lista_botao, 'Escolha modalidade')
+  assert.equal(longo.lista_titulo, 'Escolha sua modalidade')
+  assert.equal(longo.lista?.[0]?.id, 'fgts')
   assert.equal(phoneError(''), 'Telefone ausente')
   assert.equal(phoneError('123'), 'Telefone inválido')
   assert.equal(phoneError('11999887766'), null)

@@ -1,7 +1,8 @@
 import { collection, getDocs, query, serverTimestamp, updateDoc, where } from 'firebase/firestore'
 import { db } from '../../firebase'
-import { gravarMensagemRecebida, handleInboundErpMessage, type InboundErpPayload } from '../../lib/inboundErpMessage'
+import { gravarMensagemRecebida, handleInboundErpMessage, type InboundErpPayload, type SaidaRobo } from '../../lib/inboundErpMessage'
 import { handleErpToCrmEvent } from '../events/eventHandlers'
+import { LETICIA_MENU_BOTAO, LETICIA_MENU_TITULO } from '../../modules/chat-robot/leticiaReception'
 import { buildRespostaChat } from './chatOutbound'
 import { postNxErpEvento } from './nxErpCrmClient'
 import { mapCampaignEvent, mapInboundMessage, nxErpStatus } from './nxErpInbox'
@@ -22,6 +23,7 @@ export type MemoriaInbox = {
     botWelcomeSent?: boolean
     leticiaStep?: string
     etapa?: string
+    botState?: { active?: boolean; flow?: string; step?: string }
     botAtivo?: boolean
     atendimentoHumano?: boolean
     welcomeSentAt?: string
@@ -48,7 +50,8 @@ async function applyItem(empresaId: string, item: Queued, memoria?: MemoriaInbox
     const mapped = mapInboundMessage(item.body)
     const payload: InboundErpPayload = { ...mapped, replyToWamid: mapped.replyToWamid }
     if (memoria) {
-      await gravarMensagemRecebida(empresaId, payload, memoria)
+      const saida = await gravarMensagemRecebida(empresaId, payload, memoria)
+      if (saida) await publicarLeticia(empresaId, saida)
       return
     }
     await handleInboundErpMessage(empresaId, payload)
@@ -83,6 +86,25 @@ async function applyItem(empresaId: string, item: Queued, memoria?: MemoriaInbox
     status: 'recorded',
     id: item.id,
   })
+}
+
+async function publicarLeticia(empresaId: string, saida: SaidaRobo) {
+  try {
+    await sendReplyViaNxErp({
+      empresaId,
+      telefone: saida.telefone,
+      mensagem: saida.texto,
+      conversaId: saida.conversaId,
+      clienteId: saida.clienteId,
+      crmMensagemId: saida.crmMensagemId,
+      operador: 'Letícia',
+      lista: saida.opcoes,
+      listaBotao: saida.opcoes?.length ? LETICIA_MENU_BOTAO : undefined,
+      listaTitulo: saida.opcoes?.length ? LETICIA_MENU_TITULO : undefined,
+    })
+  } catch {
+    /* o texto já ficou no histórico; esta tentativa não repete o disparo */
+  }
 }
 
 /** Lê a fila local gravada pelo endpoint autenticado e aplica no Chat existente. */
@@ -131,6 +153,9 @@ export async function sendReplyViaNxErp(opts: {
   midiaNome?: string
   midiaLegenda?: string
   replyToWamid?: string
+  lista?: { id: string; title: string }[]
+  listaBotao?: string
+  listaTitulo?: string
 }): Promise<{ ok: boolean; status: 'sent' | 'failed'; message: string; wamid: string }> {
   const payload = buildRespostaChat({
     crmMensagemId: opts.crmMensagemId,
@@ -146,6 +171,9 @@ export async function sendReplyViaNxErp(opts: {
     midiaNome: opts.midiaNome,
     midiaLegenda: opts.midiaLegenda,
     replyToWamid: opts.replyToWamid,
+    lista: opts.lista,
+    listaBotao: opts.listaBotao,
+    listaTitulo: opts.listaTitulo,
   })
   console.info(`[CRM OUTBOUND] crm_mensagem_id=${payload.crm_mensagem_id} telefone_digitos=${payload.telefone.length}`)
   const result = await postNxErpEvento(opts.empresaId, payload)

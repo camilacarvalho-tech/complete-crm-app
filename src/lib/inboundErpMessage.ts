@@ -8,7 +8,7 @@ import { db } from '../firebase'
 import { garantirConversaFila } from './garantirConversaFila'
 import { digits } from './nexusCore'
 import { writeAudit } from './audit'
-import { etapaDe, leticiaReply, stepDe } from '../modules/chat-robot/leticiaReception'
+import { camposConversa, leticiaReply, leticiaTravada, LETICIA_MENU_BOTAO, LETICIA_MENU_TITULO, podeResponder, stepDoBot, textoSelecaoCliente } from '../modules/chat-robot/leticiaReception'
 import { resolveInboundOrigin } from './inboundOrigin'
 
 export type InboundErpPayload = {
@@ -35,6 +35,7 @@ export type InboundErpPayload = {
   direction?: string
   status?: string
   replyToWamid?: string
+  opcaoId?: string
 }
 
 export { resolveInboundOrigin } from './inboundOrigin'
@@ -123,12 +124,15 @@ export async function handleInboundErpMessage(
       )
       replyToTexto = String(origem.docs[0]?.data()?.texto || '').slice(0, 180)
     }
+    const opcaoId = String(payload.opcaoId || '').trim()
+    const textoCliente = opcaoId ? (textoSelecaoCliente(opcaoId) || texto) : texto
     await addDoc(collection(db, 'empresas', empresaId, 'mensagens'), {
       conversaId: fila.conversaId,
       clienteId,
       autorId: 'cliente',
       autorNome: payload.nome || 'Cliente',
-      texto,
+      texto: textoCliente,
+      opcaoId: opcaoId || null,
       tipo: payload.messageType || 'texto',
       status: 'recebida',
       direction: 'INBOUND',
@@ -162,7 +166,9 @@ export async function handleInboundErpMessage(
           paused: false,
           welcomed: anterior.welcomed,
           step: anterior.step,
+          flow: String(conv.botState?.flow || ''),
           text: texto,
+          opcaoId,
         })
     const welcomeSentAt = reception?.welcomed ? (anterior.welcomeSentAt || new Date().toISOString()) : anterior.welcomeSentAt
     const passo = reception?.step || anterior.step || 'menu'
@@ -175,7 +181,8 @@ export async function handleInboundErpMessage(
         autorNome: 'Letícia',
         autorId: 'leticia',
         texto: reception.reply,
-        tipo: 'texto',
+        ...(reception.opcoes?.length ? { opcoes: reception.opcoes, listaBotao: LETICIA_MENU_TITULO } : {}),
+        tipo: reception.opcoes?.length ? 'interativa' : 'texto',
         status: 'sent',
         direction: 'OUTBOUND',
         source: 'LETICIA_LOCAL',
@@ -183,6 +190,7 @@ export async function handleInboundErpMessage(
         criadoEm: serverTimestamp(),
       })
     }
+    const campos = camposConversa(reception, passo, pausou)
     estadoConversa.set(fila.conversaId, {
       step: pausou ? 'human' : passo,
       welcomed: reception?.welcomed ?? anterior.welcomed,
@@ -204,8 +212,10 @@ export async function handleInboundErpMessage(
       atendimentoHumano: pausou,
       botWelcomeSent: reception?.welcomed ?? anterior.welcomed,
       welcomeSentAt: welcomeSentAt || null,
-      leticiaStep: pausou ? 'human' : passo,
-      etapa: etapaDe(pausou ? 'human' : passo),
+      leticiaStep: campos.leticiaStep,
+      etapa: campos.etapa,
+      botState: campos.botState,
+      ...(campos.modalidadeSelecionada ? { modalidadeSelecionada: campos.modalidadeSelecionada } : {}),
       assignedTo: reception?.transferTo || conv.assignedTo || null,
       origemLead,
       atualizadoEm: serverTimestamp(),
@@ -239,6 +249,8 @@ type ConversaMemoria = {
   botWelcomeSent?: boolean
   leticiaStep?: string
   etapa?: string
+  botState?: { active?: boolean; flow?: string; step?: string }
+  modalidadeSelecionada?: string
   botAtivo?: boolean
   atendimentoHumano?: boolean
   welcomeSentAt?: string
@@ -253,14 +265,7 @@ type MemoriaChat = {
 }
 
 function humanoAtivo(conversa?: ConversaMemoria): boolean {
-  return conversa?.roboPausado === true
-    || conversa?.robotPaused === true
-    || conversa?.botAtivo === false
-    || conversa?.atendimentoHumano === true
-    || String(conversa?.statusAtendimento || '') === 'HUMANO'
-    || String(conversa?.robotState || '') === 'HUMAN_ACTIVE'
-    || conversa?.leticiaStep === 'human'
-    || conversa?.etapa === 'HUMANO'
+  return leticiaTravada(conversa)
 }
 
 function lerEstado(conversaId: string, conversa?: ConversaMemoria) {
@@ -272,8 +277,9 @@ function lerEstado(conversaId: string, conversa?: ConversaMemoria) {
   const cache = estadoConversa.get(conversaId)
   if (cache) return cache
   const welcomed = conversa?.botWelcomeSent === true || Boolean(conversa?.welcomeSentAt)
+  const stepGravado = stepDoBot(conversa?.botState, String(conversa?.leticiaStep || ''), String(conversa?.etapa || ''))
   const estado = {
-    step: stepDe(String(conversa?.leticiaStep || ''), String(conversa?.etapa || '')),
+    step: stepGravado === 'human' ? 'menu' : stepGravado,
     welcomed,
     paused: false,
     welcomeSentAt: String(conversa?.welcomeSentAt || ''),
@@ -283,16 +289,27 @@ function lerEstado(conversaId: string, conversa?: ConversaMemoria) {
 }
 
 /** Grava a mensagem do cliente usando a conversa já aberta no Chat, sem varrer o Firestore. */
+export type SaidaRobo = {
+  texto: string
+  telefone: string
+  conversaId: string
+  clienteId: string
+  crmMensagemId: string
+  opcoes?: { id: string; title: string }[]
+}
+
 export async function gravarMensagemRecebida(
   empresaId: string,
   payload: InboundErpPayload,
   memoria: MemoriaChat,
-): Promise<void> {
+): Promise<SaidaRobo | null> {
   const texto = String(payload.message || '').trim()
   const chave = String(payload.wamid || payload.messageId || '').trim()
-  if (!texto || !chave) return
+  const opcaoId = String(payload.opcaoId || '').trim()
+  if (!texto || !chave) return null
   const id = chave.replace(/\//g, '_').slice(0, 700)
-  if (jaGravadas.has(id) || memoria.mensagens.some((m) => m.id === id || m.wamid === chave || m.messageId === chave)) return
+  if (!podeResponder(jaGravadas, id) || memoria.mensagens.some((m) => m.id === id || m.wamid === chave || m.messageId === chave)) return null
+  const textoCliente = opcaoId ? (textoSelecaoCliente(opcaoId) || texto) : texto
 
   const tel = digits(payload.whatsapp || payload.phone || '')
   if (tel.length < 10) throw new Error('Inbound sem telefone válido')
@@ -343,8 +360,9 @@ export async function gravarMensagemRecebida(
     clienteId,
     autorId: 'cliente',
     autorNome: payload.nome || 'Cliente',
-    texto,
-    tipo: payload.messageType || 'texto',
+    texto: textoCliente,
+    opcaoId: opcaoId || null,
+    tipo: opcaoId ? 'interativa' : (payload.messageType || 'texto'),
     status: 'recebida',
     direction: 'INBOUND',
     source: 'whatsapp',
@@ -368,22 +386,26 @@ export async function gravarMensagemRecebida(
         paused: false,
         welcomed: anterior.welcomed,
         step: anterior.step,
+        flow: String(conversa?.botState?.flow || ''),
         text: texto,
+        opcaoId,
       })
   const welcomeSentAt = reception?.welcomed
     ? (anterior.welcomeSentAt || new Date().toISOString())
     : anterior.welcomeSentAt
   const passo = reception?.step || anterior.step || 'menu'
   const pausou = Boolean(reception?.pause) || anterior.paused
+  const crmMensagemId = `leticia-${id}`
   if (reception?.reply) {
-    await setDoc(doc(db, 'empresas', empresaId, 'mensagens', `leticia-${id}`), {
+    await setDoc(doc(db, 'empresas', empresaId, 'mensagens', crmMensagemId), {
       empresaId,
       conversaId,
       clienteId,
       autorNome: 'Letícia',
       autorId: 'leticia',
       texto: reception.reply,
-      tipo: 'texto',
+      ...(reception.opcoes?.length ? { opcoes: reception.opcoes, listaBotao: LETICIA_MENU_TITULO } : {}),
+      tipo: reception.opcoes?.length ? 'interativa' : 'texto',
       status: 'sent',
       direction: 'OUTBOUND',
       source: 'LETICIA_LOCAL',
@@ -400,9 +422,12 @@ export async function gravarMensagemRecebida(
     welcomeSentAt,
   }
   estadoConversa.set(conversaId, proximo)
+  const campos = camposConversa(reception, passo, pausou)
   if (conversa) {
-    conversa.leticiaStep = proximo.step
-    conversa.etapa = etapaDe(proximo.step)
+    conversa.leticiaStep = campos.leticiaStep
+    conversa.etapa = campos.etapa
+    conversa.botState = campos.botState
+    if (campos.modalidadeSelecionada) conversa.modalidadeSelecionada = campos.modalidadeSelecionada
     conversa.botWelcomeSent = proximo.welcomed
     conversa.welcomeSentAt = welcomeSentAt
     conversa.botAtivo = !pausou
@@ -431,12 +456,23 @@ export async function gravarMensagemRecebida(
     atendimentoHumano: pausou,
     botWelcomeSent: proximo.welcomed,
     welcomeSentAt: welcomeSentAt || null,
-    leticiaStep: proximo.step,
-    etapa: etapaDe(proximo.step),
+    leticiaStep: campos.leticiaStep,
+    etapa: campos.etapa,
+    botState: campos.botState,
+    ...(campos.modalidadeSelecionada ? { modalidadeSelecionada: campos.modalidadeSelecionada } : {}),
     assignedTo: reception?.transferTo || conversa?.assignedTo || null,
     origemLead,
     atualizadoEm: serverTimestamp(),
   })
+  if (!reception?.reply) return null
+  return {
+    texto: reception.reply,
+    telefone: tel,
+    conversaId,
+    clienteId,
+    crmMensagemId,
+    ...(reception.opcoes?.length ? { opcoes: reception.opcoes } : {}),
+  }
 }
 
 /** Processa inbox empresas/{id}/erpInbound com processado!=true */

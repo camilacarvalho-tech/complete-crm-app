@@ -53,15 +53,23 @@ function verifySignature(rawBody, header, appSecret) {
   return crypto.timingSafeEqual(a, b)
 }
 
+function escolhaInterativa(msg) {
+  const interativo = (msg && msg.interactive) || {}
+  const resposta = interativo.button_reply || interativo.list_reply || {}
+  return {
+    id: String(resposta.id || '').trim(),
+    title: String(resposta.title || resposta.description || '').trim(),
+  }
+}
+
 function textoDoCliente(msg) {
   const texto = String(msg.text && msg.text.body || '').trim()
   if (texto) return texto
   const botao = msg.button || {}
   const clique = String(botao.text || botao.payload || '').trim()
   if (clique) return clique
-  const interativo = msg.interactive || {}
-  const resposta = interativo.button_reply || interativo.list_reply || {}
-  return String(resposta.title || resposta.description || '').trim()
+  const escolha = escolhaInterativa(msg)
+  return escolha.title || escolha.id
 }
 
 function parseCloudWebhook(body) {
@@ -76,6 +84,7 @@ function parseCloudWebhook(body) {
       for (const msg of value.messages || []) {
         const wamid = String(msg.id || '').trim()
         if (!wamid) continue
+        const escolha = escolhaInterativa(msg)
         const texto = textoDoCliente(msg)
         if (!texto) continue
         messages.push({
@@ -85,6 +94,7 @@ function parseCloudWebhook(body) {
           whatsapp: String(contact.wa_id || msg.from || '').trim(),
           nome: String(contact.profile && contact.profile.name || '').trim(),
           message: texto,
+          opcaoId: escolha.id,
           messageType: String(msg.type || 'texto'),
           replyToWamid: String(msg.context && msg.context.id || '').trim(),
           timestamp: String(msg.timestamp || ''),

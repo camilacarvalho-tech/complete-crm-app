@@ -532,6 +532,7 @@ function enfileirarMensagensLocais(messages) {
     timestamp: msg.timestamp,
     origem: msg.origin,
     replyToWamid: msg.replyToWamid || '',
+    opcaoId: msg.opcaoId || '',
   })).filter((item) => item.wamid && item.texto)
   gravacaoFila = gravacaoFila.then(() => {
     let queue = []

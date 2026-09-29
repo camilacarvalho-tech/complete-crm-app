@@ -186,6 +186,33 @@
   padding: 6px 8px;
   font-size: 13px;
 }
+.chat-wa .bolha p { margin: 0; white-space: pre-wrap; }
+.chat-wa .bolha .opcoes { margin-top: 6px; }
+.chat-wa .bolha .opcoes summary {
+  cursor: pointer;
+  list-style: none;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+.chat-wa .bolha .opcoes summary::-webkit-details-marker { display: none; }
+.chat-wa .bolha .opcoes summary::after { content: ' ▼'; font-weight: 700; }
+.chat-wa .bolha .opcoes[open] summary::after { content: ' ▲'; }
+.chat-wa .bolha .opcoes span {
+  display: block;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
 .chat-wa .bolha.entra { align-self: flex-start; background: var(--code-surface); border: 1px solid var(--code-border); }
 .chat-wa .bolha.sai { align-self: flex-end; background: #005c4b; color: #e7ffdb; }
 @media (max-width: 800px) {

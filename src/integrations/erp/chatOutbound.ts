@@ -15,6 +15,12 @@ export function newClientMessageId(): string {
   return `crm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+function botaoLista(valor?: string): string {
+  const texto = String(valor || '').trim()
+  if (texto && texto.length <= 20) return texto
+  return 'Escolha modalidade'
+}
+
 export function buildRespostaChat(input: {
   crmMensagemId: string
   telefone: string
@@ -29,10 +35,17 @@ export function buildRespostaChat(input: {
   midiaNome?: string
   midiaLegenda?: string
   replyToWamid?: string
+  lista?: { id: string; title: string }[]
+  listaBotao?: string
+  listaTitulo?: string
 }) {
   const texto = String(input.texto || '').trim()
   const audio = String(input.audioBase64 || '').trim()
   const midia = String(input.midiaBase64 || '').trim()
+  const lista = (input.lista || [])
+    .map((item) => ({ id: String(item.id || '').trim().slice(0, 200), title: String(item.title || '').trim().slice(0, 24) }))
+    .filter((item) => item.id && item.title)
+    .slice(0, 10)
   return {
     tipo: 'resposta_chat' as const,
     crm_mensagem_id: String(input.crmMensagemId || '').trim(),
@@ -50,6 +63,11 @@ export function buildRespostaChat(input: {
       midia_legenda: String(input.midiaLegenda || ''),
     } : {}),
     ...(String(input.replyToWamid || '').trim() ? { reply_to_wamid: String(input.replyToWamid).trim() } : {}),
+    ...(lista.length ? {
+      lista,
+      lista_botao: botaoLista(input.listaBotao),
+      lista_titulo: String(input.listaTitulo || 'Escolha sua modalidade').trim().slice(0, 24) || 'Escolha sua modalidade',
+    } : {}),
   }
 }
 
