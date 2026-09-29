@@ -8,20 +8,15 @@ export const FGTS_INSTITUTIONS = [
   'Giro Sociedade de Crédito',
 ] as const
 
-export const LETICIA_WELCOME = `Olá! Seja bem-vindo(a) à Recomece Cred! 💛
-Sou a Letícia, atendente virtual.
+export const LETICIA_WELCOME = `Olá! Como podemos ajudar você hoje?
 
-Escolha a modalidade que deseja consultar:`
+Escolha uma modalidade:`
 
-export const LETICIA_ESCLARECER = 'Para continuar, toque em Escolha sua modalidade.'
+export const LETICIA_ESCLARECER = 'Escolha uma modalidade:'
 
 export const LETICIA_CPF_INVALIDO = 'Não consegui validar esse CPF. Pode conferir os números e me enviar novamente, por favor?'
 
-export const LETICIA_HANDOFF = `Obrigada! 💛
-
-Um momento, estamos verificando suas informações em nosso sistema.
-
-Em instantes, um de nossos atendentes irá auxiliar você. 😊`
+export const LETICIA_HANDOFF = 'Um momento, por favor. Estamos verificando seus dados em nosso sistema. Em instantes, um atendente humano irá continuar seu atendimento. 💛'
 
 const MODALIDADES = [
   { id: 'credito_clt', flow: 'clt', numero: '1', label: 'Crédito CLT' },
@@ -190,8 +185,9 @@ export function leticiaTravada(conversa?: {
   const status = String(conversa?.status || '')
   const atendimento = String(conversa?.statusAtendimento || '')
   if (status === 'finalizado' || atendimento === 'FINALIZADO') return true
+  if (status === 'transferido' || atendimento === 'TRANSFERIDO') return true
   if (conversa?.botState?.active === false && conversa?.botState?.step === 'human_handoff') return true
-  if (status === 'em_atendimento' && (conversa?.roboPausado === true || atendimento === 'HUMANO')) return true
+  if ((status === 'em_atendimento' || status === 'aguardando_atendimento') && (conversa?.roboPausado === true || atendimento === 'HUMANO')) return true
   return false
 }
 

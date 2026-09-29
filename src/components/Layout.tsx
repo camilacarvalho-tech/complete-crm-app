@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Menu } from 'lucide-react'
 import { Sidebar } from '../app/components/layout/Sidebar'
 import { LeticiaWorker } from './LeticiaWorker'
+import { LeadsJobKeeper } from './LeadsJobKeeper'
 import { GlobalSearchHost } from './layout/AppHeader'
 import { ThemeToggle } from './layout/ThemeToggle'
 import { useAppearance } from '../contexts/ThemeContext'
@@ -14,6 +15,7 @@ export default function Layout() {
   return (
     <div className="flex min-h-screen nexus-shell">
       <LeticiaWorker />
+      <LeadsJobKeeper />
       <div className={`${open ? 'block' : 'hidden'} md:block`}>
         <Sidebar />
       </div>

@@ -85,6 +85,18 @@ export function deliveryMark(status?: string): 'pending' | 'sending' | 'sent' | 
   return 'pending'
 }
 
+export function motivoEnvioWhatsapp(message?: string): string {
+  const bruto = String(message || '').trim()
+  const t = bruto.toLowerCase()
+  if (t.includes('telefone ausente')) return 'Este cliente está sem telefone. A mensagem não saiu no WhatsApp.'
+  if (t.includes('telefone inválido') || t.includes('telefone invalido')) return 'O telefone deste cliente não serve para o WhatsApp.'
+  if (t.includes('não está ativo') || t.includes('nao esta ativo')) return 'O envio para o WhatsApp está desligado. A mensagem ficou salva nesta conversa.'
+  if (/econnrefused|failed to fetch|networkerror|502|503|\b500\b/.test(t)) return 'O WhatsApp não recebeu. O servidor de envio não respondeu. A mensagem ficou salva aqui.'
+  if (t.includes('não confirmou') || t.includes('nao confirmou')) return 'O servidor recebeu, mas o WhatsApp não confirmou que a mensagem saiu.'
+  if (!bruto) return 'Não deu para enviar no WhatsApp. A mensagem ficou salva nesta conversa.'
+  return `Não deu para enviar no WhatsApp. ${bruto}`
+}
+
 export function deliveryLabel(status?: string): string {
   const mark = deliveryMark(status)
   if (mark === 'read') return 'Lida'

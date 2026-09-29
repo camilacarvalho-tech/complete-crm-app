@@ -158,7 +158,7 @@ export async function handleInboundErpMessage(
     const convSnap = await getDoc(doc(db, 'empresas', empresaId, 'conversas', fila.conversaId))
     const conv = (convSnap.data() || {}) as ConversaMemoria
     const st = String(conv.status || '')
-    const keepStatus = st === 'em_atendimento' || st === 'aguardando_cliente' || st === 'aguardando_funcionario'
+    const keepStatus = st === 'em_atendimento' || st === 'aguardando_cliente' || st === 'aguardando_funcionario' || st === 'aguardando_atendimento' || st === 'transferido' || st === 'finalizado'
     const anterior = lerEstado(fila.conversaId, { ...conv, id: fila.conversaId })
     const reception = anterior.paused
       ? null
@@ -204,7 +204,7 @@ export async function handleInboundErpMessage(
         ? { unreadCount: 1, naoLidas: 1 }
         : { naoLidas: increment(1), unreadCount: increment(1) }),
       conversationStatus: 'RESPONDIDO',
-      ...(keepStatus ? {} : { status: pausou ? 'aguardando_funcionario' : 'aguardando_triagem' }),
+      ...(keepStatus ? {} : { status: pausou ? 'aguardando_atendimento' : 'aguardando_triagem' }),
       robotState: pausou ? 'HUMAN_ACTIVE' : 'BOT_ACTIVE',
       robotPaused: pausou,
       roboPausado: pausou,
@@ -378,7 +378,7 @@ export async function gravarMensagemRecebida(
   jaGravadas.add(id)
 
   const st = String(conversa?.status || '')
-  const keepStatus = st === 'em_atendimento' || st === 'aguardando_cliente' || st === 'aguardando_funcionario'
+  const keepStatus = st === 'em_atendimento' || st === 'aguardando_cliente' || st === 'aguardando_funcionario' || st === 'aguardando_atendimento' || st === 'transferido' || st === 'finalizado'
   const anterior = lerEstado(conversaId, conversa)
   const reception = anterior.paused
     ? null
@@ -448,7 +448,7 @@ export async function gravarMensagemRecebida(
         ? { unreadCount: 1, naoLidas: 1 }
         : { naoLidas: increment(1), unreadCount: increment(1) }),
     conversationStatus: 'RESPONDIDO',
-    ...(keepStatus ? {} : { status: pausou ? 'aguardando_funcionario' : 'aguardando_triagem' }),
+    ...(keepStatus ? {} : { status: pausou ? 'aguardando_atendimento' : 'aguardando_triagem' }),
     robotState: pausou ? 'HUMAN_ACTIVE' : 'BOT_ACTIVE',
     robotPaused: pausou,
     roboPausado: pausou,

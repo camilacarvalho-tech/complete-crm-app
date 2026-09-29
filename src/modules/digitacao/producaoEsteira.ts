@@ -459,7 +459,7 @@ export const PRODUTOS_DIGITACAO = [
   { code: 'OUTROS', label: 'Outros' },
 ] as const
 
-export const BANCOS_DIGITACAO = ['FACTA', 'NOVO SAQUE', 'ICRED', 'TOKE REAL'] as const
+export const BANCOS_DIGITACAO = ['FACTA', 'NOVO SAQUE', 'ICRED', 'BANCO PAN'] as const
 
 export const DOCS_ESPERADOS = ['RG', 'CPF', 'Comprovante de endereço', 'Comprovante de renda', 'Contracheque', 'Extrato', 'Documento adicional'] as const
 

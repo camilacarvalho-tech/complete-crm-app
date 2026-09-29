@@ -7,7 +7,8 @@ import { filterEmojis } from '../../components/chat/emojiData.ts'
 test('primeira mensagem é a saudação curta e a lista interativa, sem modalidades no texto', () => {
   const first = leticiaReply({ paused: false, welcomed: false, step: 'menu', text: 'oi' })
   assert.equal(first.reply, LETICIA_WELCOME)
-  assert.match(first.reply || '', /Escolha a modalidade que deseja consultar:/)
+  assert.match(first.reply || '', /Olá! Como podemos ajudar você hoje\?/)
+  assert.match(first.reply || '', /Escolha uma modalidade:/)
   assert.doesNotMatch(first.reply || '', /1️⃣|2️⃣|Crédito CLT|FGTS|INSS/)
   assert.equal(first.opcoes?.length, 8)
   assert.deepEqual(first.opcoes, LETICIA_MENU_OPCOES)
@@ -161,6 +162,8 @@ test('aguardando cliente não trava a Letícia; assumir e finalizar travam', () 
   assert.equal(leticiaTravada({ status: 'aguardando_cliente', roboPausado: true, statusAtendimento: 'HUMANO' }), false)
   assert.equal(leticiaTravada({ status: 'em_atendimento', roboPausado: true, statusAtendimento: 'HUMANO' }), true)
   assert.equal(leticiaTravada({ status: 'finalizado' }), true)
+  assert.equal(leticiaTravada({ status: 'transferido' }), true)
+  assert.equal(leticiaTravada({ status: 'aguardando_atendimento', roboPausado: true }), true)
   assert.equal(leticiaTravada({ status: 'aguardando_funcionario', botState: { active: false, step: 'human_handoff' } }), true)
 })
 

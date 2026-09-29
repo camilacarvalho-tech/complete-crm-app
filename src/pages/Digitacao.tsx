@@ -1,16 +1,15 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bot, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { PRODUCT_TREE, UFS_BRASIL } from '../catalog/crmCatalog'
-import { DIGITACAO_STATUSES, digitacaoStatusId, digitacaoStatusLabel, findProduct, operationLabel, operationsFor, productCatalogLabel } from '../catalog/productCatalog'
-import { ErrorBanner, GhostButton, LoadingBlock, SelectInput, TextInput } from '../components/nexus/kit'
-import { DetalhesPropostaBox } from '../components/nexus/DetalhesPropostaBox'
+import { digitacaoStatusId, digitacaoStatusLabel, findProduct, operationLabel, operationsFor, productCatalogLabel } from '../catalog/productCatalog'
+import { ErrorBanner, LoadingBlock, PrimaryButton, SelectInput, TextInput } from '../components/nexus/kit'
 import { textoMisto } from '../lib/uiPt'
 import { maskCpf } from '../lib/format'
 import { useNexusStore } from '../contexts/NexusStore'
 import { useToast } from '../components/ui/Toast'
 import { useEscLayer } from '../hooks/useEscLayer'
 import { toDate } from '../lib/nexusCore'
-import { simulateAllInstitutions } from '../integrations/banks/registry'
+import { INSTITUTION_ADAPTERS, simulateAdapters } from '../integrations/banks/registry'
 import { ingestSimulationResult } from '../modules/digitacao/simulationToDigitacao'
 import {
   buildHistory,
@@ -23,15 +22,14 @@ import {
   formatPrazo,
   hasSignatureBlock,
   isCompleteCpf,
-  proposalsForCliente,
   docsForProposal,
   documentOpenUrl,
   sourcedField,
   waitingInstitution,
   type DeskRecord,
 } from '../modules/digitacao/digitacaoDesk'
+import { statusEsteira } from '../modules/digitacao/producaoEsteira'
 import type { NexusCliente } from '../types/nexus'
-import CentralProducao from './CentralProducao'
 import './digitacaoDesk.css'
 
 function FieldRow({
@@ -44,7 +42,7 @@ function FieldRow({
   source?: string
 }) {
   return (
-    <div className="py-1.5 border-b" style={{ borderColor: 'var(--code-border)' }}>
+    <div className="ficha-campo">
       <div className="desk-label">{label}</div>
       <div className="desk-value">{value}</div>
       {source ? <div className="text-[11px]" style={{ color: 'var(--code-muted)' }}>Fonte: {source}</div> : null}
@@ -72,23 +70,27 @@ function bancoToke(v: unknown) {
   return /toke\s*real/i.test(String(v || ''))
 }
 
-const FILTROS_ICRED = [
-  { id: 'todas', label: 'Todos' },
-  { id: 'analise', label: 'Análise documental' },
-  { id: 'video', label: 'Vídeo chamada' },
-  { id: 'averbacao', label: 'Averbação/Reserva' },
-  { id: 'assinatura', label: 'Assinatura' },
-  { id: 'pagamento', label: 'Pagamento' },
-]
+type FocoFicha = 'cliente' | 'operacao' | 'proposta' | 'retorno' | 'pendencias' | 'documentos' | 'historico'
 
-function grupoDigitacao(item: DeskRecord) {
-  const blob = `${item.status || ''} ${item.operacao || ''} ${item.ultimoHistorico || ''} ${item.mensagemSimulacao || ''}`.toLowerCase()
-  if (/video|v[ií]deo/.test(blob)) return 'video'
-  if (/pagamento|pago|paga|liquid/.test(blob)) return 'pagamento'
-  if (/assin|formaliz/.test(blob)) return 'assinatura'
-  if (/averb|reserva|desbloque/.test(blob)) return 'averbacao'
-  if (/document|an[aá]lise/.test(blob)) return 'analise'
+function grupoResumo(item: DeskRecord): '' | 'digitacao' | 'analise' | 'pendencia' | 'aprovada' | 'paga' {
+  const st = statusEsteira(item.status)
+  if (st === 'DIGITACAO' || st === 'EM_DIGITACAO' || st === 'AGUARDANDO_DIGITACAO' || st === 'SIMULACAO') return 'digitacao'
+  if (st === 'EM_ANALISE') return 'analise'
+  if (st === 'PENDENCIA') return 'pendencia'
+  if (st === 'APROVADA') return 'aprovada'
+  if (st === 'PAGA') return 'paga'
+  const id = digitacaoStatusId(String(item.status || ''))
+  if (id === 'em_analise') return 'analise'
+  if (id === 'aprovado') return 'aprovada'
   return ''
+}
+
+function diaIso(value: unknown): string {
+  const d = toDate(value)
+  if (!d) return ''
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const dia = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${dia}`
 }
 
 export default function Digitacao() {
@@ -97,17 +99,24 @@ export default function Digitacao() {
   const [q, setQ] = useState('')
   const [produto, setProduto] = useState('INSS')
   const [operacao, setOperacao] = useState('PORTABILIDADE')
+  const [instituicao, setInstituicao] = useState('')
+  const [pagina, setPagina] = useState(0)
   const [estado, setEstado] = useState('')
   const [municipio, setMunicipio] = useState('')
   const [busy, setBusy] = useState(false)
-  const [resultados, setResultados] = useState<Awaited<ReturnType<typeof simulateAllInstitutions>>>([])
+  const [resultados, setResultados] = useState<Awaited<ReturnType<typeof simulateAdapters>>>([])
   const [clienteId, setClienteId] = useState<string | null>(null)
   const [ocultarCliente, setOcultarCliente] = useState(false)
-  const [ficha, setFicha] = useState<{ rec: DeskRecord; tab: 'proposta' | 'documentos' | 'historico' } | null>(null)
-  const [caixa, setCaixa] = useState<DeskRecord | null>(null)
+  const [ficha, setFicha] = useState<{ rec: DeskRecord; foco: FocoFicha } | null>(null)
   const [menuId, setMenuId] = useState<string | null>(null)
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
-  const [tabFila, setTabFila] = useState('todas')
+  const [busca, setBusca] = useState('')
+  const [filtroProduto, setFiltroProduto] = useState('')
+  const [filtroInstituicao, setFiltroInstituicao] = useState('')
+  const [filtroOperacao, setFiltroOperacao] = useState('')
+  const [filtroSituacao, setFiltroSituacao] = useState('')
+  const [filtroVendedor, setFiltroVendedor] = useState('')
+  const [filtroData, setFiltroData] = useState('')
   const tableRef = useRef<HTMLDivElement>(null)
 
   const catalogProduct = findProduct(produto)
@@ -127,43 +136,77 @@ export default function Digitacao() {
     setClienteId(hit ? hit.id : null)
   }, [q, clientes.items, ocultarCliente])
 
-  const propostasCliente = useMemo(() => {
-    if (!cliente) return []
-    return proposalsForCliente(digitacoes.items as DeskRecord[], propostas.items as DeskRecord[], cliente)
-  }, [cliente, digitacoes.items, propostas.items])
+  const base = useMemo(
+    () => (digitacoes.items as DeskRecord[]).filter((d) => !nomeHomolog(d.clienteNome) && !bancoToke(`${d.banco || ''} ${d.instituicao || ''} ${d.produto || ''}`)),
+    [digitacoes.items],
+  )
+
+  const vendedores = useMemo(() => {
+    const nomes = new Set<string>()
+    for (const item of base) {
+      const nome = String(item.responsavel || item.operadorNome || '').trim()
+      if (nome) nomes.add(nome)
+    }
+    return [...nomes].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }, [base])
+
+  const resumo = useMemo(() => {
+    const contagem = { total: base.length, digitacao: 0, analise: 0, pendencia: 0, aprovada: 0, paga: 0 }
+    for (const item of base) {
+      const grupo = grupoResumo(item)
+      if (grupo) contagem[grupo] += 1
+    }
+    return contagem
+  }, [base])
 
   const fila = useMemo(() => {
-    let items = (digitacoes.items as DeskRecord[]).filter((d) => !nomeHomolog(d.clienteNome) && !bancoToke(`${d.banco || ''} ${d.instituicao || ''} ${d.produto || ''}`))
-    const alvo = findProduct(produto)
-    if (alvo) {
-      items = items.filter((d) => {
-        const atual = findProduct(String(d.produto || ''))
-        return atual ? atual.code === alvo.code : false
-      })
-    }
-    if (operacao) {
-      items = items.filter((d) => {
-        const op = String(d.operacao || '')
-        return op.toUpperCase() === operacao.toUpperCase() || operationLabel(op).toLowerCase() === operationLabel(operacao).toLowerCase()
-      })
-    }
-    const digitos = q.replace(/\D/g, '')
-    if (digitos.length >= 3 && !cliente) {
-      items = items.filter((d) => {
-        const numero = `${d.protocolo || ''} ${d.numeroProposta || ''}`.replace(/\D/g, '')
-        const cpf = String(d.cpf || '').replace(/\D/g, '')
-        return numero.includes(digitos) || cpf.includes(digitos)
-      })
-    }
-    if (cliente) {
-      const ids = new Set(propostasCliente.map((p) => p.id))
-      items = items.filter((d) => ids.has(d.id) || String(d.clienteId) === cliente.id)
-    }
-    if (tabFila !== 'todas' && FILTROS_ICRED.some((t) => t.id === tabFila)) {
-      items = items.filter((d) => grupoDigitacao(d) === tabFila)
-    }
-    return items
-  }, [digitacoes.items, cliente, propostasCliente, tabFila, produto, operacao, q])
+    const texto = busca.trim().toLowerCase()
+    const digitos = busca.replace(/\D/g, '')
+    return base.filter((item) => {
+      if (filtroProduto) {
+        const atual = findProduct(String(item.produto || ''))
+        if (!atual || atual.code !== filtroProduto) return false
+      }
+      if (filtroInstituicao && String(item.banco || item.instituicao || '').toUpperCase() !== filtroInstituicao.toUpperCase()) return false
+      if (filtroOperacao) {
+        const op = String(item.operacao || '')
+        if (op.toUpperCase() !== filtroOperacao.toUpperCase() && operationLabel(op).toLowerCase() !== operationLabel(filtroOperacao).toLowerCase()) return false
+      }
+      if (filtroSituacao && grupoResumo(item) !== filtroSituacao) return false
+      if (filtroVendedor && String(item.responsavel || item.operadorNome || '') !== filtroVendedor) return false
+      if (filtroData && diaIso(item.criadoEm) !== filtroData) return false
+      if (texto) {
+        const alvo = `${item.clienteNome || ''} ${item.protocolo || ''} ${item.numeroProposta || ''} ${item.telefone || ''} ${item.whatsapp || ''}`.toLowerCase()
+        const cpf = String(item.cpf || '').replace(/\D/g, '')
+        if (!alvo.includes(texto) && !(digitos && cpf.includes(digitos))) return false
+      }
+      return true
+    })
+  }, [base, busca, filtroProduto, filtroInstituicao, filtroOperacao, filtroSituacao, filtroVendedor, filtroData])
+
+  useEffect(() => {
+    setPagina(0)
+  }, [busca, filtroProduto, filtroInstituicao, filtroOperacao, filtroSituacao, filtroVendedor, filtroData])
+
+  function limparFiltros() {
+    setBusca('')
+    setFiltroProduto('')
+    setFiltroInstituicao('')
+    setFiltroOperacao('')
+    setFiltroSituacao('')
+    setFiltroVendedor('')
+    setFiltroData('')
+  }
+
+  function abrirFicha(rec: DeskRecord, foco: FocoFicha) {
+    setMenuId(null)
+    setFicha({ rec, foco })
+  }
+
+  const porPagina = 25
+  const paginas = Math.max(1, Math.ceil(fila.length / porPagina))
+  const paginaAtual = Math.min(pagina, paginas - 1)
+  const filaPagina = fila.slice(paginaAtual * porPagina, paginaAtual * porPagina + porPagina)
 
   async function simularEEnviar() {
     setBusy(true)
@@ -173,7 +216,10 @@ export default function Digitacao() {
         cliente ||
         clientes.items.find((c) => String(c.cpf || '').replace(/\D/g, '') === cpfDigits) ||
         undefined
-      const offers = await simulateAllInstitutions({
+      const adapters = instituicao
+        ? INSTITUTION_ADAPTERS.filter((a) => a.name === instituicao)
+        : INSTITUTION_ADAPTERS
+      const offers = await simulateAdapters(adapters, {
         cpf: cli?.cpf || q,
         produto,
         operacao,
@@ -182,13 +228,18 @@ export default function Digitacao() {
         origem: 'digitacao',
       })
       setResultados(offers)
+      const recebidas = offers.filter((o) => o.status === 'Dados retornados pela instituição')
+      if (!recebidas.length) {
+        toast.success('Nenhuma instituição devolveu dados. Nada foi inventado e nenhuma proposta nova foi criada.')
+        return
+      }
       const existingKeys = new Set(
         digitacoes.items.map((d) =>
           [d.clienteId || 'sem-cliente', d.banco, d.produto, d.operacao].join(':').toLowerCase()
         )
       )
       let criadas = 0
-      for (const offer of offers) {
+      for (const offer of recebidas) {
         const packed = ingestSimulationResult({
           offer,
           clienteId: cli?.id,
@@ -216,20 +267,28 @@ export default function Digitacao() {
   if (digitacoes.loading || clientes.loading) return <LoadingBlock label="Carregando digitação..." />
 
   return (
-    <div className="digitacao-desk space-y-3">
-      <CentralProducao />
-      <div className="flex items-center gap-2">
-        <h2 className="text-sm font-semibold">Mesa de consulta</h2>
-        {busy && (
-          <span className="robinho" role="status">
-            <Bot className="w-3.5 h-3.5" />
-            Robinho
-          </span>
-        )}
+    <div className="digitacao-desk mesa">
+      <div className="mesa-titulo">
+        <div>
+          <h1>Central de Digitação</h1>
+          <p>Mesa operacional de propostas e digitação.</p>
+        </div>
+        <div className="resumo-linha" role="status">
+          {([
+            ['', 'Total', resumo.total],
+            ['digitacao', 'Em digitação', resumo.digitacao],
+            ['analise', 'Em análise', resumo.analise],
+            ['pendencia', 'Pendências', resumo.pendencia],
+            ['aprovada', 'Aprovadas', resumo.aprovada],
+            ['paga', 'Pagas', resumo.paga],
+          ] as const).map(([id, label, n]) => (
+            <button key={label} type="button" className={filtroSituacao === id ? 'on' : ''} onClick={() => setFiltroSituacao(id)}>{label} {n}</button>
+          ))}
+        </div>
       </div>
       <ErrorBanner message={digitacoes.error || clientes.error} />
 
-      <div className="desk-card p-3 space-y-2">
+      <div className="desk-card mesa-barra">
         <div className="flex flex-wrap gap-2 items-end">
           <div className="relative min-w-[240px] flex-1">
             <span className="desk-label">CPF / Proposta</span>
@@ -269,6 +328,14 @@ export default function Digitacao() {
               </SelectInput>
             </label>
           )}
+          <label className="desk-label">Instituição
+            <SelectInput className="!py-1.5 !text-xs" value={instituicao} onChange={(e) => setInstituicao(e.target.value)}>
+              <option value="">Todas</option>
+              {INSTITUTION_ADAPTERS.map((a) => (
+                <option key={a.id} value={a.name}>{a.name}</option>
+              ))}
+            </SelectInput>
+          </label>
           {catalogProduct?.needsState && (
             <label className="desk-label">Estado
               <SelectInput className="!py-1.5 !text-xs" value={estado} onChange={(e) => setEstado(e.target.value)}>
@@ -282,101 +349,65 @@ export default function Digitacao() {
               <TextInput className="!py-1.5 !text-xs" value={municipio} placeholder="Município" onChange={(e) => setMunicipio(e.target.value)} />
             </label>
           )}
-          <GhostButton type="button" className="!py-1.5 !text-xs" disabled={busy} onClick={() => void simularEEnviar()}>
-            {busy ? 'Consultando…' : 'Consultar instituições'}
-          </GhostButton>
+          <PrimaryButton type="button" className="!py-1.5 !text-xs" disabled={busy} onClick={() => void simularEEnviar()}>
+            {busy ? 'Consultando…' : 'Consultar'}
+          </PrimaryButton>
         </div>
       </div>
 
-      {cliente && (
-        <div className="desk-card p-3">
-          <div className="flex items-center justify-between mb-2">
-            <div className="desk-label">Cliente</div>
-            <button type="button" className="px-2 py-0.5 rounded text-[11px] font-semibold nexus-btn-secondary" onClick={() => setOcultarCliente(true)}>Fechar</button>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2">
-            <div><div className="desk-label">Nome completo</div><div className="desk-value">{emptyLabel(cliente.nome)}</div></div>
-            <div><div className="desk-label">CPF</div><div className="desk-value">{cliente.cpf ? formatCpfDisplay(cliente.cpf) : 'Não informado'}</div></div>
-            <div><div className="desk-label">Nascimento</div><div className="desk-value">{emptyLabel(cliente.dataNascimento)}</div></div>
-            <div><div className="desk-label">Telefone</div><div className="desk-value">{emptyLabel(cliente.telefone)}</div></div>
-            <div><div className="desk-label">WhatsApp</div><div className="desk-value">{emptyLabel(cliente.whatsapp)}</div></div>
-            <div><div className="desk-label">E-mail</div><div className="desk-value">{emptyLabel(cliente.email)}</div></div>
-            <div><div className="desk-label">Endereço</div><div className="desk-value">{emptyLabel(cliente.endereco)}</div></div>
-            <div><div className="desk-label">Cidade/UF</div><div className="desk-value">{[cliente.cidade, cliente.estado].filter(Boolean).join('/') || 'Não informado'}</div></div>
-          </div>
-        </div>
-      )}
-
-      {cliente && (
-        <div className="space-y-2">
-          <div className="desk-label">Propostas do cliente</div>
-          {propostasCliente.filter((p) => !bancoToke(`${p.banco || ''} ${p.instituicao || ''} ${p.produto || ''}`)).length === 0 ? (
-            <p className="text-[12px]" style={{ color: 'var(--code-muted)' }}>Nenhuma proposta existente para este cliente.</p>
-          ) : (
-            <div className="grid gap-2 md:grid-cols-2">
-              {propostasCliente.filter((p) => !bancoToke(`${p.banco || ''} ${p.instituicao || ''} ${p.produto || ''}`)).map((p) => (
-                <div key={p.id} className="desk-card p-3 space-y-1">
-                  <div className="font-semibold text-[13px]">{emptyLabel(p.produto)} · {emptyLabel(p.operacao)} · {emptyLabel(p.banco || p.instituicao)}</div>
-                  <div className="status-pill">{displayOperationalStatus(p)}</div>
-                  <div className="text-[12px]">Parcela: {moneyOrMissing(p.parcela)} · Prazo: {formatPrazo(p.prazo)}</div>
-                  <div className="text-[12px]">Valor: {moneyOrMissing(p.valorLiberado ?? p.valor)}</div>
-                  <GhostButton type="button" className="!py-1 !text-[11px] mt-1" onClick={() => setFicha({ rec: p, tab: 'proposta' })}>
-                    Ver proposta
-                  </GhostButton>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {resultados.length > 0 && (
-        <div className="desk-card p-3 space-y-2">
-          <div className="desk-label">Resultados das instituições</div>
-          <div className="grid gap-2 md:grid-cols-2">
-            {resultados.filter((o) => !bancoToke(o.banco)).map((o) => (
-              <div key={o.bancoId} className="rounded border p-2" style={{ borderColor: 'var(--code-border)' }}>
-                <div className="font-semibold text-[13px]">{o.banco}</div>
-                <div className="status-pill mt-1">{o.status}</div>
-                <div className="text-[11px] mt-1">
-                  Valor: {o.valorLiberado == null ? 'Não informado' : formatMoney(o.valorLiberado)} · Parcela: {o.parcela == null ? 'Não informado' : formatMoney(o.parcela)}
-                </div>
-                <div className="text-[11px]">Prazo: {o.prazo == null ? 'Não informado' : formatPrazo(o.prazo)} · Protocolo: {emptyLabel(o.protocolo)}</div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <p className="text-[12px]" style={{ color: 'var(--code-muted)' }}>
+          {resultados.filter((o) => !bancoToke(o.banco)).map((o) => `${o.banco}: ${o.status}`).join(' · ')}
+        </p>
       )}
 
-      {caixa && (
-        <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-        <DetalhesPropostaBox
-          embedded
-          rec={caixa}
-          clienteNome={nomeHomolog(caixa.clienteNome) ? 'Cliente' : String(caixa.clienteNome || clientes.items.find((c) => c.id === caixa.clienteId)?.nome || 'Cliente')}
-          historico={buildHistory({ rec: caixa, auditoria: auditoria.items as DeskRecord[] })}
-          onClose={() => setCaixa(null)}
-          onOpenFull={() => {
-            setFicha({ rec: caixa, tab: 'proposta' })
-            setCaixa(null)
-          }}
-        />
+      <div className="desk-card mesa-barra">
+        <div className="flex flex-wrap gap-2 items-end">
+          <label className="desk-label min-w-[180px] flex-1">Busca
+            <TextInput className="!py-1.5 !text-xs" value={busca} placeholder="Nome, CPF, telefone ou proposta" onChange={(e) => setBusca(e.target.value)} />
+          </label>
+          <label className="desk-label">Produto
+            <SelectInput className="!py-1.5 !text-xs" value={filtroProduto} onChange={(e) => setFiltroProduto(e.target.value)}>
+              <option value="">Todos</option>
+              {PRODUCT_TREE.map((p) => <option key={p.code} value={p.code}>{p.nome}</option>)}
+            </SelectInput>
+          </label>
+          <label className="desk-label">Instituição
+            <SelectInput className="!py-1.5 !text-xs" value={filtroInstituicao} onChange={(e) => setFiltroInstituicao(e.target.value)}>
+              <option value="">Todas</option>
+              {INSTITUTION_ADAPTERS.map((a) => <option key={a.id} value={a.name}>{a.name}</option>)}
+            </SelectInput>
+          </label>
+          <label className="desk-label">Operação
+            <SelectInput className="!py-1.5 !text-xs" value={filtroOperacao} onChange={(e) => setFiltroOperacao(e.target.value)}>
+              <option value="">Todas</option>
+              {operationsFor(filtroProduto || produto).map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}
+            </SelectInput>
+          </label>
+          <label className="desk-label">Situação
+            <SelectInput className="!py-1.5 !text-xs" value={filtroSituacao} onChange={(e) => setFiltroSituacao(e.target.value)}>
+              <option value="">Todas</option>
+              <option value="digitacao">Em digitação</option>
+              <option value="analise">Em análise</option>
+              <option value="pendencia">Pendências</option>
+              <option value="aprovada">Aprovadas</option>
+              <option value="paga">Pagas</option>
+            </SelectInput>
+          </label>
+          <label className="desk-label">Vendedor
+            <SelectInput className="!py-1.5 !text-xs" value={filtroVendedor} onChange={(e) => setFiltroVendedor(e.target.value)}>
+              <option value="">Todos</option>
+              {vendedores.map((nome) => <option key={nome} value={nome}>{nome}</option>)}
+            </SelectInput>
+          </label>
+          <label className="desk-label">Data
+            <TextInput className="!py-1.5 !text-xs" type="date" value={filtroData} onChange={(e) => setFiltroData(e.target.value)} />
+          </label>
+          <button type="button" className="nexus-btn-secondary px-2 py-1.5 rounded text-xs" onClick={limparFiltros}>Limpar filtros</button>
         </div>
-      )}
+      </div>
 
-      <div className="desk-card">
-        <div className="flex flex-wrap gap-1 p-2 border-b" style={{ borderColor: 'var(--code-border)' }}>
-          {FILTROS_ICRED.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTabFila(t.id)}
-              className={`px-2 py-0.5 rounded text-[11px] ${(tabFila === t.id || (t.id === 'todas' && !FILTROS_ICRED.some((f) => f.id === tabFila))) ? 'nexus-cta text-white' : 'nexus-btn-secondary'}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <div className="desk-card tabela">
         <div className="desk-table-wrap" ref={tableRef}>
           {fila.length === 0 ? (
             <p className="p-4 text-[12px]" style={{ color: 'var(--code-muted)' }}>Nenhum registro nesta fila.</p>
@@ -407,70 +438,58 @@ export default function Digitacao() {
                 </tr>
               </thead>
               <tbody>
-                {fila.map((item) => {
+                {filaPagina.map((item) => {
                   const averb = digitacaoStatusId(String(item.status || ''))
                   const nome = textoMisto(String(item.clienteNome || '')) || 'Cliente'
                   const formalizacao = urlBanco(item.linkFormalizacao, item.formalizacaoUrl, item.linkAssinatura, item.assinaturaUrl)
                   const pdfContrato = urlBanco(item.contratoPdf, item.pdfUrl, item.linkContrato, item.contratoUrl, item.arquivoContrato)
                   return (
-                    <tr key={item.id} onClick={() => setCaixa(item)}>
-                      <td
-                        className="menu-linha"
-                        onMouseEnter={(e) => {
-                          const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                          setMenuPos({ top: r.bottom + 4, left: r.left })
-                          setMenuId(item.id)
-                        }}
-                        onMouseLeave={() => setMenuId((cur) => (cur === item.id ? null : cur))}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button type="button" className="menu-linha-btn" aria-label="Menu da proposta">≡</button>
+                    <tr key={item.id} onClick={() => abrirFicha(item, 'proposta')}>
+                      <td className="menu-linha" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="menu-linha-btn"
+                          aria-label="Menu da proposta"
+                          onClick={(e) => {
+                            const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                            setMenuPos({ top: r.bottom + 4, left: r.left })
+                            setMenuId((cur) => (cur === item.id ? null : item.id))
+                          }}
+                        >≡</button>
+                        <button type="button" className="acao-linha" onClick={() => abrirFicha(item, 'operacao')}>Digitar</button>
+                        <button type="button" className="acao-linha sec" onClick={() => abrirFicha(item, 'proposta')}>Abrir</button>
                         {menuId === item.id && menuPos && (
                           <div className="menu-linha-pop" style={{ top: menuPos.top, left: menuPos.left }}>
-                            {formalizacao ? (
-                              <a href={formalizacao} target="_blank" rel="noreferrer">Link de formalização</a>
-                            ) : (
-                              <span>A API ainda não retornou o link de formalização.</span>
-                            )}
-                            {pdfContrato ? (
-                              <a href={pdfContrato} target="_blank" rel="noreferrer">Contrato em PDF</a>
-                            ) : (
-                              <span>A API ainda não retornou o PDF do contrato.</span>
-                            )}
+                            <button type="button" onClick={() => abrirFicha(item, 'proposta')}>Abrir</button>
+                            <button type="button" onClick={() => abrirFicha(item, 'proposta')}>Detalhes</button>
+                            <button type="button" onClick={() => abrirFicha(item, 'operacao')}>Digitar</button>
+                            <button type="button" onClick={() => abrirFicha(item, 'historico')}>Histórico</button>
+                            <button type="button" onClick={() => abrirFicha(item, 'pendencias')}>Pendências</button>
+                            <button type="button" onClick={() => abrirFicha(item, 'documentos')}>Documentos</button>
+                            {formalizacao ? <a href={formalizacao} target="_blank" rel="noreferrer">Link de formalização</a> : null}
+                            {pdfContrato ? <a href={pdfContrato} target="_blank" rel="noreferrer">Contrato em PDF</a> : null}
                           </div>
                         )}
                       </td>
-                      <td>{toDate(item.criadoEm)?.toLocaleDateString('pt-BR') || '—'}</td>
-                      <td>
-                        <div>{emptyLabel(item.protocolo || item.numeroProposta || item.id, '—')}</div>
-                        {formalizacao ? (
-                          <a className="text-[11px] font-semibold" style={{ color: 'var(--code-orange)' }} href={formalizacao} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Formalização</a>
-                        ) : null}
-                      </td>
-                      <td>{item.cpf ? formatCpfDisplay(String(item.cpf)) : '—'}</td>
-                      <td>
-                        <button type="button" className="font-semibold underline" style={{ color: 'var(--code-cyan)' }} onClick={(e) => { e.stopPropagation(); setCaixa(item) }}>
-                          {nome}
-                        </button>
-                      </td>
-                      <td>{emptyLabel(operationLabel(String(item.operacao || '')), '—')}</td>
-                      <td>{moneyOrMissing(item.valorBruto ?? item.valor)}</td>
-                      <td>{moneyOrMissing(item.valorLiberado)}</td>
-                      <td>{formatPrazo(item.prazo)}</td>
-                      <td>{moneyOrMissing(item.parcela)}</td>
-                      <td>
-                        <button type="button" className="btn-detalhes" onClick={(e) => { e.stopPropagation(); setCaixa(item) }}>Detalhes</button>
-                        {digitacaoStatusLabel(String(item.status || '')) || displayOperationalStatus(item)}
-                      </td>
-                      <td>{averb === 'averbado' ? 'Averbado' : averb === 'nao_averbado' ? 'Não averbado' : '—'}</td>
-                      <td>{toDate(item.dataAverbacao)?.toLocaleDateString('pt-BR') || '—'}</td>
-                      <td>{emptyLabel(item.mensagemSimulacao || item.ultimoHistorico, '—')}</td>
-                      <td>{productCatalogLabel(String(item.produto || '')) || emptyLabel(item.produto, '—')}</td>
-                      <td>{emptyLabel(item.banco || item.instituicao, '—')}</td>
-                      <td>{emptyLabel(item.responsavel, '—')}</td>
-                      <td>{emptyLabel(item.contrato || item.numeroContrato, '—')}</td>
-                      <td>{emptyLabel(item.statusPagamento || item.pagamento, '—')}</td>
-                      <td>{emptyLabel(item.telefone || item.whatsapp, '—')}</td>
+                      <td>{toDate(item.criadoEm)?.toLocaleDateString('pt-BR') || 'Não informado'}</td>
+                      <td title={String(item.protocolo || item.numeroProposta || item.id || '')}>{emptyLabel(item.protocolo || item.numeroProposta || item.id)}</td>
+                      <td className="cpf">{item.cpf ? formatCpfDisplay(String(item.cpf)) : 'Não informado'}</td>
+                      <td title={nome}>{nome}</td>
+                      <td>{emptyLabel(operationLabel(String(item.operacao || '')))}</td>
+                      <td className="num">{moneyOrMissing(item.valorBruto ?? item.valor)}</td>
+                      <td className="num">{moneyOrMissing(item.valorLiberado)}</td>
+                      <td className="num">{formatPrazo(item.prazo)}</td>
+                      <td className="num">{moneyOrMissing(item.parcela)}</td>
+                      <td><span className="nx-badge">{digitacaoStatusLabel(String(item.status || '')) || displayOperationalStatus(item)}</span></td>
+                      <td>{averb === 'averbado' ? 'Averbado' : averb === 'nao_averbado' ? 'Não averbado' : 'Não informado'}</td>
+                      <td>{toDate(item.dataAverbacao || item.atualizadoEm)?.toLocaleDateString('pt-BR') || 'Não informado'}</td>
+                      <td className="corte" title={String(item.mensagemSimulacao || item.ultimoHistorico || '')}>{emptyLabel(item.mensagemSimulacao || item.ultimoHistorico)}</td>
+                      <td><span className="nx-badge">{productCatalogLabel(String(item.produto || '')) || emptyLabel(item.produto)}</span></td>
+                      <td><span className="nx-badge">{emptyLabel(item.banco || item.instituicao)}</span></td>
+                      <td>{emptyLabel(item.responsavel || item.operadorNome)}</td>
+                      <td>{emptyLabel(item.contrato || item.numeroContrato)}</td>
+                      <td>{emptyLabel(item.statusPagamento || item.pagamento)}</td>
+                      <td>{emptyLabel(item.telefone || item.whatsapp)}</td>
                     </tr>
                   )
                 })}
@@ -478,13 +497,21 @@ export default function Digitacao() {
             </table>
           )}
         </div>
+        {fila.length > porPagina ? (
+          <div className="flex items-center justify-between gap-2 p-2 text-[11px]">
+            <span>{fila.length} registros · página {paginaAtual + 1} de {paginas}</span>
+            <div className="flex gap-1">
+              <button type="button" className="px-2 py-0.5 rounded nexus-btn-secondary" disabled={paginaAtual === 0} onClick={() => setPagina((p) => Math.max(0, p - 1))}>Anterior</button>
+              <button type="button" className="px-2 py-0.5 rounded nexus-btn-secondary" disabled={paginaAtual >= paginas - 1} onClick={() => setPagina((p) => p + 1)}>Próxima</button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {ficha && (
         <FichaProposta
           rec={ficha.rec}
-          tab={ficha.tab}
-          onTab={(tab) => setFicha({ rec: ficha.rec, tab })}
+          foco={ficha.foco}
           onClose={() => setFicha(null)}
           cliente={clientes.items.find((c) => c.id === ficha.rec.clienteId) || cliente}
           documentos={docsForProposal(documentos.items as DeskRecord[], ficha.rec)}
@@ -500,25 +527,9 @@ export default function Digitacao() {
   )
 }
 
-const ETAPAS_FICHA = [
-  { id: 'formalizado', label: 'Formalizado' },
-  { id: 'nao_formalizado', label: 'Não formalizado' },
-  { id: 'averbado', label: 'Averbado' },
-  { id: 'nao_averbado', label: 'Não averbado' },
-  { id: 'finalizado', label: 'Finalizado' },
-] as const
-
-function etapaAtual(rec: DeskRecord) {
-  const id = digitacaoStatusId(String(rec.status || ''))
-  if (id === 'formalizado' || id === 'nao_formalizado' || id === 'averbado' || id === 'nao_averbado') return id
-  if (/finaliz/i.test(String(rec.status || ''))) return 'finalizado'
-  return id
-}
-
 function FichaProposta({
   rec,
-  tab,
-  onTab,
+  foco,
   onClose,
   cliente,
   documentos,
@@ -527,8 +538,7 @@ function FichaProposta({
   campanhaNome,
 }: {
   rec: DeskRecord
-  tab: 'proposta' | 'documentos' | 'historico'
-  onTab: (t: 'proposta' | 'documentos' | 'historico') => void
+  foco: FocoFicha
   onClose: () => void
   cliente?: NexusCliente | null
   documentos: DeskRecord[]
@@ -559,8 +569,11 @@ function FichaProposta({
   const contrato = sourcedField({ value: rec.contrato, fromInstitution: true, waitingInstitution: wait })
   const saldo = sourcedField({ value: rec.saldoDevedor, fromInstitution: true, waitingInstitution: wait })
   const margem = sourcedField({ value: rec.margem, fromInstitution: true, waitingInstitution: wait })
-  const [etapaVista, setEtapaVista] = useState<string | null>(null)
   const pendencias = buildPendencias({ rec, docs: documentos })
+  useEffect(() => {
+    const id = foco === 'proposta' ? 'ficha-proposta' : `ficha-${foco}`
+    document.getElementById(id)?.scrollIntoView({ block: 'start' })
+  }, [foco])
   const historico = buildHistory({ rec, auditoria })
   const contratoRows = contratos.length
     ? contratos
@@ -571,73 +584,23 @@ function FichaProposta({
   return (
     <div className="ficha-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="Proposta">
       <div className="ficha-panel" onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--code-border)', background: 'var(--code-surface)' }}>
-          <div>
-            <div className="text-[15px] font-bold">Proposta</div>
-            <div className="status-pill mt-1">{displayOperationalStatus(rec)}</div>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Fechar"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="flex gap-1 px-4 py-2 border-b text-[11px] overflow-x-auto" style={{ borderColor: 'var(--code-border)' }}>
-          {(['proposta', 'documentos', 'historico'] as const).map((t) => (
-            <button key={t} type="button" className={`px-2 py-1 rounded ${tab === t ? 'nexus-cta text-white' : 'nexus-btn-secondary'}`} onClick={() => onTab(t)}>
-              {t === 'proposta' ? 'Proposta' : t === 'documentos' ? 'Documentos' : 'Histórico'}
-            </button>
-          ))}
-        </div>
-        <div className="p-4 space-y-4 overflow-x-auto">
-          <section className="ficha-block">
-            <div className="desk-label mb-1">Status</div>
-            <div className="status-pill">{digitacaoStatusLabel(String(rec.status || '')) || displayOperationalStatus(rec)}</div>
-            <div className="flex flex-wrap gap-1 mt-2">
-              {ETAPAS_FICHA.map((s) => {
-                const atual = etapaAtual(rec)
-                const on = etapaVista === s.id
-                const real = atual === s.id
-                return (
-                  <button key={s.id} type="button" className={`text-[11px] px-2 py-0.5 rounded ${on || real ? 'nexus-cta text-white' : 'nexus-btn-secondary'}`} onClick={() => setEtapaVista(s.id)}>
-                    {s.label}
-                  </button>
-                )
-              })}
+        <div className="sticky top-0 z-10 px-4 py-3 border-b" style={{ borderColor: 'var(--code-border)', background: 'var(--code-surface)' }}>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <div className="text-[15px] font-bold">Proposta {emptyLabel(rec.protocolo || rec.numeroProposta || rec.id)}</div>
+              <span className="nx-badge acao mt-1">{digitacaoStatusLabel(String(rec.status || '')) || displayOperationalStatus(rec)}</span>
             </div>
-            {etapaVista && (
-              <div className="mt-3 overflow-x-auto">
-                <p className="text-[12px] mb-2">{etapaAtual(rec) === etapaVista ? 'Etapa retornada para este cliente.' : 'A API ainda não retornou esta etapa para este cliente.'}</p>
-                <table className="text-[11px]" style={{ minWidth: 1600 }}>
-                  <thead>
-                    <tr>
-                      {['Inclusão', 'Proposta', 'CPF', 'Nome', 'Tipo', 'Bruto', 'Líquido', 'Prazo', 'Parcela', 'Situação', 'Averbação', 'Data', 'Último histórico', 'Produto', 'Instituição', 'Vendedor'].map((h) => <th key={h} className="p-1 text-left">{h}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td className="p-1">{toDate(rec.criadoEm)?.toLocaleDateString('pt-BR') || '—'}</td>
-                      <td className="p-1">{emptyLabel(rec.protocolo || rec.numeroProposta || rec.id)}</td>
-                      <td className="p-1">{cpf.missing ? '—' : formatCpfDisplay(cpf.value) || '—'}</td>
-                      <td className="p-1">{nome.missing ? '—' : nome.value}</td>
-                      <td className="p-1">{emptyLabel(rec.operacao)}</td>
-                      <td className="p-1">{formatMoney(rec.valorBruto ?? rec.valor)}</td>
-                      <td className="p-1">{formatMoney(rec.valorLiberado)}</td>
-                      <td className="p-1">{formatPrazo(rec.prazo)}</td>
-                      <td className="p-1">{formatMoney(rec.parcela)}</td>
-                      <td className="p-1">{etapaAtual(rec) === etapaVista ? (ETAPAS_FICHA.find((s) => s.id === etapaVista)?.label || '—') : 'Não informado'}</td>
-                      <td className="p-1">{etapaVista.startsWith('averb') || etapaVista === 'finalizado' ? (etapaAtual(rec) === etapaVista ? 'Sim' : 'Não informado') : '—'}</td>
-                      <td className="p-1">{toDate(rec.atualizadoEm)?.toLocaleDateString('pt-BR') || '—'}</td>
-                      <td className="p-1">{emptyLabel(rec.ultimoHistorico || rec.mensagemSimulacao)}</td>
-                      <td className="p-1">{emptyLabel(rec.produto)}</td>
-                      <td className="p-1">{emptyLabel(rec.banco || rec.instituicao)}</td>
-                      <td className="p-1">{emptyLabel(rec.responsavel)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-          {tab === 'proposta' && (
-            <>
-              <section className="ficha-block">
-                <div className="desk-label mb-1">Dados do cliente</div>
+            <button type="button" onClick={onClose} aria-label="Fechar"><X className="w-5 h-5" /></button>
+          </div>
+          <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[12px]">
+            <p><span className="desk-label">Cliente</span><br />{emptyLabel(rec.clienteNome || cliente?.nome)}</p>
+            <p><span className="desk-label">CPF</span><br />{formatCpfDisplay(String(rec.cpf || cliente?.cpf || '')) || 'Não informado'}</p>
+            <p><span className="desk-label">Telefone</span><br />{emptyLabel(rec.telefone || cliente?.telefone || cliente?.whatsapp)}</p>
+          </div>
+        </div>
+        <div className="ficha-corpo">
+              <section id="ficha-cliente" className="ficha-block">
+                <div className="desk-label mb-1">Cliente</div>
                 <FieldRow label="Nome completo" value={emptyLabel(cliente?.nome)} source={cliente?.nome ? 'Cliente' : ''} />
                 <FieldRow label="CPF" value={cliente?.cpf ? formatCpfDisplay(cliente.cpf) : 'Não informado'} source={cliente?.cpf ? 'Cliente' : ''} />
                 <FieldRow label="Data de nascimento" value={emptyLabel(cliente?.dataNascimento)} />
@@ -649,21 +612,48 @@ function FichaProposta({
                 <FieldRow label="Complemento" value={emptyLabel(cliente?.complemento)} />
                 <FieldRow label="Bairro" value={emptyLabel(cliente?.bairro)} />
                 <FieldRow label="Cidade" value={emptyLabel(cliente?.cidade)} />
-                <FieldRow label="UF" value={emptyLabel(cliente?.estado)} />
+                <FieldRow label="UF" value={emptyLabel(rec.uf || cliente?.estado)} />
                 <FieldRow label="CEP" value={emptyLabel(cliente?.cep)} />
+                <FieldRow label="Benefício" value={emptyLabel(rec.beneficio || rec.numeroBeneficio)} />
+                <FieldRow label="Matrícula" value={emptyLabel(rec.matricula)} />
+                <FieldRow label="Espécie" value={emptyLabel(rec.especie)} />
               </section>
-              <section className="ficha-block">
+              <section id="ficha-operacao" className="ficha-block">
                 <div className="desk-label mb-1">Operação</div>
                 <FieldRow label="Produto" value={emptyLabel(rec.produto)} />
                 <FieldRow label="Operação" value={emptyLabel(rec.operacao)} />
                 <FieldRow label="Instituição" value={emptyLabel(rec.banco || rec.instituicao)} />
-                <FieldRow label="Contrato" value={emptyLabel(rec.contrato)} />
-                <FieldRow label="Protocolo" value={emptyLabel(rec.protocolo)} />
-                <FieldRow label="Status" value={displayOperationalStatus(rec)} />
+                <FieldRow label="Convênio" value={emptyLabel(rec.convenio)} />
+                <FieldRow label="Tabela" value={emptyLabel(rec.tabela)} />
+                <FieldRow label="Prazo" value={formatPrazo(rec.prazo)} />
+                <FieldRow label="Parcela" value={formatMoney(rec.parcela)} />
+                <FieldRow label="Taxa" value={emptyLabel(rec.taxa || rec.taxaMensal)} />
+                <FieldRow label="Coeficiente" value={emptyLabel(rec.coeficiente)} />
+                <FieldRow label="Margem" value={formatMoney(rec.margem)} />
+                <FieldRow label="Valor bruto" value={formatMoney(rec.valorBruto ?? rec.valor)} />
+                <FieldRow label="Valor líquido" value={formatMoney(rec.valorLiberado)} />
+              </section>
+              <section id="ficha-proposta" className="ficha-block">
+                <div className="desk-label mb-1">Proposta</div>
+                <FieldRow label="Número da proposta" value={emptyLabel(rec.numeroProposta || rec.protocolo)} />
+                <FieldRow label="Situação" value={digitacaoStatusLabel(String(rec.status || '')) || displayOperationalStatus(rec)} />
+                <FieldRow label="Data de inclusão" value={toDate(rec.criadoEm)?.toLocaleString('pt-BR') || 'Não informado'} />
+                <FieldRow label="Última atualização" value={toDate(rec.atualizadoEm)?.toLocaleString('pt-BR') || 'Não informado'} />
+                <FieldRow label="Vendedor" value={emptyLabel(rec.responsavel || rec.operadorNome)} />
+                <FieldRow label="Contrato" value={emptyLabel(rec.contrato || rec.numeroContrato)} />
+                <FieldRow label="Averbação" value={emptyLabel(rec.averbacao || rec.statusAverbacao)} />
+                <FieldRow label="Pagamento" value={emptyLabel(rec.pagamento || rec.statusPagamento)} />
                 <FieldRow label="Origem" value={emptyLabel(rec.origem)} />
                 <FieldRow label="Campanha" value={emptyLabel(campanhaNome || rec.campanha)} />
-                <FieldRow label="Responsável" value={emptyLabel(rec.responsavel)} />
-                <FieldRow label="Data da proposta" value={toDate(rec.criadoEm)?.toLocaleString('pt-BR') || 'Não informado'} />
+              </section>
+              <section id="ficha-retorno" className="ficha-block">
+                <div className="desk-label mb-1">Retorno da instituição</div>
+                {wait ? <p className="text-[12px]">Aguardando API</p> : null}
+                <FieldRow label="Código" value={emptyLabel(rec.codigoRetorno || rec.protocolo)} />
+                <FieldRow label="Status" value={wait ? 'Aguardando API' : displayOperationalStatus(rec)} />
+                <FieldRow label="Mensagem" value={emptyLabel(rec.mensagemSimulacao)} />
+                <FieldRow label="Data/hora da consulta" value={toDate(rec.atualizadoEm || rec.criadoEm)?.toLocaleString('pt-BR') || 'Não informado'} />
+                <FieldRow label="Última resposta" value={emptyLabel(rec.ultimoHistorico || rec.mensagemSimulacao)} />
               </section>
               <section className="ficha-block">
                 <div className="desk-label mb-1">Dados preenchidos pelo robô</div>
@@ -724,7 +714,7 @@ function FichaProposta({
                   ))
                 )}
               </section>
-              <section className="ficha-block">
+              <section id="ficha-documentos" className="ficha-block">
                 <div className="desk-label mb-1">Documentos</div>
                 {documentos.length === 0 ? (
                   <p className="text-[12px]" style={{ color: 'var(--code-muted)' }}>Nenhum documento disponível.</p>
@@ -742,74 +732,31 @@ function FichaProposta({
                   </ul>
                 )}
               </section>
-              <section className="ficha-block">
+              <section id="ficha-pendencias" className="ficha-block">
+                <div className="desk-label mb-1">Pendências</div>
+                {pendencias.length === 0 ? (
+                  <p className="text-[12px]">Nenhuma pendência registrada.</p>
+                ) : (
+                  <ul className="text-[12px] space-y-1">
+                    {pendencias.map((p) => <li key={p}><span className="nx-badge">{p}</span></li>)}
+                  </ul>
+                )}
+              </section>
+              <section id="ficha-historico" className="ficha-block">
                 <div className="desk-label mb-1">Histórico</div>
                 {historico.length === 0 ? (
                   <p className="text-[12px]" style={{ color: 'var(--code-muted)' }}>Nenhum evento real registrado.</p>
                 ) : (
-                  <ul className="space-y-1">
-                    {historico.slice(-8).map((h, i) => (
-                      <li key={`${h.label}-${i}`} className="text-[12px]">{h.at ? h.at.toLocaleString('pt-BR') : '—'} · {h.label}</li>
+                  <ul className="space-y-2">
+                    {historico.map((h, i) => (
+                      <li key={`${h.label}-${i}`} className="text-[12px] border-l-2 pl-2" style={{ borderColor: 'var(--code-orange)' }}>
+                        <div className="font-semibold">{h.at ? h.at.toLocaleString('pt-BR') : 'Não informado'}</div>
+                        <div>{h.label}</div>
+                      </li>
                     ))}
                   </ul>
                 )}
               </section>
-              <section className="ficha-block">
-                <div className="desk-label mb-1">Pendências</div>
-                {pendencias.length === 0 ? (
-                  <p className="text-[12px]">✓ Nenhuma pendência identificada</p>
-                ) : (
-                  <ul className="text-[12px] space-y-1">
-                    {pendencias.map((p) => <li key={p}>⚠ {p}</li>)}
-                  </ul>
-                )}
-              </section>
-            </>
-          )}
-          {tab === 'documentos' && (
-            <section className="ficha-block">
-              <div className="desk-label mb-1">Lista de documentos</div>
-              {documentos.length === 0 ? (
-                <p className="text-[12px]" style={{ color: 'var(--code-muted)' }}>Nenhum documento disponível.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {documentos.map((d) => {
-                    const href = documentOpenUrl(d)
-                    return (
-                      <li key={d.id} className="flex items-center justify-between gap-2 border-b py-1" style={{ borderColor: 'var(--code-border)' }}>
-                        <div>
-                          <div className="font-semibold">{emptyLabel(d.nome || d.categoria)}</div>
-                          <div className="text-[11px]" style={{ color: 'var(--code-muted)' }}>{emptyLabel(d.status)} · {emptyLabel(d.origem)}</div>
-                        </div>
-                        {href ? (
-                          <a className="nexus-btn-secondary px-2 py-1 rounded text-[11px]" href={href} target="_blank" rel="noreferrer">Visualizar</a>
-                        ) : (
-                          <span className="text-[11px]" style={{ color: 'var(--code-muted)' }}>Sem arquivo</span>
-                        )}
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </section>
-          )}
-          {tab === 'historico' && (
-            <section className="ficha-block">
-              <div className="desk-label mb-1">Histórico da proposta</div>
-              {historico.length === 0 ? (
-                <p className="text-[12px]" style={{ color: 'var(--code-muted)' }}>Nenhum evento real registrado.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {historico.map((h, i) => (
-                    <li key={`${h.label}-${i}`} className="text-[12px] border-l-2 pl-2" style={{ borderColor: 'var(--code-orange)' }}>
-                      <div className="font-semibold">{h.at ? h.at.toLocaleString('pt-BR') : '—'}</div>
-                      <div>{h.label}</div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          )}
         </div>
       </div>
     </div>

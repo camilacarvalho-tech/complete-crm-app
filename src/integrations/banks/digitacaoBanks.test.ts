@@ -3,7 +3,7 @@ import test from 'node:test'
 import { factaAdapter } from './factaAdapter.ts'
 import { novoSaqueAdapter } from './novoSaqueAdapter.ts'
 import { icredAdapter } from './icredAdapter.ts'
-import { tokeRealAdapter } from './tokeRealAdapter.ts'
+import { bancoPanAdapter } from './bancoPanAdapter.ts'
 import { INSTITUTION_ADAPTERS, simulateAdapters, simulateAllInstitutions } from './registry.ts'
 import { emptyOffer } from './types.ts'
 import { fillDigitacaoFromOffer, ingestSimulationResult } from '../../modules/digitacao/simulationToDigitacao.ts'
@@ -30,16 +30,18 @@ test('simulação ICRED sem API', async () => {
   assert.equal(r.taxaMensal, null)
 })
 
-test('Toke Real permanece preparado sem endpoint', async () => {
-  const r = await tokeRealAdapter.simulate(input)
-  assert.equal(r.banco, 'TOKE REAL')
+test('Banco Pan permanece preparado sem endpoint', async () => {
+  const r = await bancoPanAdapter.simulate(input)
+  assert.equal(r.banco, 'BANCO PAN')
   assert.equal(r.status, 'Aguardando API')
-  assert.match(r.message, /preparado|Aguardando/i)
+  assert.equal(r.valorLiberado, null)
+  assert.match(r.message, /Aguardando/i)
 })
 
 test('produto INSS não é adapter de banco', () => {
   assert.equal(INSTITUTION_ADAPTERS.some((a) => a.id === 'inss' || a.name === 'INSS'), false)
-  assert.equal(INSTITUTION_ADAPTERS.length, 3)
+  assert.equal(INSTITUTION_ADAPTERS.some((a) => /toke/i.test(a.id) || /toke/i.test(a.name)), false)
+  assert.deepEqual(INSTITUTION_ADAPTERS.map((a) => a.name), ['FACTA', 'NOVO SAQUE', 'ICRED', 'BANCO PAN'])
 })
 
 test('entrada automática na Digitação', () => {

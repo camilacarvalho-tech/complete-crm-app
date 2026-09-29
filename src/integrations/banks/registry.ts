@@ -1,12 +1,14 @@
 import { factaAdapter } from './factaAdapter.ts'
 import { novoSaqueAdapter } from './novoSaqueAdapter.ts'
 import { icredAdapter } from './icredAdapter.ts'
+import { bancoPanAdapter } from './bancoPanAdapter.ts'
 import { emptyOffer, type InstitutionAdapter, type SimulationInput, type SimulationOffer } from './types.ts'
 
 export const INSTITUTION_ADAPTERS: InstitutionAdapter[] = [
   factaAdapter,
   novoSaqueAdapter,
   icredAdapter,
+  bancoPanAdapter,
 ]
 
 export function getInstitutionAdapter(id: string): InstitutionAdapter | undefined {

@@ -14,7 +14,7 @@ import { produtoLabel } from '../modules/leads-monitor/catalog/produtosMonitor'
 import { drainErpInbound } from '../lib/inboundErpMessage'
 import { drainErpToCrmEvents } from '../integrations/events/eventHandlers'
 import { drainNxErpHttpInbox, sendReplyViaNxErp } from '../integrations/erp/drainNxErpInbox'
-import { deliveryGlyph, deliveryLabel, deliveryMark, newClientMessageId, phoneError } from '../integrations/erp/chatOutbound'
+import { deliveryGlyph, deliveryLabel, deliveryMark, motivoEnvioWhatsapp, newClientMessageId, phoneError } from '../integrations/erp/chatOutbound'
 import { loadNxErpCrmConfig } from '../integrations/erp/nxErpCrmClient'
 import { conversaFinalizada, instanteChat, naoLidasDe, ordenarConversas, teclaEnviaMensagem } from '../lib/chatLista'
 import { camposConversa, leticiaReply, leticiaTravada, LETICIA_MENU_BOTAO, LETICIA_MENU_TITULO, stepDoBot } from '../modules/chat-robot/leticiaReception'
@@ -73,15 +73,19 @@ function lerNascimento(obj?: object | null) {
   return ''
 }
 
-function displayNascimento(value?: string) {
+function nascimentoParaInput(value?: string): string {
   const raw = String(value || '').trim()
-  if (!raw) return '—'
   const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
-  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`
+  const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})/)
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`
   const compacto = digits(raw)
-  if (compacto.length === 8) return `${compacto.slice(0, 2)}/${compacto.slice(2, 4)}/${compacto.slice(4)}`
+  if (compacto.length === 8) return `${compacto.slice(4)}-${compacto.slice(2, 4)}-${compacto.slice(0, 2)}`
   const d = asDate(value)
-  return d ? d.toLocaleDateString('pt-BR') : raw
+  if (!d) return ''
+  const mes = String(d.getMonth() + 1).padStart(2, '0')
+  const dia = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${mes}-${dia}`
 }
 
 function moneyOrEmpty(v: unknown) {
@@ -92,11 +96,13 @@ function moneyOrEmpty(v: unknown) {
 
 function statusAtendimentoLabel(status?: string) {
   const mapa: Record<string, string> = {
-    aguardando_triagem: 'Novos',
-    novos: 'Novos',
-    aguardando_funcionario: 'Aguardando',
-    aguardando: 'Aguardando',
+    aguardando_triagem: 'Nova conversa',
+    novos: 'Nova conversa',
+    aguardando_funcionario: 'Aguardando atendimento',
+    aguardando_atendimento: 'Aguardando atendimento',
+    aguardando: 'Aguardando atendimento',
     em_atendimento: 'Em atendimento',
+    transferido: 'Transferido',
     remarketing: 'Remarketing',
     aguardando_cliente: 'Aguardando cliente',
     documentacao: 'Documentação',
@@ -254,7 +260,7 @@ export default function ChatCenter() {
   useEffect(() => {
     if (!selected?.id || leticiaTravada(selected)) return
     const last = msgs[msgs.length - 1]
-    if (!last?.id || last.wamid || last.autorId === 'leticia' || last.autorId === 'sistema') return
+    if (!last?.id || last.wamid || last.autorId === 'leticia' || last.autorId === 'sistema' || last.clientMessageId || last.autorId === usuario?.id) return
     const idade = Date.now() - instanteChat(last.criadoEm)
     if (idade <= 0 || idade > 2 * 60 * 60 * 1000) return
     const chave = String(last.id)
@@ -350,6 +356,14 @@ export default function ChatCenter() {
   ].filter((d, i, arr) => arr.findIndex((x) => x.id === d.id || (x.nome === d.nome && x.url && x.url === d.url)) === i)
   const propsCli = propostas.items.filter((p) => p.clienteId === cliente?.id)
   const contrCli = contratos.items.filter((p) => p.clienteId === cliente?.id)
+
+  async function salvarNascimento(valor: string) {
+    if (!cliente?.id) return
+    const atual = nascimentoParaInput(nascimentoCliente)
+    if (valor === atual) return
+    await clientes.update(cliente.id, { dataNascimento: valor })
+    toast.success('Data de nascimento salva.')
+  }
 
   function fecharConversa() {
     if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop()
@@ -500,14 +514,16 @@ export default function ChatCenter() {
     const tel = String(cliente?.whatsapp || cliente?.telefone || '')
     const invalido = phoneError(tel)
     if (invalido) {
-      if (mensagemId) await mensagens.update(mensagemId, { status: 'failed', erroEnvio: invalido })
-      toast.error(invalido)
+      const aviso = motivoEnvioWhatsapp(invalido)
+      if (mensagemId) await mensagens.update(mensagemId, { status: 'failed', erroEnvio: aviso })
+      toast.error(aviso)
       return
     }
     const erp = usuario?.empresaId ? await loadNxErpCrmConfig(usuario.empresaId) : null
     if (!(erp?.modo === 'real' && erp.ativo && erp.apiUrl && usuario?.empresaId)) {
-      if (mensagemId) await mensagens.update(mensagemId, { status: 'failed', erroEnvio: 'NX ERP real não está ativo' })
-      toast.error('Registrada no Nexus. NX ERP real não está ativo — nada foi enviado ao WhatsApp.')
+      const aviso = motivoEnvioWhatsapp('NX ERP real não está ativo')
+      if (mensagemId) await mensagens.update(mensagemId, { status: 'failed', erroEnvio: aviso })
+      toast.error(aviso)
       return
     }
     if (mensagemId) await mensagens.update(mensagemId, { status: 'sending' })
@@ -523,12 +539,13 @@ export default function ChatCenter() {
       replyToWamid,
     })
     const confirmado = Boolean(sent.ok && sent.wamid)
+    const aviso = motivoEnvioWhatsapp(sent.message || 'A Meta não confirmou o envio.')
     if (mensagemId) {
       await mensagens.update(mensagemId, confirmado
         ? { status: 'sent', erpStatus: 'sent', wamid: sent.wamid, messageId: sent.wamid, erroEnvio: '' }
-        : { status: 'failed', erpStatus: 'failed', erroEnvio: sent.wamid ? '' : (sent.message || 'A Meta não confirmou o envio.') })
+        : { status: 'failed', erpStatus: 'failed', erroEnvio: aviso })
     }
-    if (!confirmado) toast.error(sent.message || 'A Meta não confirmou o envio.')
+    if (!confirmado) toast.error(aviso)
   }
 
   function lerBase64(file: File): Promise<string> {
@@ -746,13 +763,14 @@ export default function ChatCenter() {
     const invalido = phoneError(String(cliente?.whatsapp || cliente?.telefone || ''))
     if (invalido) {
       envioTickRef.current = false
-      toast.error(invalido)
+      toast.error(motivoEnvioWhatsapp(invalido))
       return
     }
     const clientMessageId = newClientMessageId()
     const resposta = respondendo
     setTexto('')
     setRespondendo(null)
+    setEnviando(true)
     try {
       const mensagemId = await mensagens.create({
         conversaId: cid,
@@ -768,10 +786,14 @@ export default function ChatCenter() {
         replyToMessageId: resposta?.id || null,
         replyToTexto: resposta?.texto || null,
       } as any)
-      void conversas.update(cid, { lastMessage: textoEnvio, status: 'aguardando_cliente', lastAssignedTo: selected?.assignedTo })
-      void entregarTexto(cid, textoEnvio, clientMessageId, mensagemId, resposta?.wamid)
+      await conversas.update(cid, { lastMessage: textoEnvio, status: 'aguardando_cliente', lastAssignedTo: selected?.assignedTo })
+      await entregarTexto(cid, textoEnvio, clientMessageId, mensagemId, resposta?.wamid)
+    } catch (e) {
+      setTexto(textoEnvio)
+      toast.error(motivoEnvioWhatsapp(e instanceof Error ? e.message : ''))
     } finally {
       envioTickRef.current = false
+      setEnviando(false)
     }
   }
 
@@ -914,8 +936,8 @@ export default function ChatCenter() {
       lastAssignedTo: selected.assignedTo,
       assignedTo: u.nome,
       assignedToId: u.id,
-      status: 'em_atendimento',
-      statusAtendimento: 'HUMANO',
+      status: 'transferido',
+      statusAtendimento: 'TRANSFERIDO',
       roboPausado: true,
       robotPaused: true,
       robotState: 'HUMAN_ACTIVE',
@@ -923,7 +945,7 @@ export default function ChatCenter() {
       etapa: 'HUMANO',
       botAtivo: false,
       atendimentoHumano: true,
-      botState: { active: false, flow: 'human', step: 'human' },
+      botState: { active: false, flow: 'human', step: 'human_handoff' },
       transferidoPor: usuario?.nome,
       transferidoPorId: usuario?.id,
       transferidoEm: new Date().toISOString(),
@@ -1013,8 +1035,8 @@ export default function ChatCenter() {
     if (!selected) return
     await conversas.update(selected.id, {
       assignedTo: 'Laiane',
-      status: 'em_atendimento',
-      statusAtendimento: 'HUMANO',
+      status: 'transferido',
+      statusAtendimento: 'TRANSFERIDO',
       roboPausado: true,
       robotPaused: true,
       robotState: 'HUMAN_ACTIVE',
@@ -1022,6 +1044,7 @@ export default function ChatCenter() {
       etapa: 'HUMANO',
       botAtivo: false,
       atendimentoHumano: true,
+      botState: { active: false, flow: String(selected.botState?.flow || 'human'), step: 'human_handoff' },
       transferidoEm: new Date().toISOString(),
       transferidoPor: usuario?.nome,
     })
@@ -1131,6 +1154,16 @@ export default function ChatCenter() {
                 </div>
                 <p className="text-[11px]" style={{ color: 'var(--code-muted)' }}>{displayCpfSidebar(cliente?.cpf) ? `CPF ${displayCpfSidebar(cliente?.cpf)}` : 'CPF —'} · {displayPhone(String(cliente?.whatsapp || cliente?.telefone || '')) || 'Telefone —'}</p>
                 <label className="text-[11px] mt-1 flex items-center gap-1" style={{ color: 'var(--code-muted)' }}>
+                  Nascimento
+                  <input
+                    type="date"
+                    className="nexus-input text-[11px] h-7"
+                    aria-label="Data de nascimento"
+                    value={nascimentoParaInput(nascimentoCliente)}
+                    onChange={(e) => void salvarNascimento(e.target.value)}
+                  />
+                </label>
+                <label className="text-[11px] mt-1 flex items-center gap-1" style={{ color: 'var(--code-muted)' }}>
                   <input type="checkbox" checked={naoLidasDe(selected) > 0} onChange={(e) => marcarNaoLida(selected.id, e.target.checked)} />
                   Não lida
                 </label>
@@ -1148,14 +1181,15 @@ export default function ChatCenter() {
                 <GhostButton className="text-xs" aria-label="Fechar" data-nexus-esc onClick={fecharConversa}>X</GhostButton>
                 <GhostButton className="text-xs lg:hidden" onClick={() => setPainel('ficha')}>Cliente</GhostButton>
                 <SelectInput value={String(selected.status || '')} onChange={(e) => void mudarStatus(e.target.value)}>
-                  <option value="aguardando_triagem">Novos</option>
-                  <option value="aguardando_funcionario">Aguardando</option>
-                  <option value="em_atendimento">Em atendimento</option>
+                  <option value="aguardando_triagem">Nova conversa</option>
+                  <option value="aguardando_atendimento">Aguardando atendimento</option>
                   <option value="aguardando_cliente">Aguardando cliente</option>
+                  <option value="em_atendimento">Em atendimento</option>
+                  <option value="transferido">Transferido</option>
+                  <option value="finalizado">Finalizado</option>
                   <option value="documentacao">Documentação</option>
                   <option value="proposta">Proposta</option>
                   <option value="contrato">Contrato</option>
-                  <option value="finalizado">Finalizado</option>
                   <option value="remarketing">Remarketing</option>
                 </SelectInput>
               </div>
@@ -1192,17 +1226,18 @@ export default function ChatCenter() {
               const mark = deliveryMark(String(m.erpStatus || m.status || ''))
               const minha = m.autorId === usuario?.id || Boolean(m.clientMessageId)
               const daLeticia = m.autorId === 'leticia'
-              const apagada = Boolean(m.deletedAt)
+              const enviadaAoCliente = Boolean(minha || daLeticia)
               const quando = asDate(m.criadoEm)
               const dia = rotuloDiaMensagem(quando)
               const diaAnterior = indice > 0 ? rotuloDiaMensagem(asDate(listaVisivel[indice - 1].criadoEm)) : ''
-              const statusLeticia = daLeticia ? (mark === 'sending' ? 'Gerando...' : 'Enviada') : ''
+              const hora = horaMensagem(quando) || '—'
+              const rotuloEntrega = enviadaAoCliente ? deliveryLabel(String(m.erpStatus || m.status || '')) : 'Recebida'
               return (
               <div key={m.id}>
                 {dia && dia !== diaAnterior ? <p className="text-[10px] text-center py-1" style={{ color: 'var(--code-muted)' }}>{dia}</p> : null}
               <div className={`bolha ${minha || daLeticia ? 'sai' : 'entra'}`}>
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>{textoMisto(String(m.autorNome || ''))} · {horaMensagem(quando)}</p>
+                  <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>{textoMisto(String(m.autorNome || ''))}</p>
                   <button type="button" className="text-xs" aria-label="Ações da mensagem" onClick={() => setMenuMsg(menuMsg === m.id ? null : m.id)}>⋮</button>
                 </div>
                 {menuMsg === m.id && (
@@ -1220,11 +1255,8 @@ export default function ChatCenter() {
                       setEditando({ id: m.id, texto: String(m.texto || ''), clientMessageId: String(m.clientMessageId || ''), reenviar: mark === 'failed' && Boolean(m.clientMessageId) })
                       setMenuMsg(null)
                     }}>Editar</button>
-                    <button type="button" onClick={() => { setMenuMsg(null); if (window.confirm('Apagar esta mensagem?')) void mensagens.update(m.id, { deletedAt: new Date().toISOString() }) }}>Apagar</button>
                   </div>
                 )}
-                {apagada ? <p>Mensagem apagada</p> : (
-                  <>
                     {m.replyToTexto ? <p className="text-[10px] border-l-2 pl-1 mb-1">Respondendo a: {String(m.replyToTexto)}</p> : null}
                     {String(m.tipo) === 'imagem' && (m.arquivoUrl && !midiaFalhou[m.id] ? <img src={String(m.arquivoUrl)} alt="" className="max-h-40 rounded mt-1" onError={() => setMidiaFalhou((atual) => ({ ...atual, [m.id]: true }))} /> : <p>Imagem indisponível</p>)}
                     {String(m.tipo) === 'audio' && (m.arquivoUrl && !midiaFalhou[m.id] ? <audio controls src={String(m.arquivoUrl)} className="mt-1" onError={() => setMidiaFalhou((atual) => ({ ...atual, [m.id]: true }))} /> : <p>Áudio indisponível</p>)}
@@ -1240,13 +1272,9 @@ export default function ChatCenter() {
                       </details>
                     ) : null}
                     {m.editedAt ? <p className="text-[10px]">editada no CRM</p> : null}
-                  </>
-                )}
-                {(minha || daLeticia) && !apagada && (
-                  <p className="text-[10px] text-right" style={{ color: mark === 'read' ? '#53bdeb' : mark === 'failed' ? '#b91c1c' : 'var(--code-muted)' }}>
-                    {daLeticia ? (mark === 'sending' ? '…' : '✓') : deliveryGlyph(String(m.erpStatus || m.status || ''))} {daLeticia ? statusLeticia : deliveryLabel(String(m.erpStatus || m.status || ''))}
-                  </p>
-                )}
+                <p className="text-[10px] text-right" style={{ color: mark === 'read' ? '#53bdeb' : mark === 'failed' ? '#b91c1c' : 'var(--code-muted)' }}>
+                  {hora} · {enviadaAoCliente ? `${deliveryGlyph(String(m.erpStatus || m.status || ''))} ` : ''}{rotuloEntrega}
+                </p>
                 {mark === 'failed' && m.erroEnvio ? <p className="text-[10px]" style={{ color: '#b91c1c' }}>{String(m.erroEnvio)}</p> : null}
                 {mark === 'failed' && m.clientMessageId && (
                   <button type="button" className="text-[10px] font-semibold" onClick={() => void reenviar(m as any)}>Tentar novamente</button>
@@ -1363,7 +1391,7 @@ export default function ChatCenter() {
                 }}
                 placeholder="Digite uma mensagem..."
               />
-              <PrimaryButton disabled={enviando || (!texto.trim() && !audioPreview && !gravando && !midia)} onClick={() => void send()}>Enviar</PrimaryButton>
+              <PrimaryButton type="button" disabled={enviando || (!texto.trim() && !audioPreview && !gravando && !midia)} onClick={() => void send()}>{enviando ? 'Enviando...' : 'Enviar'}</PrimaryButton>
             </div>
           </div>
         </>
@@ -1399,7 +1427,16 @@ export default function ChatCenter() {
                 </header>
 
                 <section className="rounded-lg px-2.5 py-2 text-[12px]" style={{ border: '1px solid var(--code-border)' }}>
-                  <p>Nascimento {displayNascimento(nascimentoCliente)}</p>
+                  <label className="flex items-center justify-between gap-2">
+                    Nascimento
+                    <input
+                      type="date"
+                      className="nexus-input text-[11px] h-7"
+                      aria-label="Data de nascimento do cliente"
+                      value={nascimentoParaInput(nascimentoCliente)}
+                      onChange={(e) => void salvarNascimento(e.target.value)}
+                    />
+                  </label>
                   {hasAddr ? <p className="mt-1">{[rua, cliente.bairro, cliente.cidade, cliente.estado].filter(Boolean).join(' · ')}</p> : null}
                 </section>
 

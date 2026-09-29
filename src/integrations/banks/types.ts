@@ -1,11 +1,11 @@
-export const BANK_ADAPTER_IDS = ['facta', 'novo_saque', 'icred', 'toke_real'] as const
+export const BANK_ADAPTER_IDS = ['facta', 'novo_saque', 'icred', 'banco_pan'] as const
 export type BankAdapterId = (typeof BANK_ADAPTER_IDS)[number]
 
 export const BANK_ADAPTER_LABELS: Record<BankAdapterId, string> = {
   facta: 'FACTA',
   novo_saque: 'NOVO SAQUE',
   icred: 'ICRED',
-  toke_real: 'TOKE REAL',
+  banco_pan: 'BANCO PAN',
 }
 
 export type SimulationStatus = 'Aguardando API' | 'Dados retornados pela instituição' | 'Erro de API'
@@ -84,7 +84,7 @@ export function publicBankApiUrl(id: BankAdapterId): string {
     facta: 'VITE_FACTA_API_URL',
     novo_saque: 'VITE_NOVO_SAQUE_API_URL',
     icred: 'VITE_ICRED_API_URL',
-    toke_real: 'VITE_TOKE_REAL_API_URL',
+    banco_pan: 'VITE_BANCO_PAN_API_URL',
   }
   return readVite(map[id])
 }

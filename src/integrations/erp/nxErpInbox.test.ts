@@ -8,7 +8,7 @@ import {
   nxErpStatus,
   nxErpStatusLabel,
 } from './nxErpInbox.ts'
-import { buildRespostaChat, deliveryMark, phoneError } from './chatOutbound.ts'
+import { buildRespostaChat, deliveryMark, motivoEnvioWhatsapp, phoneError } from './chatOutbound.ts'
 
 test('mensagem inbound preserva telefone, nome, texto, wamid e campanha', () => {
   const mapped = mapInboundMessage({
@@ -105,6 +105,9 @@ test('resposta outbound envia crm_mensagem_id e não leva token', () => {
   assert.equal(phoneError('11999887766'), null)
   assert.equal(deliveryMark('aceito'), 'sent')
   assert.equal(deliveryMark('falha'), 'failed')
+  assert.match(motivoEnvioWhatsapp('HTTP 500 POST /api/crm/eventos'), /servidor de envio não respondeu/)
+  assert.match(motivoEnvioWhatsapp('Telefone ausente'), /sem telefone/)
+  assert.match(motivoEnvioWhatsapp(''), /ficou salva/)
 })
 
 test('erro de autenticação não entra na fila', () => {

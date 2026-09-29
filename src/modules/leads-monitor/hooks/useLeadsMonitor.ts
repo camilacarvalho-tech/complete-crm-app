@@ -26,7 +26,7 @@ import { bootstrapConnectors } from '../connectors'
 import { aprovarOportunidade, rejeitarOportunidade } from '../pipeline/approve'
 import { sendLeadToCrm } from '../../../integrations/crm/erpBridge'
 import { enqueueJob } from '../services/jobQueue'
-import { processOneJob, startJobWorkerLoop } from '../services/jobWorker'
+import { processOneJob } from '../services/jobWorker'
 import { writeLeadsMonitorAudit } from '../services/auditTrail'
 import { startIntelligentSearch, stopSearchExecution } from '../search/startSearch'
 import { normalizeFiltros } from '../search/filters'
@@ -572,11 +572,6 @@ export function useLeadsMonitor() {
     },
     [empresaId, usuario?.id, usuario?.nome]
   )
-
-  useEffect(() => {
-    if (!empresaId) return
-    return startJobWorkerLoop(empresaId, 4000)
-  }, [empresaId])
 
   useEffect(() => {
     if (!empresaId) return

@@ -12,7 +12,7 @@ export default function BancosConvenios() {
     <div className="space-y-3">
       <PageHeader
         title="Bancos / Convênios"
-        subtitle="Instituições com adapter: FACTA, NOVO SAQUE, ICRED, TOKE REAL. INSS é produto, não banco."
+        subtitle="Instituições com adapter: FACTA, NOVO SAQUE, ICRED, BANCO PAN. INSS é produto, não banco."
         actions={
           <PrimaryButton onClick={async () => {
             for (const c of CONVENIOS_PADRAO) {

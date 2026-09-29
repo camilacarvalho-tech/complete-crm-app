@@ -88,7 +88,7 @@ function Bloco(props: { id: string; titulo: string; aberto: boolean; onToggle: (
   )
 }
 
-export default function CentralProducao() {
+export default function CentralProducao({ listas = true }: { listas?: boolean }) {
   const { digitacoes, propostas, documentos, clientes } = useNexusStore()
   const { usuario } = useAuth()
   const toast = useToast()
@@ -578,12 +578,12 @@ export default function CentralProducao() {
         <TextInput value={numero} placeholder="Número da proposta" onChange={(e) => setNumero(e.target.value)} />
       </div>
 
-      <div className="flex justify-end">
+      {listas ? <div className="flex justify-end">
         <button type="button" className="px-2 py-0.5 rounded-t text-[11px] font-semibold" style={{ border: '1px solid var(--code-border)', borderBottom: 'none', background: 'var(--code-surface)' }} aria-expanded={nomesAbertos} onClick={() => setNomesAbertos((v) => !v)}>
           {nomesAbertos ? '▶ Recolher' : '▼ Abrir'}
         </button>
-      </div>
-      {nomesAbertos ? <div className="rounded-lg" style={{ border: '1px solid var(--code-border)', overflowX: 'hidden' }}>
+      </div> : null}
+      {listas && nomesAbertos ? <div className="rounded-lg" style={{ border: '1px solid var(--code-border)', overflowX: 'hidden' }}>
         <table className="w-full text-xs">
           <thead>
             <tr>{['Cliente', 'CPF', 'Produto', 'Banco', 'Origem', 'Valor', 'Operador', 'Status', 'Criada em', 'Atualizada em', 'Ações'].map((h) => <th key={h} className="text-left p-2 font-medium">{h}</th>)}</tr>
@@ -613,7 +613,7 @@ export default function CentralProducao() {
         </table>
       </div> : null}
 
-      <div className="rounded-lg" style={{ border: '1px solid var(--code-border)', overflowX: 'hidden' }}>
+      {listas ? <div className="rounded-lg" style={{ border: '1px solid var(--code-border)', overflowX: 'hidden' }}>
         <p className="text-xs font-semibold p-2">Fila de Digitação</p>
         {nomesAbertos ? <table className="w-full text-xs">
           <thead>
@@ -642,7 +642,7 @@ export default function CentralProducao() {
             {fila.length === 0 && <tr><td className="p-3" colSpan={11}>Nenhuma proposta aguardando digitação.</td></tr>}
           </tbody>
         </table> : null}
-      </div>
+      </div> : null}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
         <div className="rounded p-2" style={{ border: '1px solid var(--code-border)' }}>Propostas hoje<div className="font-bold">{producao.propostasHoje}</div></div>

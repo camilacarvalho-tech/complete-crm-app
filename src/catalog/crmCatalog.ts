@@ -96,7 +96,7 @@ export function productSubs(code?: string): string[] {
   return operationsFor(code).map((o) => o.label)
 }
 
-export const BANCOS_DIGITACAO = ['FACTA', 'NOVO SAQUE', 'ICRED'] as const
+export const BANCOS_DIGITACAO = ['FACTA', 'NOVO SAQUE', 'ICRED', 'BANCO PAN'] as const
 
 export function originLabel(code?: string): string {
   return canonicalOriginLabel(code)

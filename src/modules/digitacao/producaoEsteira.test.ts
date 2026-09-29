@@ -209,7 +209,7 @@ test('preparar banco não chama envio real', () => {
 test('nova digitação escolhe produto e banco e entra na fila sem chamar API', () => {
   assert.equal(produtoDigitacao('INSS')?.code, 'INSS')
   assert.equal(produtoDigitacao('CLT')?.label, 'Crédito CLT')
-  assert.deepEqual([...BANCOS_DIGITACAO], ['FACTA', 'NOVO SAQUE', 'ICRED', 'TOKE REAL'])
+  assert.deepEqual([...BANCOS_DIGITACAO], ['FACTA', 'NOVO SAQUE', 'ICRED', 'BANCO PAN'])
   assert.equal(BANK_ADAPTER_IDS.includes('INSS' as never), false)
   const vazia = montarNovaDigitacao({
     clienteNome: '',
@@ -296,9 +296,9 @@ test('nova digitação escolhe produto e banco e entra na fila sem chamar API', 
   assert.equal(doLead.registro?.leadId, 'lead-2')
   assert.equal(doLead.registro?.produto, 'INSS')
   const icred = montarNovaDigitacao({ ...doChat.registro!, clienteNome: 'Ana', clienteId: 'c', banco: 'ICRED', produto: 'FGTS', usuario: 'Camila', dataHora: '2026-09-28T19:00:00.000Z', numeroProposta: 'P4', tipoOperacao: '', observacoes: '', valorSolicitado: null, valorLiberado: null, prazo: null, parcela: null, margem: null, documentos: [], cpf: '', telefone: '', cidade: '', uf: '', leadId: '', conversaId: '', origem: '' })
-  const toke = montarNovaDigitacao({ ...icred.registro!, clienteNome: 'Ana', banco: 'TOKE REAL', usuario: 'Camila', dataHora: '2026-09-28T19:01:00.000Z', numeroProposta: 'P5', tipoOperacao: '', observacoes: '', valorSolicitado: null, valorLiberado: null, prazo: null, parcela: null, margem: null, documentos: [], cpf: '', telefone: '', cidade: '', uf: '', leadId: '', clienteId: 'c', conversaId: '', origem: '', produto: 'INSS' })
+  const pan = montarNovaDigitacao({ ...icred.registro!, clienteNome: 'Ana', banco: 'BANCO PAN', usuario: 'Camila', dataHora: '2026-09-28T19:01:00.000Z', numeroProposta: 'P5', tipoOperacao: '', observacoes: '', valorSolicitado: null, valorLiberado: null, prazo: null, parcela: null, margem: null, documentos: [], cpf: '', telefone: '', cidade: '', uf: '', leadId: '', clienteId: 'c', conversaId: '', origem: '', produto: 'INSS' })
   assert.equal(icred.registro?.banco, 'ICRED')
-  assert.equal(toke.registro?.banco, 'TOKE REAL')
+  assert.equal(pan.registro?.banco, 'BANCO PAN')
   const fila = filaOperacional([
     { ...doChat.registro!, id: 'nova', criadoEm: '2026-09-28T12:00:00.000Z' },
     { ...doLead.registro!, id: 'velha', criadoEm: '2026-09-28T08:00:00.000Z' },
@@ -368,7 +368,8 @@ test('ajustes operacionais de máscara, origem, CEP, moeda e contrato', () => {
   assert.equal(BANK_ADAPTER_IDS.includes('facta' as never), true)
   assert.equal(BANK_ADAPTER_IDS.includes('novo_saque' as never), true)
   assert.equal(BANK_ADAPTER_IDS.includes('icred' as never), true)
-  assert.equal(BANK_ADAPTER_IDS.includes('toke_real' as never), true)
+  assert.equal(BANK_ADAPTER_IDS.includes('banco_pan' as never), true)
+  assert.equal(BANK_ADAPTER_IDS.includes('toke_real' as never), false)
   const menu = readFileSync(new URL('../../config/menuConfig.ts', import.meta.url), 'utf8')
   const app = readFileSync(new URL('../../App.tsx', import.meta.url), 'utf8')
   const icred = readFileSync(new URL('../../integrations/banks/icredAdapter.ts', import.meta.url), 'utf8')
