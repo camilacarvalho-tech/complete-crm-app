@@ -123,6 +123,8 @@ export default function ChatCenter() {
   const modalidade = params.get('modalidade')
   const vistaInicial = params.get('fila')
   const [filtro, setFiltro] = useState(VISTA.some((v) => v.id === vistaInicial) ? String(vistaInicial) : 'conversas')
+  const [marcadas, setMarcadas] = useState<string[]>([])
+  const [excluindo, setExcluindo] = useState(false)
   useEffect(() => {
     if (!VISTA.some((v) => v.id === filtro)) setFiltro('conversas')
   }, [filtro])
@@ -473,6 +475,51 @@ export default function ChatCenter() {
     void conversas.update(id, naoLida
       ? { naoLidas: 1, unreadCount: 1 }
       : { naoLidas: 0, unreadCount: 0 })
+  }
+
+  function alternarConversa(id: string, ligada: boolean) {
+    setMarcadas((atual) => ligada ? [...new Set([...atual, id])] : atual.filter((item) => item !== id))
+  }
+
+  function alternarTodas(ligadas: boolean) {
+    setMarcadas(ligadas ? externas.map((c) => c.id) : [])
+  }
+
+  async function excluirMarcadas() {
+    const ids = marcadas.filter((id) => externas.some((c) => c.id === id))
+    if (!ids.length || excluindo) return
+    const n = ids.length
+    if (!window.confirm(`Excluir ${n} conversa${n > 1 ? 's' : ''}? O histórico some daqui. O cliente continua cadastrado.`)) return
+    setExcluindo(true)
+    try {
+      const escolhidas = new Set(ids)
+      const msgs = mensagens.items.filter((m) => escolhidas.has(String(m.conversaId || '')))
+      for (const m of msgs) await mensagens.remove(m.id)
+      for (const id of ids) await conversas.remove(id)
+      if (selectedId && escolhidas.has(selectedId)) {
+        const next = new URLSearchParams(params)
+        next.delete('conversa')
+        setParams(next, { replace: true })
+      }
+      setMarcadas([])
+      await writeAudit({
+        empresaId: conversas.empresaId,
+        usuarioId: usuario?.id,
+        usuarioNome: usuario?.nome,
+        modulo: 'Chat Clientes',
+        submodulo: 'Atendimento',
+        acao: 'excluir',
+        descricao: `Excluiu ${n} conversa${n > 1 ? 's' : ''}`,
+        origem: 'FUNCIONÁRIO',
+        entidade: 'conversa',
+        entidadeId: ids[0],
+      })
+      toast.success(n > 1 ? `${n} conversas excluídas` : 'Conversa excluída')
+    } catch (e) {
+      toast.error('Não foi possível excluir', e instanceof Error ? e.message : '')
+    } finally {
+      setExcluindo(false)
+    }
   }
 
   async function ensureConversa() {
@@ -1019,6 +1066,7 @@ export default function ChatCenter() {
     await conversas.update(selected.id, {
       status: 'finalizado',
       statusAtendimento: 'FINALIZADO',
+      finalizadoEm: new Date().toISOString(),
       roboPausado: true,
       robotPaused: true,
       robotState: 'HUMAN_ACTIVE',
@@ -1098,6 +1146,18 @@ export default function ChatCenter() {
             </button>
           ))}
         </div>
+        {filtro === 'finalizados' && (
+          <p className="text-[10px] leading-snug" style={{ color: 'var(--code-muted)' }}>Histórico encerrado. A hora é a da última mensagem.</p>
+        )}
+        <div className="flex items-center justify-between gap-2">
+          <label className="text-[11px] flex items-center gap-1 font-semibold" style={{ color: 'var(--code-muted)' }}>
+            <input type="checkbox" checked={externas.length > 0 && externas.every((c) => marcadas.includes(c.id))} onChange={(e) => alternarTodas(e.target.checked)} aria-label="Marcar todas as conversas" />
+            Todas
+          </label>
+          <button type="button" disabled={!marcadas.length || excluindo} onClick={() => void excluirMarcadas()} className="text-[11px] font-semibold px-2 py-0.5 rounded-full disabled:opacity-40" style={{ background: 'var(--code-danger)', color: '#fff' }}>
+            {excluindo ? 'Excluindo...' : 'Excluir'}
+          </button>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto">
         {lista.length === 0 && <div className="p-3"><EmptyState title={filtro === 'finalizados' ? 'Nenhum atendimento finalizado' : 'Nenhuma conversa'} description={filtro === 'finalizados' ? 'Quando você finalizar, o cliente aparece aqui.' : 'Os clientes que falam com você ficam nesta lista.'} /></div>}
@@ -1105,8 +1165,11 @@ export default function ChatCenter() {
           const cli = clientes.items.find((x) => x.id === c.clienteId)
           const unread = naoLidasDe(c)
           const preview = String(c.lastMessage || ultimaMensagem.get(c.id)?.texto || 'Sem mensagens')
-          const nome = String(c.titulo || cli?.nome || displayPhone(String(cli?.whatsapp || cli?.telefone || '')) || 'Conversa')
-          const quandoLista = Math.max(instanteChat(c.atualizadoEm), instanteChat(c.criadoEm), ultimaMensagem.get(c.id)?.em || 0)
+          const fone = displayPhone(String(cli?.whatsapp || cli?.telefone || ''))
+          const nome = String(c.titulo || cli?.nome || fone || 'Conversa')
+          const quandoLista = Math.max(instanteChat(c.finalizadoEm), instanteChat(c.atualizadoEm), instanteChat(c.criadoEm), ultimaMensagem.get(c.id)?.em || 0)
+          const hora = formatMessageClock(quandoLista ? new Date(quandoLista) : null)
+          const fechada = filtro === 'finalizados'
           return (
             <div
               key={c.id}
@@ -1114,24 +1177,39 @@ export default function ChatCenter() {
               tabIndex={0}
               onClick={() => abrirConversa(c.id, String(c.clienteId || ''))}
               onKeyDown={(e) => { if (e.key === 'Enter') abrirConversa(c.id, String(c.clienteId || '')) }}
-              className="w-full text-left px-3 py-2 border-b cursor-pointer"
+              className="w-full text-left px-3 py-2.5 border-b cursor-pointer"
               style={{
                 borderColor: 'var(--code-border)',
                 background: selected?.id === c.id ? 'var(--code-surface-muted)' : 'transparent',
               }}
             >
-              <div className="flex justify-between gap-2">
-                <p className="text-sm font-semibold truncate">{nome}</p>
-                <span className="text-[10px] shrink-0" style={{ color: 'var(--code-muted)' }}>{formatMessageClock(quandoLista ? new Date(quandoLista) : null)}</span>
-              </div>
-              <p className="text-[11px] truncate" style={{ color: 'var(--code-muted)' }}>{displayPhone(String(cli?.whatsapp || cli?.telefone || ''))}</p>
-              <p className="text-[11px] truncate" style={{ color: 'var(--code-muted)' }}>{preview}</p>
-              <div className="flex items-center gap-2 mt-1">
-                <label className="text-[10px] flex items-center gap-1" style={{ color: 'var(--code-muted)' }} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-                  <input type="checkbox" checked={unread > 0} onChange={(e) => marcarNaoLida(c.id, e.target.checked)} />
-                  Não lida
+              <div className="flex items-start gap-2">
+                <label className="mt-1 shrink-0" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                  <input type="checkbox" checked={marcadas.includes(c.id)} aria-label={`Marcar ${nome}`} onChange={(e) => alternarConversa(c.id, e.target.checked)} />
                 </label>
-                {unread > 0 && <span className="ml-auto text-[10px] px-1.5 rounded-full text-white" style={{ background: 'var(--code-orange)' }}>{unread}</span>}
+                {fechada && (
+                  <span className="mt-0.5 h-8 w-8 rounded-full shrink-0 flex items-center justify-center text-xs font-bold" style={{ background: 'var(--code-surface-muted)', color: 'var(--code-text)' }} aria-hidden>
+                    {nome.trim().slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex justify-between gap-2">
+                    <p className="text-sm font-semibold truncate">{nome}</p>
+                    <span className="text-[10px] shrink-0" style={{ color: 'var(--code-muted)' }}>{hora}</span>
+                  </div>
+                  {fone && <p className="text-[11px] truncate" style={{ color: 'var(--code-muted)' }}>{fone}</p>}
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <p className="text-[11px] truncate flex-1" style={{ color: 'var(--code-muted)' }}>{preview}</p>
+                    {fechada && <span className="chat-finalizado shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-semibold">Finalizado</span>}
+                    {unread > 0 && <span className="shrink-0 text-[10px] px-1.5 rounded-full text-white" style={{ background: 'var(--code-orange)' }}>{unread}</span>}
+                  </div>
+                  {!fechada && (
+                    <label className="text-[10px] mt-1 flex items-center gap-1" style={{ color: 'var(--code-muted)' }} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={unread > 0} onChange={(e) => marcarNaoLida(c.id, e.target.checked)} />
+                      Não lida
+                    </label>
+                  )}
+                </div>
               </div>
             </div>
           )
@@ -1209,7 +1287,7 @@ export default function ChatCenter() {
           <div className="relative flex-1 min-h-0">
           <div
             ref={listaChatRef}
-            className="h-full overflow-y-auto p-3 space-y-2"
+            className="chat-wa-area h-full overflow-y-auto p-3 space-y-2"
             onScroll={(e) => {
               const el = e.currentTarget
               const noFim = el.scrollHeight - el.scrollTop - el.clientHeight < 80
@@ -1234,7 +1312,7 @@ export default function ChatCenter() {
               const rotuloEntrega = enviadaAoCliente ? deliveryLabel(String(m.erpStatus || m.status || '')) : 'Recebida'
               return (
               <div key={m.id}>
-                {dia && dia !== diaAnterior ? <p className="text-[10px] text-center py-1" style={{ color: 'var(--code-muted)' }}>{dia}</p> : null}
+                {dia && dia !== diaAnterior ? <p className="chat-dia">{dia}</p> : null}
               <div className={`bolha ${minha || daLeticia ? 'sai' : 'entra'}`}>
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-[10px]" style={{ color: 'var(--code-muted)' }}>{textoMisto(String(m.autorNome || ''))}</p>
@@ -1272,10 +1350,10 @@ export default function ChatCenter() {
                       </details>
                     ) : null}
                     {m.editedAt ? <p className="text-[10px]">editada no CRM</p> : null}
-                <p className="text-[10px] text-right" style={{ color: mark === 'read' ? '#53bdeb' : mark === 'failed' ? '#b91c1c' : 'var(--code-muted)' }}>
+                <p className={`text-[10px] text-right${mark === 'failed' ? ' chat-falha' : ''}`} style={{ color: mark === 'read' ? '#53bdeb' : mark === 'failed' ? undefined : 'var(--code-muted)' }}>
                   {hora} · {enviadaAoCliente ? `${deliveryGlyph(String(m.erpStatus || m.status || ''))} ` : ''}{rotuloEntrega}
                 </p>
-                {mark === 'failed' && m.erroEnvio ? <p className="text-[10px]" style={{ color: '#b91c1c' }}>{String(m.erroEnvio)}</p> : null}
+                {mark === 'failed' && m.erroEnvio ? <p className="chat-falha text-[10px]">{String(m.erroEnvio)}</p> : null}
                 {mark === 'failed' && m.clientMessageId && (
                   <button type="button" className="text-[10px] font-semibold" onClick={() => void reenviar(m as any)}>Tentar novamente</button>
                 )}

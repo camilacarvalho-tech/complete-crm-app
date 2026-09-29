@@ -35,8 +35,8 @@ html.dark {
   --code-input-bg: #111827;
   --code-input-border: #334155;
   --code-focus: #22d3ee;
-  --code-chat-in: #1e293b;
-  --code-chat-out: color-mix(in srgb, var(--code-blue) 35%, #111827);
+  --code-chat-in: #202c33;
+  --code-chat-out: #005c4b;
   --code-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   --code-overlay: rgba(0, 0, 0, 0.65);
 }
@@ -73,8 +73,8 @@ html[data-theme='light'] {
   --code-input-bg: #ffffff;
   --code-input-border: #cbd5e1;
   --code-focus: #0891b2;
-  --code-chat-in: #f1f5f9;
-  --code-chat-out: color-mix(in srgb, var(--code-blue) 12%, #ffffff);
+  --code-chat-in: #ffffff;
+  --code-chat-out: #d9fdd3;
   --code-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
   --code-overlay: rgba(15, 23, 42, 0.45);
   --code-bg: var(--code-background);
@@ -99,8 +99,8 @@ html[data-theme='dark'] {
   --code-input-bg: #111827;
   --code-input-border: #334155;
   --code-focus: #22d3ee;
-  --code-chat-in: #1e293b;
-  --code-chat-out: color-mix(in srgb, var(--code-blue) 35%, #111827);
+  --code-chat-in: #202c33;
+  --code-chat-out: #005c4b;
   --code-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   --code-overlay: rgba(0, 0, 0, 0.65);
 }

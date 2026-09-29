@@ -12,7 +12,7 @@ import { StateCityFields } from '../components/nexus/StateCityFields'
 import { FilterSearch, FilterSelect } from '../components/nexus/Filters'
 import { useToast } from '../components/ui/Toast'
 import { labelPt } from '../lib/uiPt'
-import { normalizeEmail, normalizePersonName, redactCpf } from '../lib/format'
+import { maskCnpj, maskPhone, normalizeEmail, normalizePersonName, redactCpf } from '../lib/format'
 import { formatMonitorDateTime } from '../modules/leads-monitor/utils/datetime'
 import { downloadDelimited, exportRowsFromClientes } from '../modules/leads-monitor/pipeline/exportMonitorRows'
 import { useEscLayer } from '../hooks/useEscLayer'
@@ -317,8 +317,8 @@ export default function Clientes() {
                     <td className="p-3">{c.empresaNome || '—'}</td>
                     <td className="p-3">{c.cargo || c.profissao || '—'}</td>
                     <td className="p-3">{c.relacaoEmpresa || '—'}</td>
-                    <td className="p-3">{c.telefone || '—'}</td>
-                    <td className="p-3">{c.whatsapp || '—'}</td>
+                    <td className="p-3">{c.telefone ? maskPhone(c.telefone) : '—'}</td>
+                    <td className="p-3">{c.whatsapp ? maskPhone(c.whatsapp) : '—'}</td>
                     <td className="p-3">{c.email || '—'}</td>
                     <td className="p-3">{c.cidade || c.cidadeOrigem ? `${c.cidade || c.cidadeOrigem} - ${c.estado || c.estadoOrigem || ''}` : '—'}</td>
                     <td className="p-3">{originLabel(originCode(String(c.source || c.origem)))}</td>
@@ -565,7 +565,7 @@ function ClientWorkspace({
           <h2 className="font-bold">{cliente.nome}</h2>
           <p className="text-xs" style={{ color: 'var(--code-muted)' }}>
             {cliente.empresaNome ? `${cliente.empresaNome}${cliente.cargo ? ` · ${cliente.cargo}` : ''}` : cliente.cpf ? `CPF ${redactCpf(cliente.cpf)}` : 'Cadastro CRM'}
-            {' · '}{cliente.whatsapp || cliente.telefone || '—'}
+            {' · '}{cliente.whatsapp || cliente.telefone ? maskPhone(String(cliente.whatsapp || cliente.telefone)) : '—'}
             {cliente.email ? ` · ${cliente.email}` : ''}
           </p>
           <p className="text-xs" style={{ color: 'var(--code-muted)' }}>
@@ -600,7 +600,7 @@ function ClientWorkspace({
             <p>Pessoa: {cliente.nome || 'Não informado'}</p>
             <p>Nome: {cliente.nome || 'Não informado'}</p>
             <p>CPF: {cliente.cpf ? redactCpf(cliente.cpf) : 'Não informado'}</p>
-            <p>Data de nascimento: {cliente.dataNascimento || 'Não informado'}</p>
+            <p>Data de nascimento: {cliente.dataNascimento ? cliente.dataNascimento.replace(/^(\d{4})-(\d{2})-(\d{2}).*/, '$3-$2-$1') : 'Não informado'}</p>
             <p>Cargo: {cliente.cargo || cliente.profissao || 'Não informado'}</p>
             <p>Relação com empresa: {cliente.relacaoEmpresa || String(extras.relationToCompany || 'Não informado')}</p>
           </section>
@@ -608,21 +608,21 @@ function ClientWorkspace({
             <p className="text-xs font-semibold">🏢 Empresa</p>
             <p>Razão social: {String(extras.razaoSocial || cliente.empresaNome || '—')}</p>
             <p>Nome fantasia: {String(extras.nomeFantasia || '—')}</p>
-            <p>CNPJ: {cliente.empresaCnpj || '—'}</p>
+            <p>CNPJ: {cliente.empresaCnpj ? maskCnpj(cliente.empresaCnpj) : '—'}</p>
             <p>Segmento: {cliente.modalidade || '—'}</p>
             <p>CNAE: {String(extras.cnaePrincipal || '—')}</p>
             <p>País: {cliente.pais || 'Brasil'}</p>
             <p>Cidade: {cliente.cidade || 'Não informado'}</p>
             <p>Estado: {cliente.estado || 'Não informado'}</p>
             <p>Bairro: {cliente.bairro || 'Não informado'}</p>
-            <p>CEP: {cliente.cep || 'Não informado'}</p>
+            <p>CEP: {cliente.cep ? (() => { const d = digits(String(cliente.cep)).slice(0, 8); return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d })() : 'Não informado'}</p>
             <p>UF: {cliente.estado || 'Não informado'}</p>
             <p>Endereço: {cliente.endereco || '—'}</p>
           </section>
           <section>
             <p className="text-xs font-semibold">📞 Contatos</p>
-            <p>Telefone profissional: {cliente.telefone || 'Não informado'}</p>
-            <p>WhatsApp profissional: {cliente.whatsapp || 'Não informado'}</p>
+            <p>Telefone profissional: {cliente.telefone ? maskPhone(cliente.telefone) : 'Não informado'}</p>
+            <p>WhatsApp profissional: {cliente.whatsapp ? maskPhone(cliente.whatsapp) : 'Não informado'}</p>
             <p>E-mail profissional: {cliente.email || 'Não informado'}</p>
           </section>
           <LgpdGovernancaBlock

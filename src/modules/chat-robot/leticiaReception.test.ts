@@ -209,10 +209,10 @@ test('transferir para Laiane pausa a Letícia', () => {
 test('data de hoje mostra só a hora e data antiga mostra o dia', () => {
   const now = new Date(2026, 8, 28, 16, 24)
   assert.equal(formatMessageClock(new Date(2026, 8, 28, 16, 24), now), '16:24')
-  assert.equal(formatMessageClock(new Date(2026, 8, 27, 18, 42), now), 'Ontem 18:42')
-  const antiga = formatMessageClock(new Date(2026, 8, 26, 9, 5), now)
-  assert.match(antiga, /26\/09\/2026/)
-  assert.match(antiga, /09:05/)
+  assert.equal(formatMessageClock(new Date(2026, 8, 27, 18, 42), now), 'Ontem')
+  assert.equal(formatMessageClock(new Date(2026, 8, 26, 9, 5), now), 'sábado')
+  const antiga = formatMessageClock(new Date(2026, 8, 1, 9, 5), now)
+  assert.match(antiga, /01\/09\/2026/)
 })
 
 test('picker de emoji devolve vários itens da categoria', () => {

@@ -32,5 +32,17 @@ export default defineConfig({
   preview: {
     port: 5474,
     strictPort: false,
+    proxy: {
+      '/__nx_erp_cloud': {
+        target: 'https://nx-erp-disparo-nuvem.onrender.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/__nx_erp_cloud/, '') || '/health',
+      },
+      '/__nx_erp_local': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/__nx_erp_local/, '') || '/',
+      },
+    },
   },
 })
