@@ -7,6 +7,7 @@ import { addDoc, collection, doc, getDoc, getDocs, increment, query, serverTimes
 import { db } from '../firebase'
 import { garantirConversaFila } from './garantirConversaFila'
 import { digits } from './nexusCore'
+import { chaveTelefoneBr, mesmoTelefoneBr } from './format'
 import { writeAudit } from './audit'
 import { camposConversa, leticiaReply, leticiaTravada, LETICIA_MENU_BOTAO, LETICIA_MENU_TITULO, podeResponder, stepDoBot, textoSelecaoCliente } from '../modules/chat-robot/leticiaReception'
 import { resolveInboundOrigin } from './inboundOrigin'
@@ -52,11 +53,15 @@ export async function handleInboundErpMessage(
   }
   if (!clienteId && tel) {
     const snap = await getDocs(collection(db, 'empresas', empresaId, 'clientes'))
-    const hit = snap.docs.find((d) => {
+    const hits = snap.docs.filter((d) => {
+      const c = d.data() as { telefone?: string; whatsapp?: string; telefoneNormalizado?: string }
+      return mesmoTelefoneBr(c.whatsapp || c.telefone || c.telefoneNormalizado, tel)
+    })
+    const hit = hits.find((d) => {
       const c = d.data() as { telefone?: string; whatsapp?: string; telefoneNormalizado?: string }
       const n = digits(c.whatsapp || c.telefone || c.telefoneNormalizado || '')
-      return n && n === tel
-    })
+      return n.length === 10 || n.length === 11
+    }) || hits[0]
     if (hit) clienteId = hit.id
   }
   let created = false
@@ -66,9 +71,9 @@ export async function handleInboundErpMessage(
   if (!clienteId) {
     const ref = await addDoc(collection(db, 'empresas', empresaId, 'clientes'), {
       nome: String(payload.nome || '').trim() || tel || 'Cliente WhatsApp',
-      telefone: tel,
-      telefoneNormalizado: tel,
-      whatsapp: tel,
+      telefone: chaveTelefoneBr(tel),
+      telefoneNormalizado: chaveTelefoneBr(tel),
+      whatsapp: chaveTelefoneBr(tel),
       origemLead,
       origem: origemLead,
       fonte: payload.source || 'NX_ERP',
@@ -312,18 +317,24 @@ export async function gravarMensagemRecebida(
   const textoCliente = opcaoId ? (textoSelecaoCliente(opcaoId) || texto) : texto
 
   const tel = digits(payload.whatsapp || payload.phone || '')
-  if (tel.length < 10) throw new Error('Inbound sem telefone válido')
+  if (chaveTelefoneBr(tel).length < 10) throw new Error('Inbound sem telefone válido')
   const origemLead = resolveInboundOrigin(payload)
-  let clienteId = memoria.clientes.find((c) => {
-    const n = digits(c.whatsapp || c.telefone || c.telefoneNormalizado || '')
-    return Boolean(n) && n === tel
-  })?.id || ''
+  const aberto = memoria.conversas.find((c) => c.id === memoria.conversaAbertaId)
+  const doTelefone = memoria.clientes.filter((c) => mesmoTelefoneBr(c.whatsapp || c.telefone || c.telefoneNormalizado, tel))
+  const preferido = doTelefone.find((c) => c.id === aberto?.clienteId)
+    || doTelefone.find((c) => {
+      const n = digits(c.whatsapp || c.telefone || c.telefoneNormalizado || '')
+      return n.length === 10 || n.length === 11
+    })
+    || doTelefone[0]
+  let clienteId = preferido?.id || ''
   if (!clienteId) {
+    const fone = chaveTelefoneBr(tel)
     const ref = await addDoc(collection(db, 'empresas', empresaId, 'clientes'), {
-      nome: String(payload.nome || '').trim() || tel,
-      telefone: tel,
-      telefoneNormalizado: tel,
-      whatsapp: tel,
+      nome: String(payload.nome || '').trim() || fone,
+      telefone: fone,
+      telefoneNormalizado: fone,
+      whatsapp: fone,
       origemLead,
       origem: origemLead,
       fonte: 'whatsapp',

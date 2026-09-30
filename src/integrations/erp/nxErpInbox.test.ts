@@ -9,6 +9,13 @@ import {
   nxErpStatusLabel,
 } from './nxErpInbox.ts'
 import { buildRespostaChat, deliveryMark, motivoEnvioWhatsapp, phoneError } from './chatOutbound.ts'
+import { mesmoTelefoneBr } from '../../lib/format.ts'
+
+test('WhatsApp com 55 é o mesmo telefone do cliente no CRM', () => {
+  assert.equal(mesmoTelefoneBr('5514996902902', '14996902902'), true)
+  assert.equal(mesmoTelefoneBr('5514996902902', '14 99690-2902'), true)
+  assert.equal(mesmoTelefoneBr('5511999887766', '11988887766'), false)
+})
 
 test('mensagem inbound preserva telefone, nome, texto, wamid e campanha', () => {
   const mapped = mapInboundMessage({

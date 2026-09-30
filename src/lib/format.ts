@@ -2,6 +2,19 @@ export function digits(value?: string): string {
   return (value || '').replace(/\D/g, '')
 }
 
+/** Celular do Brasil com ou sem 55 vira o mesmo número. */
+export function chaveTelefoneBr(value?: string): string {
+  let d = digits(value)
+  if (d.startsWith('55') && (d.length === 12 || d.length === 13)) d = d.slice(2)
+  return d
+}
+
+export function mesmoTelefoneBr(a?: string, b?: string): boolean {
+  const x = chaveTelefoneBr(a)
+  const y = chaveTelefoneBr(b)
+  return x.length >= 10 && x === y
+}
+
 export function normalizeEmail(value?: string): string {
   return (value || '').trim().toLowerCase()
 }

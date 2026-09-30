@@ -23,7 +23,7 @@ import { gravacaoParaOgg } from '../lib/oggOpus'
 import { textoMisto } from '../lib/uiPt'
 import { EmojiPicker } from '../components/chat/EmojiPicker'
 import { ClienteLink } from '../components/nexus/ClienteLink'
-import { digits, maskCpf, maskPhone } from '../lib/format'
+import { chaveTelefoneBr, digits, maskCpf, maskPhone } from '../lib/format'
 import { mascaraCpf, mascaraTelefone } from '../modules/digitacao/producaoEsteira'
 import './chatInterno.css'
 
@@ -253,8 +253,19 @@ export default function ChatCenter() {
     })
     return hit ? lerNascimento(hit) : ''
   })()
+  const fonesCliente = [cliente?.whatsapp, cliente?.telefone, cliente?.telefoneNormalizado, selected?.telefone]
+    .map((v) => chaveTelefoneBr(String(v || '')))
+    .filter((k) => k.length >= 10)
+  const conversasVisiveis = new Set<string>(selected?.id ? [selected.id] : [])
+  if (fonesCliente.length) {
+    for (const c of externas) {
+      const cli = clientes.items.find((x) => x.id === c.clienteId)
+      const chaves = [cli?.whatsapp, cli?.telefone, cli?.telefoneNormalizado, c.telefone].map((v) => chaveTelefoneBr(String(v || '')))
+      if (chaves.some((k) => fonesCliente.includes(k))) conversasVisiveis.add(c.id)
+    }
+  }
   const msgs = mensagens.items
-    .filter((m) => m.conversaId === selected?.id)
+    .filter((m) => conversasVisiveis.has(String(m.conversaId || '')))
     .sort((a, b) => instanteChat(a.criadoEm) - instanteChat(b.criadoEm))
   const leticiaToken = useRef(new Set<string>())
   const menuEnviado = useRef(new Set<string>())
@@ -482,11 +493,12 @@ export default function ChatCenter() {
   }
 
   function alternarTodas(ligadas: boolean) {
-    setMarcadas(ligadas ? externas.map((c) => c.id) : [])
+    const ids = externas.filter((c) => conversaFinalizada(c)).map((c) => c.id)
+    setMarcadas(ligadas ? ids : [])
   }
 
   async function excluirMarcadas() {
-    const ids = marcadas.filter((id) => externas.some((c) => c.id === id))
+    const ids = marcadas.filter((id) => externas.some((c) => c.id === id && conversaFinalizada(c)))
     if (!ids.length || excluindo) return
     const n = ids.length
     if (!window.confirm(`Excluir ${n} conversa${n > 1 ? 's' : ''}? O histórico some daqui. O cliente continua cadastrado.`)) return
@@ -1147,17 +1159,24 @@ export default function ChatCenter() {
           ))}
         </div>
         {filtro === 'finalizados' && (
-          <p className="text-[10px] leading-snug" style={{ color: 'var(--code-muted)' }}>Histórico encerrado. A hora é a da última mensagem.</p>
+          <>
+            <p className="text-[10px] leading-snug" style={{ color: 'var(--code-muted)' }}>Histórico encerrado. A hora é a da última mensagem.</p>
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-[11px] flex items-center gap-1 font-semibold" style={{ color: 'var(--code-muted)' }}>
+                <input
+                  type="checkbox"
+                  checked={externas.some((c) => conversaFinalizada(c)) && externas.filter((c) => conversaFinalizada(c)).every((c) => marcadas.includes(c.id))}
+                  onChange={(e) => alternarTodas(e.target.checked)}
+                  aria-label="Marcar todas as conversas finalizadas"
+                />
+                Todas
+              </label>
+              <button type="button" disabled={!marcadas.length || excluindo} onClick={() => void excluirMarcadas()} className="text-[11px] font-semibold px-2 py-0.5 rounded-full disabled:opacity-40" style={{ background: 'var(--code-danger)', color: '#fff' }}>
+                {excluindo ? 'Excluindo...' : 'Excluir'}
+              </button>
+            </div>
+          </>
         )}
-        <div className="flex items-center justify-between gap-2">
-          <label className="text-[11px] flex items-center gap-1 font-semibold" style={{ color: 'var(--code-muted)' }}>
-            <input type="checkbox" checked={externas.length > 0 && externas.every((c) => marcadas.includes(c.id))} onChange={(e) => alternarTodas(e.target.checked)} aria-label="Marcar todas as conversas" />
-            Todas
-          </label>
-          <button type="button" disabled={!marcadas.length || excluindo} onClick={() => void excluirMarcadas()} className="text-[11px] font-semibold px-2 py-0.5 rounded-full disabled:opacity-40" style={{ background: 'var(--code-danger)', color: '#fff' }}>
-            {excluindo ? 'Excluindo...' : 'Excluir'}
-          </button>
-        </div>
       </div>
       <div className="flex-1 overflow-y-auto">
         {lista.length === 0 && <div className="p-3"><EmptyState title={filtro === 'finalizados' ? 'Nenhum atendimento finalizado' : 'Nenhuma conversa'} description={filtro === 'finalizados' ? 'Quando você finalizar, o cliente aparece aqui.' : 'Os clientes que falam com você ficam nesta lista.'} /></div>}
@@ -1184,9 +1203,11 @@ export default function ChatCenter() {
               }}
             >
               <div className="flex items-start gap-2">
-                <label className="mt-1 shrink-0" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-                  <input type="checkbox" checked={marcadas.includes(c.id)} aria-label={`Marcar ${nome}`} onChange={(e) => alternarConversa(c.id, e.target.checked)} />
-                </label>
+                {fechada && (
+                  <label className="mt-1 shrink-0" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                    <input type="checkbox" checked={marcadas.includes(c.id)} aria-label={`Marcar ${nome}`} onChange={(e) => alternarConversa(c.id, e.target.checked)} />
+                  </label>
+                )}
                 {fechada && (
                   <span className="mt-0.5 h-8 w-8 rounded-full shrink-0 flex items-center justify-center text-xs font-bold" style={{ background: 'var(--code-surface-muted)', color: 'var(--code-text)' }} aria-hidden>
                     {nome.trim().slice(0, 1).toUpperCase()}
