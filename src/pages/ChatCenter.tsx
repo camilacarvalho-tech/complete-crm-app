@@ -16,19 +16,20 @@ import { drainErpToCrmEvents } from '../integrations/events/eventHandlers'
 import { drainNxErpHttpInbox, sendReplyViaNxErp } from '../integrations/erp/drainNxErpInbox'
 import { deliveryGlyph, deliveryLabel, deliveryMark, motivoEnvioWhatsapp, newClientMessageId, phoneError } from '../integrations/erp/chatOutbound'
 import { loadNxErpCrmConfig } from '../integrations/erp/nxErpCrmClient'
-import { conversaFinalizada, instanteChat, naoLidasDe, ordenarConversas, teclaEnviaMensagem } from '../lib/chatLista'
+import { conversaFinalizada, filaChat, instanteChat, naoLidasDe, ordemEstavel, ordenarConversas, teclaEnviaMensagem } from '../lib/chatLista'
 import { camposConversa, leticiaReply, leticiaTravada, LETICIA_MENU_BOTAO, LETICIA_MENU_TITULO, stepDoBot } from '../modules/chat-robot/leticiaReception'
 import { formatMessageClock, horaMensagem, rotuloDiaMensagem } from '../lib/messageClock'
 import { gravacaoParaOgg } from '../lib/oggOpus'
 import { textoMisto } from '../lib/uiPt'
 import { EmojiPicker } from '../components/chat/EmojiPicker'
 import { ClienteLink } from '../components/nexus/ClienteLink'
-import { chaveTelefoneBr, digits, maskCpf, maskPhone } from '../lib/format'
+import { chaveTelefoneBr, digits, maskCpf } from '../lib/format'
 import { mascaraCpf, mascaraTelefone } from '../modules/digitacao/producaoEsteira'
 import './chatInterno.css'
 
 const VISTA = [
   { id: 'conversas', label: 'Conversas' },
+  { id: 'atendimento', label: 'Atendimento' },
   { id: 'finalizados', label: 'Finalizados' },
 ]
 
@@ -49,12 +50,59 @@ function dataHora(v: unknown) {
   return `${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
 }
 
+function textoVisivel(value: unknown): string {
+  const texto = String(value || '')
+  if (/tipo não suportado pela meta/i.test(texto)) {
+    return 'O WhatsApp não enviou o texto desta mensagem.'
+  }
+  return texto
+}
+
 function displayPhone(value?: string) {
+  const d = chaveTelefoneBr(value)
+  if (d.length === 11) return `+55 ${d.slice(0, 2)} ${d.slice(2, 7)}-${d.slice(7)}`
+  if (d.length === 10) return `+55 ${d.slice(0, 2)} ${d.slice(2, 6)}-${d.slice(6)}`
+  return ''
+}
+
+function fotoDe(cli?: object | null) {
+  if (!cli) return ''
+  const rec = cli as Record<string, unknown>
+  for (const key of ['foto', 'fotoUrl', 'fotoPerfil', 'avatar', 'avatarUrl', 'imagem', 'photoUrl']) {
+    const v = String(rec[key] ?? '').trim()
+    if (/^https?:\/\//i.test(v) || v.startsWith('data:image')) return v
+  }
+  return ''
+}
+
+function FotoCliente({ foto }: { foto: string }) {
+  const [falhou, setFalhou] = useState(false)
+  if (foto && !falhou) return <img className="chat-foto" src={foto} alt="" onError={() => setFalhou(true)} />
+  return (
+    <span className="chat-foto chat-foto-vazia" aria-hidden>
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-3.3 0-8 1.7-8 5v1h16v-1c0-3.3-4.7-5-8-5z" /></svg>
+    </span>
+  )
+}
+
+function pareceTelefone(value: string) {
   const d = digits(value)
-  if (d.length === 11) return `${d.slice(0, 2)} ${d.slice(2, 7)}-${d.slice(7)}`
-  if (d.length === 10) return `${d.slice(0, 2)} ${d.slice(2, 6)}-${d.slice(6)}`
-  const masked = maskPhone(value)
-  return masked || ''
+  return d.length >= 10 && d.length <= 13
+}
+
+function rotuloPessoa(nome: string, fone: string) {
+  const limpo = nome.trim()
+  if (!limpo || pareceTelefone(limpo)) return fone || 'Conversa'
+  return limpo
+}
+
+function tipoMidia(tipo: string) {
+  const t = tipo.toLowerCase()
+  if (t === 'image' || t === 'imagem' || t === 'sticker') return 'imagem'
+  if (t === 'audio' || t === 'voice') return 'audio'
+  if (t === 'video') return 'video'
+  if (t === 'document' || t === 'documento') return 'documento'
+  return t
 }
 
 function displayCpfSidebar(value?: string) {
@@ -125,8 +173,16 @@ export default function ChatCenter() {
   const [filtro, setFiltro] = useState(VISTA.some((v) => v.id === vistaInicial) ? String(vistaInicial) : 'conversas')
   const [marcadas, setMarcadas] = useState<string[]>([])
   const [excluindo, setExcluindo] = useState(false)
+  const [verArquivadas, setVerArquivadas] = useState(false)
+  const [zoom, setZoom] = useState(() => {
+    const salvo = Number(localStorage.getItem('chat-zoom'))
+    return salvo >= 0.75 && salvo <= 1.35 ? salvo : 0.85
+  })
+  useEffect(() => { localStorage.setItem('chat-zoom', String(zoom)) }, [zoom])
+  const [menuZap, setMenuZap] = useState<{ id: string; x: number; y: number } | null>(null)
   useEffect(() => {
     if (!VISTA.some((v) => v.id === filtro)) setFiltro('conversas')
+    setMarcadas([])
   }, [filtro])
   const [texto, setTexto] = useState('')
   const [enviando, setEnviando] = useState(false)
@@ -154,6 +210,7 @@ export default function ChatCenter() {
   const [editando, setEditando] = useState<{ id: string; texto: string; clientMessageId: string; reenviar: boolean } | null>(null)
   const envioTickRef = useRef(false)
   const listaChatRef = useRef<HTMLDivElement>(null)
+  const ordemPorFila = useRef<Record<string, string[]>>({})
   const noFundoRef = useRef(true)
   const [busca, setBusca] = useState('')
   const [novoCli, setNovoCli] = useState(false)
@@ -200,11 +257,8 @@ export default function ChatCenter() {
   const externas = useMemo(() => conversas.items.filter((c) => c.canal !== 'interno'), [conversas.items])
 
   const contagem = useMemo(() => {
-    const map = { conversas: 0, finalizados: 0 }
-    for (const c of externas) {
-      if (conversaFinalizada(c)) map.finalizados += 1
-      else map.conversas += 1
-    }
+    const map = { conversas: 0, atendimento: 0, finalizados: 0 }
+    for (const c of externas) map[filaChat(c)] += 1
     return map
   }, [externas])
 
@@ -215,7 +269,7 @@ export default function ChatCenter() {
       if (!id) continue
       const em = instanteChat(m.criadoEm)
       const prev = map.get(id)
-      if (!prev || em >= prev.em) map.set(id, { texto: String(m.texto || m.tipo || ''), em })
+      if (!prev || em >= prev.em) map.set(id, { texto: textoVisivel(m.texto || m.tipo || ''), em })
     }
     return map
   }, [mensagens.items])
@@ -226,9 +280,11 @@ export default function ChatCenter() {
       .filter((c) => {
         const cli = clientes.items.find((x) => x.id === c.clienteId)
         const aberta = c.id === (params.get('conversa') || '')
-        const finalizada = conversaFinalizada(c)
-        if (!aberta && filtro === 'conversas' && finalizada) return false
-        if (!aberta && filtro === 'finalizados' && !finalizada) return false
+        const arquivada = c.arquivada === true
+        if (verArquivadas) {
+          if (!arquivada) return false
+        } else if (arquivada) return false
+        else if (!aberta && filaChat(c) !== filtro) return false
         if (q) {
           const blob = `${c.titulo} ${c.lastMessage} ${c.assignedTo}`.toLowerCase()
           const extra = `${cli?.nome} ${cli?.telefone} ${cli?.whatsapp}`.toLowerCase()
@@ -236,8 +292,13 @@ export default function ChatCenter() {
         }
         return true
       })
-    return ordenarConversas(filtradas, (id) => ultimaMensagem.get(id)?.em || 0)
-  }, [externas, filtro, busca, clientes.items, ultimaMensagem, params])
+    const ordenadas = ordenarConversas(filtradas, (id) => ultimaMensagem.get(id)?.em || 0)
+    if (q) return ordenadas
+    const chaveOrdem = verArquivadas ? 'arquivadas' : filtro
+    const estavel = ordemEstavel(ordenadas, ordemPorFila.current[chaveOrdem] || [], filtro === 'atendimento')
+    ordemPorFila.current[chaveOrdem] = estavel.ids
+    return estavel.items
+  }, [externas, filtro, busca, clientes.items, ultimaMensagem, params, verArquivadas])
 
   const selected = conversas.items.find((c) => c.id === selectedId)
   inboxRef.current.conversaAbertaId = selectedId || ''
@@ -279,7 +340,8 @@ export default function ChatCenter() {
     const chave = String(last.id)
     if (leticiaToken.current.has(chave)) return
     const stepSalvo = stepDoBot(selected.botState, String(selected.leticiaStep || ''), String(selected.etapa || ''))
-    const step = stepSalvo === 'human' ? 'menu' : stepSalvo
+    if (stepSalvo === 'human') return
+    const step = stepSalvo
     const welcomed = selected.botWelcomeSent === true || Boolean(selected.welcomeSentAt)
     const turn = leticiaReply({
       paused: false,
@@ -304,21 +366,35 @@ export default function ChatCenter() {
       direction: 'OUTBOUND',
       source: 'LETICIA_LOCAL',
       processedInboundId: chave,
-    } as any).then(() => conversas.update(selected.id, {
-      lastMessage: String(turn.reply).slice(0, 240),
-      roboPausado: turn.pause,
-      robotPaused: turn.pause,
-      robotState: turn.pause ? 'HUMAN_ACTIVE' : 'BOT_ACTIVE',
-      botAtivo: !turn.pause,
-      atendimentoHumano: turn.pause,
-      leticiaStep: campos.leticiaStep,
-      etapa: campos.etapa,
-      botWelcomeSent: true,
-      welcomeSentAt: new Date().toISOString(),
-      botState: campos.botState,
-      ...(campos.modalidadeSelecionada ? { modalidadeSelecionada: campos.modalidadeSelecionada } : {}),
-    } as any))
-  }, [selected, msgs, mensagens, conversas])
+    } as any).then(() => {
+      const cpf = String(last.texto || '').replace(/\D/g, '')
+      if (turn.pause) {
+        setFiltro('atendimento')
+        if (cpf.length === 11 && cliente?.id && digits(String(cliente.cpf || '')).length !== 11) {
+          void clientes.update(cliente.id, { cpf: mascaraCpf(cpf) } as never)
+        }
+      }
+      return conversas.update(selected.id, {
+        lastMessage: String(turn.reply).slice(0, 240),
+        roboPausado: turn.pause,
+        robotPaused: turn.pause,
+        robotState: turn.pause ? 'HUMAN_ACTIVE' : 'BOT_ACTIVE',
+        botAtivo: !turn.pause,
+        atendimentoHumano: turn.pause,
+        leticiaStep: campos.leticiaStep,
+        etapa: campos.etapa,
+        botWelcomeSent: true,
+        welcomeSentAt: new Date().toISOString(),
+        botState: campos.botState,
+        ...(campos.modalidadeSelecionada ? { modalidadeSelecionada: campos.modalidadeSelecionada } : {}),
+        ...(turn.pause ? {
+          status: 'em_atendimento',
+          statusAtendimento: 'HUMANO',
+          entrouAtendimentoEm: selected.entrouAtendimentoEm || new Date().toISOString(),
+        } : {}),
+      } as any)
+    })
+  }, [selected, msgs, mensagens, conversas, cliente, clientes])
 
   useEffect(() => {
     if (!selected?.id || !usuario?.empresaId || leticiaTravada(selected)) return
@@ -493,12 +569,11 @@ export default function ChatCenter() {
   }
 
   function alternarTodas(ligadas: boolean) {
-    const ids = externas.filter((c) => conversaFinalizada(c)).map((c) => c.id)
+    const ids = externas.filter((c) => filaChat(c) === filtro).map((c) => c.id)
     setMarcadas(ligadas ? ids : [])
   }
 
-  async function excluirMarcadas() {
-    const ids = marcadas.filter((id) => externas.some((c) => c.id === id && conversaFinalizada(c)))
+  async function excluirConversas(ids: string[]) {
     if (!ids.length || excluindo) return
     const n = ids.length
     if (!window.confirm(`Excluir ${n} conversa${n > 1 ? 's' : ''}? O histórico some daqui. O cliente continua cadastrado.`)) return
@@ -532,6 +607,39 @@ export default function ChatCenter() {
     } finally {
       setExcluindo(false)
     }
+  }
+
+  async function excluirMarcadas() {
+    const ids = marcadas.filter((id) => externas.some((c) => c.id === id && filaChat(c) === filtro && filtro !== 'conversas'))
+    await excluirConversas(ids)
+  }
+
+  async function excluirAberta() {
+    if (!selected?.id) return
+    await excluirConversas([selected.id])
+  }
+
+  function abrirMenuZap(e: { preventDefault: () => void; stopPropagation: () => void; clientX: number; clientY: number }, id: string) {
+    e.preventDefault()
+    e.stopPropagation()
+    const x = Math.max(8, Math.min(e.clientX, window.innerWidth - 240))
+    const y = Math.max(8, Math.min(e.clientY, window.innerHeight - 230))
+    setMenuZap({ id, x, y })
+  }
+
+  async function arquivarConversa(id: string, arquivar: boolean) {
+    await conversas.update(id, { arquivada: arquivar })
+    setMenuZap(null)
+    toast.success(arquivar ? 'Conversa arquivada' : 'Conversa desarquivada')
+  }
+
+  async function limparConversa(id: string) {
+    if (!window.confirm('Limpar as mensagens desta conversa? O cliente continua cadastrado.')) return
+    const daConversa = mensagens.items.filter((m) => String(m.conversaId || '') === id)
+    for (const m of daConversa) await mensagens.remove(m.id)
+    await conversas.update(id, { lastMessage: '' })
+    setMenuZap(null)
+    toast.success('Conversa limpa')
   }
 
   async function ensureConversa() {
@@ -620,6 +728,19 @@ export default function ChatCenter() {
     })
   }
 
+  async function guardarArquivoChat(file: File, mensagemId: string) {
+    if (!usuario?.empresaId || !mensagemId) return
+    try {
+      const path = `empresas/${usuario.empresaId}/chat/${mensagemId}`
+      const stored = ref(storage, path)
+      await uploadBytes(stored, file)
+      const url = await getDownloadURL(stored)
+      await mensagens.update(mensagemId, { arquivoUrl: url })
+    } catch {
+      /* a prévia local continua nesta tela */
+    }
+  }
+
   async function enviarAudio(file: File) {
     if (envioEmCursoRef.current) return
     envioEmCursoRef.current = true
@@ -670,7 +791,8 @@ export default function ChatCenter() {
       channel: selected?.canal || 'whatsapp',
       arquivoUrl: localUrl,
     } as any)
-    await conversas.update(cid, { lastMessage: 'Áudio', status: 'aguardando_cliente', lastAssignedTo: selected?.assignedTo })
+    void guardarArquivoChat(arquivo, mensagemId)
+    await conversas.update(cid, prenderAtendimento({ lastMessage: 'Áudio', lastAssignedTo: selected?.assignedTo }) as never)
     try {
       const audioBase64 = await lerBase64(arquivo)
       const erp = usuario?.empresaId ? await loadNxErpCrmConfig(usuario.empresaId) : null
@@ -751,7 +873,8 @@ export default function ChatCenter() {
       channel: selected?.canal || 'whatsapp',
       arquivoUrl: localUrl,
     } as any)
-    await conversas.update(cid, { lastMessage: legenda || file.name, status: 'aguardando_cliente', lastAssignedTo: selected?.assignedTo })
+    void guardarArquivoChat(file, mensagemId)
+    await conversas.update(cid, prenderAtendimento({ lastMessage: legenda || file.name, lastAssignedTo: selected?.assignedTo }) as never)
     try {
       const midiaBase64 = await lerBase64(file)
       const erp = usuario?.empresaId ? await loadNxErpCrmConfig(usuario.empresaId) : null
@@ -845,7 +968,7 @@ export default function ChatCenter() {
         replyToMessageId: resposta?.id || null,
         replyToTexto: resposta?.texto || null,
       } as any)
-      await conversas.update(cid, { lastMessage: textoEnvio, status: 'aguardando_cliente', lastAssignedTo: selected?.assignedTo })
+      await conversas.update(cid, prenderAtendimento({ lastMessage: textoEnvio, lastAssignedTo: selected?.assignedTo }) as never)
       await entregarTexto(cid, textoEnvio, clientMessageId, mensagemId, resposta?.wamid)
     } catch (e) {
       setTexto(textoEnvio)
@@ -926,7 +1049,7 @@ export default function ChatCenter() {
       status: 'recebida',
       arquivoUrl,
     } as any)
-    await conversas.update(cid, { lastMessage: tipo === 'audio' ? 'Áudio' : `📎 ${file.name}`, status: 'aguardando_cliente' })
+    await conversas.update(cid, prenderAtendimento({ lastMessage: tipo === 'audio' ? 'Áudio' : `📎 ${file.name}` }) as never)
     await writeAudit({
       empresaId,
       usuarioNome: usuario?.nome,
@@ -1035,6 +1158,25 @@ export default function ChatCenter() {
     }
   }
 
+  function prenderAtendimento(extra: Record<string, unknown>) {
+    if (conversaFinalizada(selected)) return extra
+    setFiltro('atendimento')
+    return {
+      ...extra,
+      status: 'em_atendimento',
+      statusAtendimento: 'HUMANO',
+      roboPausado: true,
+      robotPaused: true,
+      robotState: 'HUMAN_ACTIVE',
+      botAtivo: false,
+      atendimentoHumano: true,
+      leticiaStep: 'human',
+      etapa: 'HUMANO',
+      entrouAtendimentoEm: selected?.entrouAtendimentoEm || new Date().toISOString(),
+      botState: { active: false, flow: String(selected?.botState?.flow || 'human'), step: 'human_handoff' },
+    }
+  }
+
   async function assumir() {
     if (!selected) return
     await conversas.update(selected.id, {
@@ -1052,6 +1194,7 @@ export default function ChatCenter() {
       atendimentoHumano: true,
       botState: { active: false, flow: 'human', step: 'human' },
       triagemStatus: 'humano',
+      entrouAtendimentoEm: selected.entrouAtendimentoEm || new Date().toISOString(),
     })
     await writeAudit({
       empresaId: conversas.empresaId,
@@ -1070,6 +1213,7 @@ export default function ChatCenter() {
       depois: { de: 'robo', para: usuario?.nome },
     })
     toast.success('Atendimento assumido. Robô pausado nesta conversa.')
+    setFiltro('atendimento')
   }
 
   async function finalizarAtendimento() {
@@ -1089,6 +1233,14 @@ export default function ChatCenter() {
       botState: { active: false, flow, step: 'human_handoff' },
     })
     toast.success('Atendimento finalizado. O histórico permanece nesta conversa.')
+    setFiltro('finalizados')
+  }
+
+  async function excluirMensagem(id: string) {
+    if (!window.confirm('Excluir esta mensagem daqui? Ela sai do Chat Clientes.')) return
+    await mensagens.remove(id)
+    setMenuMsg(null)
+    toast.success('Mensagem excluída')
   }
 
   async function transferirLaiane() {
@@ -1142,6 +1294,10 @@ export default function ChatCenter() {
       <div className="p-2 border-b space-y-2" style={{ borderColor: 'var(--code-border)' }}>
         <div className="flex items-center justify-between gap-2">
           <h1 className="text-sm font-bold">Chat Clientes</h1>
+          <div className="flex items-center gap-1">
+            <button type="button" aria-label="Diminuir chat" className="h-7 w-7 rounded-full text-sm font-bold" style={{ background: 'var(--code-surface-muted)' }} onClick={() => setZoom((z) => Math.max(0.75, Math.round((z - 0.1) * 10) / 10))}>−</button>
+            <button type="button" aria-label="Aumentar chat" className="h-7 w-7 rounded-full text-sm font-bold" style={{ background: 'var(--code-surface-muted)' }} onClick={() => setZoom((z) => Math.min(1.35, Math.round((z + 0.1) * 10) / 10))}>+</button>
+          </div>
           <button type="button" aria-label="Novo contato" title="Novo contato" className="h-7 w-7 rounded-full text-lg leading-none font-bold" style={{ background: 'var(--code-orange)', color: '#111' }} onClick={() => setNovoCli(true)}>+</button>
         </div>
         <TextInput placeholder="Buscar cliente ou telefone" value={busca} onChange={(e) => setBusca(e.target.value)} />
@@ -1154,38 +1310,32 @@ export default function ChatCenter() {
               className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${filtro === f.id ? 'nexus-cta text-white' : ''}`}
               style={filtro === f.id ? undefined : { background: 'var(--code-surface-muted)' }}
             >
-              {f.label} {contagem[f.id as keyof typeof contagem] ? contagem[f.id as keyof typeof contagem] : ''}
+              {f.label}
             </button>
           ))}
         </div>
+        {filtro === 'atendimento' && (
+          <p className="text-[10px] leading-snug" style={{ color: 'var(--code-muted)' }}>Fila do meio. A conversa fica aqui até você finalizar.</p>
+        )}
         {filtro === 'finalizados' && (
-          <>
-            <p className="text-[10px] leading-snug" style={{ color: 'var(--code-muted)' }}>Histórico encerrado. A hora é a da última mensagem.</p>
-            <div className="flex items-center justify-between gap-2">
-              <label className="text-[11px] flex items-center gap-1 font-semibold" style={{ color: 'var(--code-muted)' }}>
-                <input
-                  type="checkbox"
-                  checked={externas.some((c) => conversaFinalizada(c)) && externas.filter((c) => conversaFinalizada(c)).every((c) => marcadas.includes(c.id))}
-                  onChange={(e) => alternarTodas(e.target.checked)}
-                  aria-label="Marcar todas as conversas finalizadas"
-                />
-                Todas
-              </label>
-              <button type="button" disabled={!marcadas.length || excluindo} onClick={() => void excluirMarcadas()} className="text-[11px] font-semibold px-2 py-0.5 rounded-full disabled:opacity-40" style={{ background: 'var(--code-danger)', color: '#fff' }}>
-                {excluindo ? 'Excluindo...' : 'Excluir'}
-              </button>
-            </div>
-          </>
+          <p className="text-[10px] leading-snug" style={{ color: 'var(--code-muted)' }}>Histórico encerrado. A hora é a da última mensagem.</p>
         )}
       </div>
       <div className="flex-1 overflow-y-auto">
-        {lista.length === 0 && <div className="p-3"><EmptyState title={filtro === 'finalizados' ? 'Nenhum atendimento finalizado' : 'Nenhuma conversa'} description={filtro === 'finalizados' ? 'Quando você finalizar, o cliente aparece aqui.' : 'Os clientes que falam com você ficam nesta lista.'} /></div>}
+        {verArquivadas ? (
+          <button type="button" className="chat-arquivadas" onClick={() => setVerArquivadas(false)}>← Conversas</button>
+        ) : externas.some((c) => c.arquivada === true) ? (
+          <button type="button" className="chat-arquivadas" onClick={() => setVerArquivadas(true)}>
+            Arquivadas
+            <span>{externas.filter((c) => c.arquivada === true).length}</span>
+          </button>
+        ) : null}
+        {lista.length === 0 && <div className="p-3"><EmptyState title={verArquivadas ? 'Nenhuma conversa arquivada' : filtro === 'finalizados' ? 'Nenhum atendimento finalizado' : filtro === 'atendimento' ? 'Ninguém em atendimento' : 'Nenhuma conversa'} description={verArquivadas ? 'Clique com o botão direito numa conversa para arquivar.' : filtro === 'finalizados' ? 'Quando você finalizar, o cliente aparece aqui.' : filtro === 'atendimento' ? 'Clique na mensagem e escolha Em atendimento.' : 'Os clientes que falam com você ficam nesta lista.'} /></div>}
         {lista.map((c) => {
           const cli = clientes.items.find((x) => x.id === c.clienteId)
-          const unread = naoLidasDe(c)
           const preview = String(c.lastMessage || ultimaMensagem.get(c.id)?.texto || 'Sem mensagens')
-          const fone = displayPhone(String(cli?.whatsapp || cli?.telefone || ''))
-          const nome = String(c.titulo || cli?.nome || fone || 'Conversa')
+          const fone = displayPhone(String(cli?.whatsapp || cli?.telefone || c.telefone || c.titulo || ''))
+          const nome = rotuloPessoa(String(cli?.nome || c.titulo || ''), fone)
           const quandoLista = Math.max(instanteChat(c.finalizadoEm), instanteChat(c.atualizadoEm), instanteChat(c.criadoEm), ultimaMensagem.get(c.id)?.em || 0)
           const hora = formatMessageClock(quandoLista ? new Date(quandoLista) : null)
           const fechada = filtro === 'finalizados'
@@ -1195,47 +1345,48 @@ export default function ChatCenter() {
               role="button"
               tabIndex={0}
               onClick={() => abrirConversa(c.id, String(c.clienteId || ''))}
+              onContextMenu={(e) => abrirMenuZap(e, c.id)}
               onKeyDown={(e) => { if (e.key === 'Enter') abrirConversa(c.id, String(c.clienteId || '')) }}
-              className="w-full text-left px-3 py-2.5 border-b cursor-pointer"
+              className="chat-item w-full text-left px-3 py-2.5 cursor-pointer"
               style={{
                 borderColor: 'var(--code-border)',
                 background: selected?.id === c.id ? 'var(--code-surface-muted)' : 'transparent',
               }}
             >
               <div className="flex items-start gap-2">
-                {fechada && (
-                  <label className="mt-1 shrink-0" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-                    <input type="checkbox" checked={marcadas.includes(c.id)} aria-label={`Marcar ${nome}`} onChange={(e) => alternarConversa(c.id, e.target.checked)} />
-                  </label>
-                )}
-                {fechada && (
-                  <span className="mt-0.5 h-8 w-8 rounded-full shrink-0 flex items-center justify-center text-xs font-bold" style={{ background: 'var(--code-surface-muted)', color: 'var(--code-text)' }} aria-hidden>
-                    {nome.trim().slice(0, 1).toUpperCase()}
-                  </span>
-                )}
+                <FotoCliente foto={fotoDe(cli)} />
                 <div className="min-w-0 flex-1">
                   <div className="flex justify-between gap-2">
                     <p className="text-sm font-semibold truncate">{nome}</p>
                     <span className="text-[10px] shrink-0" style={{ color: 'var(--code-muted)' }}>{hora}</span>
                   </div>
-                  {fone && <p className="text-[11px] truncate" style={{ color: 'var(--code-muted)' }}>{fone}</p>}
+                  {fone && nome !== fone && <p className="text-[11px] truncate" style={{ color: 'var(--code-muted)' }}>{fone}</p>}
                   <div className="flex items-center gap-2 mt-0.5">
                     <p className="text-[11px] truncate flex-1" style={{ color: 'var(--code-muted)' }}>{preview}</p>
                     {fechada && <span className="chat-finalizado shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-semibold">Finalizado</span>}
-                    {unread > 0 && <span className="shrink-0 text-[10px] px-1.5 rounded-full text-white" style={{ background: 'var(--code-orange)' }}>{unread}</span>}
+                    {!fechada && filaChat(c) === 'atendimento' && <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ background: 'var(--code-orange)', color: '#111' }}>Atendimento</span>}
                   </div>
-                  {!fechada && (
-                    <label className="text-[10px] mt-1 flex items-center gap-1" style={{ color: 'var(--code-muted)' }} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-                      <input type="checkbox" checked={unread > 0} onChange={(e) => marcarNaoLida(c.id, e.target.checked)} />
-                      Não lida
-                    </label>
-                  )}
                 </div>
               </div>
             </div>
           )
         })}
       </div>
+      {menuZap && (
+        <>
+          <button type="button" className="chat-menu-fundo" aria-label="Fechar menu" onClick={() => setMenuZap(null)} />
+          <div className="chat-menu-zap" style={{ left: menuZap.x, top: menuZap.y }} role="menu">
+            <button type="button" onClick={() => void arquivarConversa(menuZap.id, externas.find((c) => c.id === menuZap.id)?.arquivada !== true)}>
+              {externas.find((c) => c.id === menuZap.id)?.arquivada ? 'Desarquivar conversa' : 'Arquivar conversa'}
+            </button>
+            <button type="button" onClick={() => { marcarNaoLida(menuZap.id, naoLidasDe(externas.find((c) => c.id === menuZap.id) || {}) === 0); setMenuZap(null) }}>
+              {naoLidasDe(externas.find((c) => c.id === menuZap.id) || {}) > 0 ? 'Marcar como lida' : 'Marcar como não lida'}
+            </button>
+            <button type="button" onClick={() => void limparConversa(menuZap.id)}>Limpar conversa</button>
+            <button type="button" className="chat-menu-apagar" onClick={() => { setMenuZap(null); void excluirConversas([menuZap.id]) }}>Apagar conversa</button>
+          </div>
+        </>
+      )}
     </div>
   )
 
@@ -1249,7 +1400,8 @@ export default function ChatCenter() {
                 <p className="text-[10px] font-semibold" style={{ color: 'var(--code-orange)' }}>Letícia · uma pergunta por vez</p>
                 <div className="flex items-center gap-2">
                   <button type="button" className="lg:hidden text-xs font-semibold" onClick={() => setPainel('lista')}>← Fila</button>
-                  <p className="font-bold text-sm">{textoMisto(String(cliente?.nome || selected.titulo || ''))}</p>
+                  <FotoCliente foto={fotoDe(cliente)} />
+                  <p className="font-bold text-sm">{textoMisto(rotuloPessoa(String(cliente?.nome || selected.titulo || ''), displayPhone(String(cliente?.whatsapp || cliente?.telefone || selected.titulo || ''))))}</p>
                 </div>
                 <p className="text-[11px]" style={{ color: 'var(--code-muted)' }}>{displayCpfSidebar(cliente?.cpf) ? `CPF ${displayCpfSidebar(cliente?.cpf)}` : 'CPF —'} · {displayPhone(String(cliente?.whatsapp || cliente?.telefone || '')) || 'Telefone —'}</p>
                 <label className="text-[11px] mt-1 flex items-center gap-1" style={{ color: 'var(--code-muted)' }}>
@@ -1262,10 +1414,6 @@ export default function ChatCenter() {
                     onChange={(e) => void salvarNascimento(e.target.value)}
                   />
                 </label>
-                <label className="text-[11px] mt-1 flex items-center gap-1" style={{ color: 'var(--code-muted)' }}>
-                  <input type="checkbox" checked={naoLidasDe(selected) > 0} onChange={(e) => marcarNaoLida(selected.id, e.target.checked)} />
-                  Não lida
-                </label>
                 {(cliente?.produto || cliente?.modalidade || selected.produto) && (
                   <p className="text-[11px] font-semibold" style={{ color: 'var(--code-orange)' }}>
                     {produtoLabel(String(cliente?.produto || cliente?.modalidade || selected.produto || selected.operacao || ''))}
@@ -1276,6 +1424,7 @@ export default function ChatCenter() {
               <div className="flex flex-wrap gap-1 justify-end">
                 <GhostButton className="text-xs" onClick={() => void assumir()}>Assumir</GhostButton>
                 <GhostButton className="text-xs" onClick={() => void finalizarAtendimento()}>Finalizar atendimento</GhostButton>
+                <GhostButton className="text-xs" style={{ background: 'var(--code-danger)', color: '#fff' }} onClick={() => void excluirAberta()}>{excluindo ? 'Excluindo...' : 'Excluir'}</GhostButton>
                 <GhostButton className="text-xs" onClick={() => void transferirLaiane()}>Transferir para Laiane</GhostButton>
                 <GhostButton className="text-xs" aria-label="Fechar" data-nexus-esc onClick={fecharConversa}>X</GhostButton>
                 <GhostButton className="text-xs lg:hidden" onClick={() => setPainel('ficha')}>Cliente</GhostButton>
@@ -1357,11 +1506,11 @@ export default function ChatCenter() {
                   </div>
                 )}
                     {m.replyToTexto ? <p className="text-[10px] border-l-2 pl-1 mb-1">Respondendo a: {String(m.replyToTexto)}</p> : null}
-                    {String(m.tipo) === 'imagem' && (m.arquivoUrl && !midiaFalhou[m.id] ? <img src={String(m.arquivoUrl)} alt="" className="max-h-40 rounded mt-1" onError={() => setMidiaFalhou((atual) => ({ ...atual, [m.id]: true }))} /> : <p>Imagem indisponível</p>)}
-                    {String(m.tipo) === 'audio' && (m.arquivoUrl && !midiaFalhou[m.id] ? <audio controls src={String(m.arquivoUrl)} className="mt-1" onError={() => setMidiaFalhou((atual) => ({ ...atual, [m.id]: true }))} /> : <p>Áudio indisponível</p>)}
-                    {String(m.tipo) === 'video' && (m.arquivoUrl && !midiaFalhou[m.id] ? <video controls src={String(m.arquivoUrl)} className="max-h-40 rounded mt-1" onError={() => setMidiaFalhou((atual) => ({ ...atual, [m.id]: true }))} /> : <p>Vídeo indisponível</p>)}
-                    {String(m.tipo) === 'documento' && <p>📎 {String(m.texto)}</p>}
-                    {!['imagem', 'documento', 'audio', 'video'].includes(String(m.tipo)) && <p>{String(m.texto || '')}</p>}
+                    {tipoMidia(String(m.tipo)) === 'imagem' && (m.arquivoUrl && !midiaFalhou[m.id] ? <img src={String(m.arquivoUrl)} alt="" className="max-h-40 rounded mt-1" onError={() => setMidiaFalhou((atual) => ({ ...atual, [m.id]: true }))} /> : <p>Imagem recebida. O arquivo não veio junto.</p>)}
+                    {tipoMidia(String(m.tipo)) === 'audio' && (m.arquivoUrl && !midiaFalhou[m.id] ? <audio controls src={String(m.arquivoUrl)} className="mt-1" onError={() => setMidiaFalhou((atual) => ({ ...atual, [m.id]: true }))} /> : <p>Áudio recebido. O arquivo não veio junto.</p>)}
+                    {tipoMidia(String(m.tipo)) === 'video' && (m.arquivoUrl && !midiaFalhou[m.id] ? <video controls src={String(m.arquivoUrl)} className="max-h-40 rounded mt-1" onError={() => setMidiaFalhou((atual) => ({ ...atual, [m.id]: true }))} /> : <p>Vídeo recebido. O arquivo não veio junto.</p>)}
+                    {tipoMidia(String(m.tipo)) === 'documento' && (m.arquivoUrl ? <a href={String(m.arquivoUrl)} target="_blank" rel="noreferrer">📎 {String(m.texto || 'Documento')}</a> : <p>📎 {String(m.texto || 'Documento')}</p>)}
+                    {!['imagem', 'documento', 'audio', 'video'].includes(tipoMidia(String(m.tipo))) && <p>{textoVisivel(m.texto)}</p>}
                     {Array.isArray(m.opcoes) && m.opcoes.length > 0 ? (
                       <details className="opcoes">
                         <summary>{String(m.listaBotao || LETICIA_MENU_TITULO)}</summary>
@@ -1477,7 +1626,7 @@ export default function ChatCenter() {
               </div>
               <button type="button" className="text-lg px-1" aria-label="Áudio" style={{ color: gravando ? 'var(--code-orange)' : 'inherit' }} onClick={() => void gravarAudio()}>🎤</button>
               <TextArea
-                rows={2}
+                rows={3}
                 value={texto}
                 onChange={(e) => setTexto(e.target.value)}
                 onKeyDown={(e) => {
@@ -1519,7 +1668,7 @@ export default function ChatCenter() {
             return (
               <>
                 <header className="pb-2" style={{ borderBottom: '1px solid var(--code-border)' }}>
-                  <p className="font-semibold text-[15px] leading-snug">{textoMisto(cliente.nome)}</p>
+                  <p className="font-semibold text-[15px] leading-snug">{textoMisto(rotuloPessoa(String(cliente.nome || ''), phone))}</p>
                   <p className="text-[12px] mt-1 font-semibold" style={{ color: 'var(--code-orange)' }}>{statusAtendimentoLabel(String(selected?.status || '')).label}</p>
                   <p className="text-[12px] mt-1">CPF {displayCpfSidebar(cliente.cpf) || '—'}</p>
                   <p className="text-[12px]" style={{ color: 'var(--code-muted)' }}>{phone || 'Telefone não informado'}</p>
@@ -1606,7 +1755,7 @@ export default function ChatCenter() {
           </label>
         </NexusModal>
       )}
-      <div className="flex-1 min-h-0 grid lg:grid-cols-[300px_1fr_280px]">
+      <div className="chat-clientes flex-1 min-h-0 grid lg:grid-cols-[300px_1fr_280px]" style={{ zoom }}>
         <div className={`${painel === 'lista' ? 'block' : 'hidden'} lg:block h-full min-h-0`}>{listaCol}</div>
         <div className={`${painel === 'chat' ? 'block' : 'hidden'} lg:block h-full min-h-0`}>{chatCol}</div>
         <div className={`${painel === 'ficha' ? 'block' : 'hidden'} lg:block h-full min-h-0`}>{fichaCol}</div>

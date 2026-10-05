@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { conversaFinalizada, instanteChat, naoLidasDe, ordenarConversas, teclaEnviaMensagem } from './chatLista.ts'
+import { conversaFinalizada, filaChat, instanteChat, naoLidasDe, ordemEstavel, ordenarConversas, teclaEnviaMensagem } from './chatLista.ts'
 
 test('conversa mais recente fica primeiro mesmo com timestamp do Firestore', () => {
   const lista = ordenarConversas([
@@ -22,6 +22,32 @@ test('só atendimento finalizado sai da lista principal', () => {
   assert.equal(conversaFinalizada({ status: 'em_atendimento' }), false)
   assert.equal(conversaFinalizada({ status: 'finalizado' }), true)
   assert.equal(conversaFinalizada({ statusAtendimento: 'FINALIZADO' }), true)
+})
+
+test('fila do meio é o atendimento humano', () => {
+  assert.equal(filaChat({ status: 'aguardando_triagem' }), 'conversas')
+  assert.equal(filaChat({ status: 'em_atendimento' }), 'atendimento')
+  assert.equal(filaChat({ status: 'aguardando_cliente', atendimentoHumano: true }), 'atendimento')
+  assert.equal(filaChat({ status: 'finalizado', atendimentoHumano: true }), 'finalizados')
+})
+
+test('mensagem nova não desce a conversa que já está na fila', () => {
+  const parado = ordemEstavel(
+    [{ id: 'b' }, { id: 'a' }],
+    ['a', 'b'],
+  )
+  assert.deepEqual(parado.ids, ['a', 'b'])
+  const chegou = ordemEstavel(
+    [{ id: 'c' }, { id: 'b' }, { id: 'a' }],
+    ['a', 'b'],
+  )
+  assert.deepEqual(chegou.ids, ['c', 'a', 'b'])
+  const noFim = ordemEstavel(
+    [{ id: 'c' }, { id: 'b' }, { id: 'a' }],
+    ['a', 'b'],
+    true,
+  )
+  assert.deepEqual(noFim.ids, ['a', 'b', 'c'])
 })
 
 test('Enter envia e Shift+Enter quebra a linha', () => {
